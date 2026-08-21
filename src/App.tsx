@@ -2,7 +2,7 @@ import React, { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAppStore } from './store';
 import { useToast } from './store/ToastContext';
-import { ToastItem } from './components/ui';
+import { ToastItem, ErrorBoundary } from './components/ui';
 import { PassengerLayout, OperatorLayout } from './components/layouts';
 import { DEMO_USER, DEMO_CONDITIONS, DEMO_NOTIFICATIONS, DEMO_JOURNEY_HISTORY } from './data/mock';
 
@@ -77,55 +77,58 @@ export default function App() {
 
   return (
     <>
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          {/* Landing & Auth */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<AuthPage initialMode="login" />} />
-          <Route path="/signup" element={<AuthPage initialMode="signup" />} />
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            {/* Landing & Auth */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<AuthPage initialMode="login" />} />
+            <Route path="/signup" element={<AuthPage initialMode="signup" />} />
 
-          {/* Passenger Routes */}
-          <Route element={<PassengerLayout />}>
-            <Route path="/app" element={<HomePage />} />
-            <Route path="/plan" element={<TripPlannerPage />} />
-            <Route path="/routes" element={<RouteDiscoveryPage />} />
-            <Route path="/journeys" element={<JourneyHistoryPage />} />
-            <Route path="/journey/:id" element={<ActiveJourneyPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-          </Route>
+            {/* Passenger Routes */}
+            <Route element={<PassengerLayout />}>
+              <Route path="/app" element={<HomePage />} />
+              <Route path="/plan" element={<TripPlannerPage />} />
+              <Route path="/routes" element={<RouteDiscoveryPage />} />
+              <Route path="/journeys" element={<JourneyHistoryPage />} />
+              <Route path="/journey" element={<ActiveJourneyPage />} />
+              <Route path="/journey/:id" element={<ActiveJourneyPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Route>
 
-          {/* Operator Routes */}
-          <Route element={<OperatorLayout />}>
-            <Route path="/operator" element={<OperatorDashboard />} />
-            <Route path="/operator/routes" element={<OperatorRoutesPage />} />
-            <Route path="/operator/vehicles" element={<OperatorVehiclesPage />} />
-            <Route path="/operator/reports" element={<OperatorReportsPage />} />
-            <Route path="/operator/conditions" element={<OperatorConditionsPage />} />
-            <Route path="/operator/alerts" element={<OperatorDashboard />} />
-          </Route>
+            {/* Operator Routes */}
+            <Route element={<OperatorLayout />}>
+              <Route path="/operator" element={<OperatorDashboard />} />
+              <Route path="/operator/routes" element={<OperatorRoutesPage />} />
+              <Route path="/operator/vehicles" element={<OperatorVehiclesPage />} />
+              <Route path="/operator/reports" element={<OperatorReportsPage />} />
+              <Route path="/operator/conditions" element={<OperatorConditionsPage />} />
+              <Route path="/operator/alerts" element={<OperatorDashboard />} />
+            </Route>
 
-          {/* Module Routes */}
-          <Route element={<PassengerLayout />}>
-            <Route path="/modules" element={<ModuleMarketplacePage />} />
-            <Route path="/modules/:moduleId" element={<ModuleDetailPage />} />
-          </Route>
+            {/* Module Routes */}
+            <Route element={<PassengerLayout />}>
+              <Route path="/modules" element={<ModuleMarketplacePage />} />
+              <Route path="/modules/:moduleId" element={<ModuleDetailPage />} />
+            </Route>
 
-          {/* Demo Routes */}
-          <Route element={<PassengerLayout />}>
-            <Route path="/demo" element={<DemoControlCenter />} />
-            <Route path="/demo/pitch" element={<DemoPitchPage />} />
-            <Route path="/demo/wheelchair" element={<DemoScenarioPages />} />
-            <Route path="/demo/live-delay" element={<LiveDelayDemo />} />
-            <Route path="/demo/crowding" element={<CrowdingDemo />} />
-            <Route path="/demo/safety" element={<SafetyDemo />} />
-            <Route path="/demo/reporting" element={<ReportingDemo />} />
-          </Route>
+            {/* Demo Routes */}
+            <Route element={<PassengerLayout />}>
+              <Route path="/demo" element={<DemoControlCenter />} />
+              <Route path="/demo/pitch" element={<DemoPitchPage />} />
+              <Route path="/demo/wheelchair" element={<DemoScenarioPages />} />
+              <Route path="/demo/live-delay" element={<LiveDelayDemo />} />
+              <Route path="/demo/crowding" element={<CrowdingDemo />} />
+              <Route path="/demo/safety" element={<SafetyDemo />} />
+              <Route path="/demo/reporting" element={<ReportingDemo />} />
+            </Route>
 
-          {/* 404 */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Suspense>
+            {/* 404 */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
 
       {/* Global Toast Container */}
       <div className="fixed top-4 right-4 z-[100] space-y-2" aria-live="polite" aria-label="Notifications">

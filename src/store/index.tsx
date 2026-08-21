@@ -108,7 +108,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
       return {
         ...state,
-        activeJourney: completed,
+        activeJourney: null,
         journeyHistory: [completed, ...state.journeyHistory],
       };
     }
@@ -383,13 +383,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startJourney = useCallback((routeResult: RouteSearchResult) => {
+    const originName = routeResult.originName || routeResult.segments[0]?.from || 'Origin';
+    const destName = routeResult.destinationName || routeResult.segments[routeResult.segments.length - 1]?.to || 'Destination';
+
     const journey: Journey = {
       id: `journey-${Date.now()}`,
       userId: state.currentUser?.id || 'demo-user',
       originId: routeResult.segments[0]?.fromId || 'origin',
       destinationId: routeResult.segments[routeResult.segments.length - 1]?.toId || 'dest',
-      originName: routeResult.segments[0]?.from || 'Origin',
-      destinationName: routeResult.segments[routeResult.segments.length - 1]?.to || 'Destination',
+      originName: originName,
+      destinationName: destName,
+      originCoords: routeResult.originCoords,
+      destinationCoords: routeResult.destinationCoords,
+      geometry: routeResult.geometry,
+      intermediateStops: routeResult.intermediateStops,
+      turnByTurn: routeResult.turnByTurn,
       routeId: routeResult.route.id,
       routeName: routeResult.route.name,
       status: 'active',
@@ -402,6 +410,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentStopId: routeResult.segments[0]?.fromId,
       delay: routeResult.delay,
       crowding: routeResult.crowding,
+      fare: routeResult.fare,
+      nearbyStands: routeResult.nearbyStands,
       safetySession: {
         id: `safety-${Date.now()}`,
         journeyId: `journey-${Date.now()}`,

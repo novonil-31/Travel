@@ -7,6 +7,7 @@ export interface User {
   id: string;
   name: string;
   email?: string;
+  phoneNumber?: string;
   avatar?: string;
   profile: AccessibilityProfile;
   emergencyContact?: EmergencyContact;
@@ -130,6 +131,30 @@ export interface RouteSearchResult {
     hasRamp?: boolean;
   }>;
   turnByTurn?: string[];
+  fare?: {
+    type: 'exact' | 'range' | 'unknown';
+    exact?: number;
+    min?: number;
+    max?: number;
+    currency: string;
+    confidence: number;
+    source: string;
+    status: 'confirmed' | 'estimated' | 'unknown';
+    notes?: string;
+  };
+  nearbyStands?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    latitude: number;
+    longitude: number;
+    address?: string;
+    operatingHours?: string;
+    distanceM: number;
+    typicalFareMin?: number;
+    typicalFareMax?: number;
+    currency?: string;
+  }>;
 }
 
 export interface RouteScores {
@@ -163,6 +188,27 @@ export interface Journey {
   eta?: string;
   duration: number;
   segments: JourneySegment[];
+  fare?: {
+    type: 'exact' | 'range' | 'unknown';
+    exact?: number;
+    min?: number;
+    max?: number;
+    currency: string;
+    confidence: number;
+    source: string;
+  };
+  nearbyStands?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    latitude: number;
+    longitude: number;
+    address?: string;
+    distanceM: number;
+    typicalFareMin?: number;
+    typicalFareMax?: number;
+    currency?: string;
+  }>;
   scores: RouteScores;
   safetySession?: SafetySession;
   currentSegmentIndex: number;

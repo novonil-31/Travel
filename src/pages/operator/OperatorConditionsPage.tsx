@@ -23,11 +23,11 @@ export default function OperatorConditionsPage() {
           return (
             <Card key={route.id} className="p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center space-x-3 mb-4">
-                <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: route.color }}>
-                  {route.shortName}
+                <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: route?.color || '#059669' }}>
+                  {route?.shortName || 'BUS'}
                 </span>
                 <div className="flex-1 truncate">
-                  <h3 className="font-bold text-gray-900 truncate">{route.name}</h3>
+                  <h3 className="font-bold text-gray-900 truncate">{route?.name || 'Bus Route'}</h3>
                   <div className="flex items-center text-xs text-gray-500 mt-1">
                     <Activity size={12} className="mr-1" />
                     <LastUpdated timestamp={condition.updatedAt} />

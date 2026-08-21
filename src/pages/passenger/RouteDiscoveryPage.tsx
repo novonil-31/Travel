@@ -1,58 +1,69 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
-import { Card, Button, Badge, ProgressBar, RadialScore, Modal } from '../../components/ui';
-import { CrowdingIndicator, VehicleAccessibilityBadge, DelayBadge } from '../../components/accessibility';
+import { Card, Button, Badge, Modal } from '../../components/ui';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
-  Navigation,
-  Clock,
-  Activity,
-  CheckCircle2,
-  ChevronRight,
-  Scale,
-  MapPin,
-  Bus,
-  Footprints,
-  AlertTriangle,
-  Layers,
-  ArrowRight,
+  Navigation, Clock, Bus, MapPin, ChevronRight, ShieldCheck,
+  Footprints, Sparkles, ArrowRight, IndianRupee, Car, Scale, ChevronDown
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 
-// Custom Markers
-const originIcon = L.divIcon({
-  className: 'custom-marker',
-  html: '<div style="background-color: #2563EB; width: 26px; height: 26px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">A</div>',
-  iconSize: [26, 26],
-  iconAnchor: [13, 13],
-});
+// Custom Map Pins (Clean Google Maps Style)
+const createMapPin = (color: string, label: string) =>
+  L.divIcon({
+    className: 'custom-map-pin',
+    html: `
+      <div style="
+        background-color: ${color};
+        color: white;
+        border: 2px solid white;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      ">
+        ${label}
+      </div>
+    `,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
 
-const destIcon = L.divIcon({
-  className: 'custom-marker',
-  html: '<div style="background-color: #DC2626; width: 26px; height: 26px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">B</div>',
-  iconSize: [26, 26],
-  iconAnchor: [13, 13],
-});
+const originPin = createMapPin('#059669', 'A');
+const destPin = createMapPin('#dc2626', 'B');
+const stopPin = createMapPin('#2563eb', '🚏');
+const taxiPin = createMapPin('#d97706', '🚖');
 
-const stopMarkerIcon = L.divIcon({
-  className: 'custom-stop',
-  html: '<div style="background-color: #059669; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
-
-// Auto-Fit Bounds Component
-function MapBoundsFitter({ points }: { points: Array<[number, number]> }) {
+// Map Bounds Auto-Fitter
+function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
   const map = useMap();
+
   useEffect(() => {
-    if (points && points.length > 0) {
-      const bounds = L.latLngBounds(points);
-      map.fitBounds(bounds, { padding: [40, 40] });
+    if (coordinates && Array.isArray(coordinates) && coordinates.length > 0) {
+      try {
+        const validCoords = coordinates.filter(
+          (c) => Array.isArray(c) && c.length === 2 && typeof c[0] === 'number' && !isNaN(c[0]) && typeof c[1] === 'number' && !isNaN(c[1])
+        );
+        if (validCoords.length > 0) {
+          const bounds = L.latLngBounds(validCoords.map(([lat, lng]) => [lat, lng]));
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+          }
+        }
+      } catch (e) {
+        // ignore bounds fit error
+      }
     }
-  }, [points, map]);
+  }, [coordinates, map]);
+
   return null;
 }
 
@@ -61,431 +72,286 @@ export default function RouteDiscoveryPage() {
   const { state, startJourney } = useAppStore();
   const { searchResults } = state;
 
-  const [selectedRoute, setSelectedRoute] = useState<RouteSearchResult | null>(
-    searchResults[0] || null
-  );
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState<RouteSearchResult | null>(searchResults[0] || null);
+  const [showSteps, setShowSteps] = useState<boolean>(false);
+  const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
 
   useEffect(() => {
-    if (searchResults.length > 0 && !selectedRoute) {
+    if (searchResults && searchResults.length > 0 && !selectedRoute) {
       setSelectedRoute(searchResults[0] || null);
     }
   }, [searchResults, selectedRoute]);
 
   if (!searchResults || searchResults.length === 0) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
-          <Navigation className="w-8 h-8" />
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-800 mx-auto">
+          <Navigation className="w-6 h-6" />
         </div>
-        <h2 className="text-2xl font-bold mb-2 text-gray-900">No Routes Found</h2>
-        <p className="text-gray-500 mb-6">Please choose origin and destination points in the journey planner.</p>
-        <Button onClick={() => navigate('/plan')} className="bg-primary-600 hover:bg-primary-700">
-          Return to Planner
+        <h2 className="text-xl font-black text-neutral-900">No Routes Found</h2>
+        <p className="text-xs text-neutral-500">
+          Please enter an origin and destination to plan your journey.
+        </p>
+        <Button onClick={() => navigate('/plan')} size="sm">
+          Return to Search
         </Button>
       </div>
     );
   }
 
-  const handleStartJourney = () => {
+  const handleStart = () => {
     if (selectedRoute) {
       startJourney(selectedRoute);
-      setShowConfirmModal(false);
-      navigate(`/journey/journey-${Date.now()}`);
+      navigate(`/journey/${selectedRoute.route.id}`);
     }
   };
 
-  // Build full coordinate list for map auto-fit
-  const allCoordinates: Array<[number, number]> = [];
-  if (selectedRoute?.geometry?.fullRoute && selectedRoute.geometry.fullRoute.length > 0) {
-    allCoordinates.push(...selectedRoute.geometry.fullRoute);
-  } else if (selectedRoute?.originCoords && selectedRoute?.destinationCoords) {
-    allCoordinates.push(
-      [selectedRoute.originCoords.lat, selectedRoute.originCoords.lng],
-      [selectedRoute.destinationCoords.lat, selectedRoute.destinationCoords.lng]
-    );
-  }
+  // Coordinates for clean Google Maps line
+  const fullRouteArr = selectedRoute?.geometry?.fullRoute || [];
+  const originCoords: [number, number] = [
+    selectedRoute?.originCoords?.lat || (fullRouteArr.length > 0 ? fullRouteArr[0][0] : 20.3555),
+    selectedRoute?.originCoords?.lng || (fullRouteArr.length > 0 ? fullRouteArr[0][1] : 85.8145),
+  ];
+
+  const destCoords: [number, number] = [
+    selectedRoute?.destinationCoords?.lat ||
+      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][0] : 20.3450),
+    selectedRoute?.destinationCoords?.lng ||
+      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][1] : 85.8180),
+  ];
+
+  // Clean continuous route line from start to end (just like Google Maps)
+  const continuousRoute: Array<[number, number]> =
+    fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-900">Recommended Transit Routes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Ranked by accessibility compliance, crowd reduction, and safety preferences.
-          </p>
+    <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6 space-y-4">
+      {/* Top Simple Summary Bar */}
+      <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+        <div className="flex items-center gap-2 text-xs text-neutral-600">
+          <span className="font-bold text-neutral-900">{selectedRoute?.originName || 'Origin'}</span>
+          <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
+          <span className="font-bold text-neutral-900">{selectedRoute?.destinationName || 'Destination'}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setShowCompareModal(true)}>
-            <Scale className="w-4 h-4 mr-1.5" /> Compare Options
-          </Button>
-          <Button size="sm" onClick={() => navigate('/plan')}>
-            New Search
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCompareModal(true)}
+            className="text-xs font-semibold text-neutral-600 hover:text-black underline px-2 py-1"
+          >
+            Compare Fares
+          </button>
+          <Button size="sm" variant="secondary" onClick={() => navigate('/plan')}>
+            Edit
           </Button>
         </div>
       </div>
 
+      {/* Main Split Layout: Clean Map (Top/Left) + Clean Uber-Style Ride Selector (Bottom/Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Route Cards */}
-        <div className="lg:col-span-5 space-y-4 max-h-[calc(100vh-140px)] overflow-y-auto pr-1">
-          {searchResults.map((result, idx) => {
-            const isSelected = selectedRoute?.route.id === result.route.id;
-            return (
-              <Card
-                key={idx}
-                className={`p-4 cursor-pointer transition-all border rounded-2xl ${
-                  isSelected
-                    ? 'border-primary-500 ring-2 ring-primary-500/20 shadow-lg bg-primary-50/40'
-                    : 'border-gray-200 hover:border-primary-300 bg-white hover:shadow-md'
-                }`}
-                onClick={() => setSelectedRoute(result)}
+        {/* Google Maps Style Clean Route Map (7 Cols) */}
+        <div className="lg:col-span-7 h-[360px] sm:h-[450px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative">
+          <MapContainer
+            center={originCoords}
+            zoom={14}
+            scrollWheelZoom={true}
+            className="w-full h-full"
+          >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <MapBoundsController coordinates={continuousRoute} />
+
+            {/* 1. Start Marker (Green A) */}
+            <Marker position={originCoords} icon={originPin}>
+              <Popup>
+                <span className="font-bold text-xs">Pickup (A): {selectedRoute?.originName}</span>
+              </Popup>
+            </Marker>
+
+            {/* 2. Clean Start-to-End Continuous Route Polyline (Google Maps Vibrant Blue Line) */}
+            <Polyline
+              positions={continuousRoute}
+              color="#2563eb"
+              weight={6}
+              opacity={0.9}
+            />
+
+            {/* 3. Destination Marker (Red B) */}
+            <Marker position={destCoords} icon={destPin}>
+              <Popup>
+                <span className="font-bold text-xs">Destination (B): {selectedRoute?.destinationName}</span>
+              </Popup>
+            </Marker>
+
+            {/* 4. Closest Shared Taxi / Auto Stand Pin */}
+            {selectedRoute?.nearbyStands && selectedRoute.nearbyStands[0] && (
+              <Marker
+                position={[selectedRoute.nearbyStands[0].latitude, selectedRoute.nearbyStands[0].longitude]}
+                icon={taxiPin}
               >
-                <div className="flex justify-between items-start mb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="px-2.5 py-1 rounded-lg text-white font-extrabold text-sm shadow-sm"
-                      style={{ backgroundColor: result.route.color || '#059669' }}
-                    >
-                      {result.route.shortName}
-                    </span>
-                    <span className="font-bold text-gray-900 text-sm line-clamp-1">
-                      {result.route.name}
+                <Popup>
+                  <div className="p-1">
+                    <strong className="block text-xs font-bold text-amber-900">
+                      🚖 {selectedRoute.nearbyStands[0].name}
+                    </strong>
+                    <span className="text-[11px] text-neutral-600 block">
+                      {selectedRoute.nearbyStands[0].distanceM}m from pickup • ₹{selectedRoute.nearbyStands[0].typicalFareMin || 15} - ₹{selectedRoute.nearbyStands[0].typicalFareMax || 30}
                     </span>
                   </div>
-                  <RadialScore score={result.scores.overall} size="sm" />
-                </div>
+                </Popup>
+              </Marker>
+            )}
+          </MapContainer>
 
-                {result.recommendation.recommended && (
-                  <div className="mb-2">
-                    <Badge variant="success" className="text-[11px] font-semibold">
-                      ★ Best Accessibility Match
-                    </Badge>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 my-2 bg-white/70 p-2 rounded-xl border border-gray-100">
-                  <div className="flex items-center gap-1 font-medium">
-                    <Clock className="w-3.5 h-3.5 text-gray-500" />
-                    <span>{result.duration} min</span>
-                  </div>
-                  <div className="flex items-center gap-1 font-medium">
-                    <Footprints className="w-3.5 h-3.5 text-gray-500" />
-                    <span>{result.walkingDistance}m walk</span>
-                  </div>
-                  <div className="flex items-center gap-1 font-medium">
-                    <Bus className="w-3.5 h-3.5 text-gray-500" />
-                    <span>{result.stairs === 0 ? 'No stairs' : `${result.stairs} stairs`}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100">
-                  <CrowdingIndicator level={result.crowding} />
-                  <VehicleAccessibilityBadge status={result.vehicleAccessible} />
-                  {result.delay > 0 && <DelayBadge delay={result.delay} />}
-                </div>
-
-                {result.recommendation.tradeoff && (
-                  <div className="mt-2.5 text-[11px] text-amber-800 bg-amber-50/80 p-2 rounded-lg border border-amber-200/60 flex items-start gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <span>{result.recommendation.tradeoff}</span>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+          {/* Simple Floating Route Badge */}
+          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+            <span>{selectedRoute?.duration} min via {selectedRoute?.route.shortName}</span>
+          </div>
         </div>
 
-        {/* Right Column: Interactive Map & Turn-by-Turn Leg Details */}
-        <div className="lg:col-span-7 space-y-6">
-          {selectedRoute && (
-            <Card className="p-5 shadow-xl border border-gray-200 bg-white rounded-2xl">
-              {/* Route Summary Header */}
-              <div className="flex flex-wrap justify-between items-center border-b pb-4 mb-4 gap-3">
-                <div>
-                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Selected Journey
-                  </div>
-                  <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2 mt-0.5">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: selectedRoute.route.color || '#059669' }}
-                    ></span>
-                    {selectedRoute.route.name}
-                  </h2>
-                </div>
-                <Button
-                  className="bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/25 px-5"
-                  onClick={() => setShowConfirmModal(true)}
+        {/* Uber/Ola Style Clean Ride Options Selector (5 Cols) */}
+        <div className="lg:col-span-5 space-y-4">
+          <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+            Choose Your Ride:
+          </span>
+
+          <div className="space-y-2.5">
+            {searchResults.map((result, idx) => {
+              const isSelected = selectedRoute?.route.id === result.route.id;
+              const fareDisplay = result.fare
+                ? result.fare.type === 'exact'
+                  ? `₹${result.fare.exact}`
+                  : `₹${result.fare.min} - ₹${result.fare.max}`
+                : '₹20';
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => setSelectedRoute(result)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                    isSelected
+                      ? 'bg-neutral-900 text-white border-black shadow-md scale-[1.01]'
+                      : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50'
+                  }`}
                 >
-                  Start Live Journey <ChevronRight className="w-4 h-4 ml-1.5" />
-                </Button>
-              </div>
-
-              {/* Leaflet Google Maps Style Map */}
-              <div className="h-72 w-full rounded-xl overflow-hidden border border-gray-200 relative mb-5 shadow-inner">
-                <MapContainer
-                  center={
-                    selectedRoute.originCoords
-                      ? [selectedRoute.originCoords.lat, selectedRoute.originCoords.lng]
-                      : [20.3533, 85.8164]
-                  }
-                  zoom={14}
-                  style={{ height: '100%', width: '100%' }}
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-
-                  <MapBoundsFitter points={allCoordinates} />
-
-                  {/* Origin Marker */}
-                  {selectedRoute.originCoords && (
-                    <Marker
-                      position={[selectedRoute.originCoords.lat, selectedRoute.originCoords.lng]}
-                      icon={originIcon}
+                  {/* Left: Icon & Name */}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 ${
+                        isSelected ? 'bg-white text-black' : 'bg-neutral-100 text-neutral-900'
+                      }`}
                     >
-                      <Popup>
-                        <strong>Origin (A)</strong>
-                        <br />
-                        {selectedRoute.originName || 'Starting Location'}
-                      </Popup>
-                    </Marker>
-                  )}
-
-                  {/* Destination Marker */}
-                  {selectedRoute.destinationCoords && (
-                    <Marker
-                      position={[selectedRoute.destinationCoords.lat, selectedRoute.destinationCoords.lng]}
-                      icon={destIcon}
-                    >
-                      <Popup>
-                        <strong>Destination (B)</strong>
-                        <br />
-                        {selectedRoute.destinationName || 'Destination Location'}
-                      </Popup>
-                    </Marker>
-                  )}
-
-                  {/* Intermediate / Transit Stops */}
-                  {(selectedRoute.intermediateStops || []).map((stop, sIdx) => (
-                    <Marker
-                      key={sIdx}
-                      position={[stop.latitude, stop.longitude]}
-                      icon={stopMarkerIcon}
-                    >
-                      <Popup>
-                        <div className="text-xs">
-                          <strong>Stop: {stop.name}</strong>
-                          <div className="text-gray-500 mt-0.5">
-                            {stop.hasRamp ? '✓ Ramp Available' : 'Standard Stop'}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
-
-                  {/* 1. Walk from origin to board stop (Blue dashed) */}
-                  {selectedRoute.geometry?.originToBoardWalk &&
-                    selectedRoute.geometry.originToBoardWalk.length > 0 && (
-                      <Polyline
-                        positions={selectedRoute.geometry.originToBoardWalk}
-                        pathOptions={{ color: '#2563EB', weight: 4, dashArray: '6, 6', opacity: 0.8 }}
-                      />
-                    )}
-
-                  {/* 2. Transit Road Path (Solid vibrant line matching route color) */}
-                  {selectedRoute.geometry?.transitPath &&
-                    selectedRoute.geometry.transitPath.length > 0 && (
-                      <Polyline
-                        positions={selectedRoute.geometry.transitPath}
-                        pathOptions={{
-                          color: selectedRoute.route.color || '#059669',
-                          weight: 6,
-                          opacity: 0.9,
-                        }}
-                      />
-                    )}
-
-                  {/* 3. Walk from alight stop to destination (Red dashed) */}
-                  {selectedRoute.geometry?.alightToDestWalk &&
-                    selectedRoute.geometry.alightToDestWalk.length > 0 && (
-                      <Polyline
-                        positions={selectedRoute.geometry.alightToDestWalk}
-                        pathOptions={{ color: '#DC2626', weight: 4, dashArray: '6, 6', opacity: 0.8 }}
-                      />
-                    )}
-                </MapContainer>
-              </div>
-
-              {/* Turn-by-Turn Leg Steps */}
-              <div className="space-y-3 mb-5">
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Journey Directions & Steps
-                </h3>
-                <div className="space-y-2">
-                  {selectedRoute.turnByTurn && selectedRoute.turnByTurn.length > 0 ? (
-                    selectedRoute.turnByTurn.map((step, sIdx) => (
-                      <div
-                        key={sIdx}
-                        className="flex items-start gap-3 p-2.5 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-800"
-                      >
-                        <div className="w-5 h-5 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold flex-shrink-0 text-[11px]">
-                          {sIdx + 1}
-                        </div>
-                        <div className="flex-1 font-medium">{step}</div>
-                      </div>
-                    ))
-                  ) : (
-                    selectedRoute.segments.map((seg, sIdx) => (
-                      <div
-                        key={sIdx}
-                        className="flex items-start gap-3 p-2.5 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-800"
-                      >
-                        <div className="w-5 h-5 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold flex-shrink-0 text-[11px]">
-                          {sIdx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <span className="font-bold capitalize">{seg.type}</span> from {seg.from} to {seg.to} ({seg.duration} min)
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Score Breakdown & Decision Reasons */}
-              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
-                <div>
-                  <h4 className="font-bold text-xs text-gray-700 uppercase tracking-wider mb-2">
-                    Why ACCESS Recommends This:
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {selectedRoute.recommendation.reasons.map((reason, i) => (
-                      <li key={i} className="flex items-start text-xs text-gray-700">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 mr-1.5 mt-0.5 flex-shrink-0" />
-                        <span>{reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h4 className="font-bold text-xs text-gray-700 uppercase tracking-wider mb-2">
-                    Accessibility & Safety Scores:
-                  </h4>
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <div className="flex justify-between mb-1 text-[11px] font-semibold">
-                        <span>Accessibility Match</span>
-                        <span>{selectedRoute.scores.accessibility}%</span>
-                      </div>
-                      <ProgressBar value={selectedRoute.scores.accessibility} color="primary" />
+                      {result.route.vehicleType === 'shared-transport' ? '🚖' : result.route.shortName}
                     </div>
                     <div>
-                      <div className="flex justify-between mb-1 text-[11px] font-semibold">
-                        <span>Safety & Lighting</span>
-                        <span>{selectedRoute.scores.safety}%</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm leading-tight block">
+                          {result.route.name}
+                        </span>
+                        {result.recommendation.recommended && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-900'}`}>
+                            ♿ Step-Free
+                          </span>
+                        )}
                       </div>
-                      <ProgressBar value={selectedRoute.scores.safety} color="success" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between mb-1 text-[11px] font-semibold">
-                        <span>Reliability & Telemetry</span>
-                        <span>{selectedRoute.scores.reliability}%</span>
-                      </div>
-                      <ProgressBar value={selectedRoute.scores.reliability} color="warning" />
+                      <span className={`text-xs block mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                        {result.duration} min • {result.stairs === 0 ? '0 Stairs' : `${result.stairs} Stairs`}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Right: Price */}
+                  <div className="text-right shrink-0">
+                    <span className="text-base font-black block leading-none">
+                      {fareDisplay}
+                    </span>
+                    <span className={`text-[10px] block mt-0.5 ${isSelected ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                      Estimated
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Simple Closest Taxi Stand Quick Bar */}
+          {selectedRoute?.nearbyStands && selectedRoute.nearbyStands[0] && (
+            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-950">
+              <div className="flex items-center gap-2">
+                <Car className="w-4 h-4 text-amber-700 shrink-0" />
+                <div>
+                  <span className="font-bold block">{selectedRoute.nearbyStands[0].name}</span>
+                  <span className="text-[11px] text-amber-800">{selectedRoute.nearbyStands[0].distanceM}m away • ₹{selectedRoute.nearbyStands[0].typicalFareMin}-{selectedRoute.nearbyStands[0].typicalFareMax}</span>
                 </div>
               </div>
-            </Card>
+              <span className="text-[10px] font-bold bg-amber-200/80 px-2 py-0.5 rounded-full">
+                Auto Stand
+              </span>
+            </div>
           )}
+
+          {/* Big Clean Black Start Button (Like Uber/Ola "Confirm Ride") */}
+          <Button
+            size="lg"
+            onClick={handleStart}
+            className="w-full py-4 text-base font-black rounded-2xl bg-black hover:bg-neutral-800 text-white shadow-lg flex items-center justify-center gap-2"
+          >
+            <span>Start Navigation</span>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+
+          {/* Clean Collapsible Step-by-Step Directions */}
+          <div className="pt-2">
+            <button
+              onClick={() => setShowSteps(!showSteps)}
+              className="w-full py-2.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold flex items-center justify-between transition-colors"
+            >
+              <span>{showSteps ? 'Hide' : 'View'} Step-by-Step Route ({selectedRoute?.turnByTurn?.length || 4} Steps)</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${showSteps ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showSteps && selectedRoute && (
+              <div className="mt-2 p-3 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-2 text-xs text-neutral-800">
+                {(selectedRoute.turnByTurn && selectedRoute.turnByTurn.length > 0
+                  ? selectedRoute.turnByTurn
+                  : selectedRoute.segments.map(s => `${s.type.toUpperCase()}: ${s.from} → ${s.to}`)
+                ).map((step, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <span className="leading-relaxed">{step}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Start Journey Confirmation Modal */}
-      <Modal open={showConfirmModal} onClose={() => setShowConfirmModal(false)} title="Start Live Safe Journey">
-        <div className="p-4 space-y-4">
-          <p className="text-sm text-gray-700">
-            You are initiating live transit tracking on <strong>{selectedRoute?.route.name}</strong>.
-          </p>
-          <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800 space-y-1">
-            <div className="font-bold">Active Proactive Safety Monitoring:</div>
-            <div>• Real-time heartbeat check-in interval: 10 minutes</div>
-            <div>• Automated overdue escalation if delayed past ETA + 5 min</div>
-            <div>• Emergency contact notified if unresolved past ETA + 15 min</div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleStartJourney} className="bg-primary-600 hover:bg-primary-700">
-              Start Safety Navigation
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Compare Routes Modal */}
-      <Modal open={showCompareModal} onClose={() => setShowCompareModal(false)} title="Compare Transit Options">
-        <div className="p-4 overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="p-2.5 font-bold">Parameter</th>
-                {searchResults.map((r) => (
-                  <th key={r.route.id} className="p-2.5 font-extrabold text-primary-700">
-                    {r.route.shortName}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              <tr>
-                <td className="p-2.5 font-semibold text-gray-700">Overall Score</td>
-                {searchResults.map((r) => (
-                  <td key={r.route.id} className="p-2.5 font-bold">
-                    {r.scores.overall}%
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-2.5 font-semibold text-gray-700">Duration</td>
-                {searchResults.map((r) => (
-                  <td key={r.route.id} className="p-2.5">
-                    {r.duration} min
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-2.5 font-semibold text-gray-700">Walking Distance</td>
-                {searchResults.map((r) => (
-                  <td key={r.route.id} className="p-2.5">
-                    {r.walkingDistance}m
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-2.5 font-semibold text-gray-700">Wheelchair Ramp</td>
-                {searchResults.map((r) => (
-                  <td key={r.route.id} className="p-2.5 font-semibold">
-                    {r.vehicleAccessible ? '✓ Available' : '✗ Unavailable'}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-2.5 font-semibold text-gray-700">Crowding Level</td>
-                {searchResults.map((r) => (
-                  <td key={r.route.id} className="p-2.5 font-medium">
-                    {r.crowding}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+      {/* Simple Fare Compare Modal */}
+      <Modal
+        open={showCompareModal}
+        onClose={() => setShowCompareModal(false)}
+        title="Compare Routes & Prices"
+        size="md"
+      >
+        <div className="divide-y divide-neutral-100 text-xs">
+          {searchResults.map((r) => (
+            <div key={r.route.id} className="py-3 flex items-center justify-between">
+              <div>
+                <span className="font-bold text-sm text-neutral-900 block">{r.route.name}</span>
+                <span className="text-neutral-500 text-xs">
+                  {r.duration} min • {r.walkingDistance}m walking • {r.stairs === 0 ? '♿ Step-Free' : `${r.stairs} Stairs`}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="font-black text-base text-emerald-800 block">
+                  {r.fare?.type === 'exact' ? `₹${r.fare.exact}` : `₹${r.fare?.min || 15} - ₹${r.fare?.max || 25}`}
+                </span>
+                <span className="text-[10px] text-neutral-500">{r.scores.overall}% Match</span>
+              </div>
+            </div>
+          ))}
         </div>
       </Modal>
     </div>

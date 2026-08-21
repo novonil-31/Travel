@@ -73,10 +73,10 @@ export default function OperatorRoutesPage() {
                   <tr key={route.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">
                       <div className="flex items-center space-x-2">
-                        <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: route.color }}>
-                          {route.shortName}
+                        <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: route?.color || '#059669' }}>
+                          {route?.shortName || 'BUS'}
                         </span>
-                        <span>{route.name}</span>
+                        <span>{route?.name || 'Bus Route'}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
