@@ -8,7 +8,7 @@ import { DEMO_STOPS, DEMO_TRANSPORT_STANDS, generateDynamicSearchResults } from 
 import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '../utils/onlineRouting';
 import type { RouteSearchResult } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : null);
 
 interface RequestOptions {
   method?: string;
@@ -26,6 +26,10 @@ export interface ApiResponse<T> {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {} } = options;
   const token = localStorage.getItem('access_token');
+
+  if (!BASE_URL) {
+    throw new Error('Backend API not configured. Please set VITE_API_BASE_URL environment variable or use local development.');
+  }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
@@ -56,16 +60,42 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 // ============ Auth ============
 export const authApi = {
-  register: (data: { name: string; email?: string; phoneNumber?: string; password: string }) =>
-    request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
+  register: async (data: { name: string; email?: string; phoneNumber?: string; password: string }) => {
+    if (!BASE_URL) {
+      // Demo mode response
+      return {
+        user: {
+          id: crypto.randomUUID(),
+          name: data.name,
+          email: data.email,
+          role: 'PASSENGER',
+        },
+        token: 'demo-token-' + crypto.randomUUID(),
+      };
+    }
+    return request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
       '/auth/register',
       { method: 'POST', body: data },
-    ),
-  login: (data: { email?: string; phoneNumber?: string; password: string }) =>
-    request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
+    );
+  },
+  login: async (data: { email?: string; phoneNumber?: string; password: string }) => {
+    if (!BASE_URL) {
+      // Demo mode response
+      return {
+        user: {
+          id: crypto.randomUUID(),
+          name: 'Demo User',
+          email: data.email,
+          role: 'PASSENGER',
+        },
+        token: 'demo-token-' + crypto.randomUUID(),
+      };
+    }
+    return request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
       '/auth/login',
       { method: 'POST', body: data },
-    ),
+    );
+  },
   updateEmergencyContact: (data: { name: string; phone: string; relationship?: string }) =>
     request<{ emergencyContact: { id?: string; name: string; phone: string; relationship?: string } }>(
       '/auth/emergency-contact',
