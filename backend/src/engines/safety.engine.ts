@@ -11,7 +11,8 @@
 import { prisma } from '../db.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import type { SafetyStatus } from '@prisma/client';
+
+type SafetyStatus = 'NOT_STARTED' | 'ACTIVE' | 'OVERDUE' | 'SAFE' | 'EMERGENCY' | 'COMPLETED';
 
 export interface SafetySessionSummary {
   id: string;
@@ -243,7 +244,7 @@ function formatSession(session: {
   id: string;
   journeyId: string;
   userId: string;
-  status: SafetyStatus;
+  status: string;
   startedAt: Date;
   lastHeartbeatAt: Date | null;
   nextHeartbeatDue: Date | null;
@@ -256,7 +257,7 @@ function formatSession(session: {
     id: session.id,
     journeyId: session.journeyId,
     userId: session.userId,
-    status: session.status,
+    status: session.status as SafetyStatus,
     startedAt: session.startedAt.toISOString(),
     lastHeartbeatAt: session.lastHeartbeatAt?.toISOString() ?? null,
     nextHeartbeatDue: session.nextHeartbeatDue?.toISOString() ?? null,

@@ -4,7 +4,7 @@ import { Card, MetricCard, Badge, Button } from '../../components/ui';
 import { Bus, Clock, Users, Accessibility, AlertTriangle, ShieldCheck, ArrowUpRight, Activity } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
-  BarChart, Bar, PieChart, Pie, Cell
+  BarChart, Bar, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { Link } from 'react-router-dom';
 
@@ -34,6 +34,8 @@ export default function OperatorDashboard() {
     { name: 'Delayed', value: 1, color: '#f59e0b' },
     { name: 'Standard (No Ramp)', value: 2, color: '#64748b' },
   ];
+
+  const COLORS = ['#10b981', '#f59e0b', '#64748b'];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -124,8 +126,7 @@ export default function OperatorDashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-<<<<<<< HEAD
-        </Card>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -134,8 +135,8 @@ export default function OperatorDashboard() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={STATUS_DATA} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {STATUS_DATA.map((entry, index) => (
+                <Pie data={fleetStatus} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {fleetStatus.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -149,7 +150,7 @@ export default function OperatorDashboard() {
         <Card className="p-4 col-span-1 lg:col-span-2">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium">Recent Alerts</h3>
-            <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">{activeAlerts} New</span>
+            <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">{state.reports.length} New</span>
           </div>
           <div className="space-y-4">
             {state.reports.slice(0, 4).map(report => (
@@ -167,9 +168,6 @@ export default function OperatorDashboard() {
             {state.reports.length === 0 && <p className="text-gray-500 text-sm italic">No recent alerts.</p>}
           </div>
         </Card>
-=======
-        </div>
->>>>>>> b24a306da39029be9e5ed543721da1c53e991793
       </div>
     </div>
   );

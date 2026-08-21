@@ -4,6 +4,30 @@
     {
       "source": "/api/(.*)",
       "destination": "/backend/api/index.ts"
+    },
+    {
+      "source": "/api(/.*)?",
+      "destination": {
+        "type": "service",
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "frontend"
+      }
     }
-  ]
+  ],
+  "services": {
+    "frontend": {
+      "root": ".",
+      "framework": "vite"
+    },
+    "backend": {
+      "root": "backend",
+      "entrypoint": "src/server.ts"
+    }
+  }
 }
