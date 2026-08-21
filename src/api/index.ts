@@ -8,7 +8,7 @@ import { DEMO_STOPS, DEMO_TRANSPORT_STANDS, generateDynamicSearchResults } from 
 import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '../utils/onlineRouting';
 import type { RouteSearchResult } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : null);
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : undefined);
 
 interface RequestOptions {
   method?: string;
@@ -28,7 +28,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const token = localStorage.getItem('access_token');
 
   if (!BASE_URL) {
-    throw new Error('Backend API not configured. Please set VITE_API_BASE_URL environment variable or use local development.');
+    // Demo mode - throw error that will be caught by API methods
+    throw new Error('DEMO_MODE');
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -61,40 +62,48 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // ============ Auth ============
 export const authApi = {
   register: async (data: { name: string; email?: string; phoneNumber?: string; password: string }) => {
-    if (!BASE_URL) {
-      // Demo mode response
-      return {
-        user: {
-          id: crypto.randomUUID(),
-          name: data.name,
-          email: data.email,
-          role: 'PASSENGER',
-        },
-        token: 'demo-token-' + crypto.randomUUID(),
-      };
+    try {
+      return await request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
+        '/auth/register',
+        { method: 'POST', body: data },
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        // Demo mode response
+        return {
+          user: {
+            id: crypto.randomUUID(),
+            name: data.name,
+            email: data.email,
+            role: 'PASSENGER',
+          },
+          token: 'demo-token-' + crypto.randomUUID(),
+        };
+      }
+      throw error;
     }
-    return request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
-      '/auth/register',
-      { method: 'POST', body: data },
-    );
   },
   login: async (data: { email?: string; phoneNumber?: string; password: string }) => {
-    if (!BASE_URL) {
-      // Demo mode response
-      return {
-        user: {
-          id: crypto.randomUUID(),
-          name: 'Demo User',
-          email: data.email,
-          role: 'PASSENGER',
-        },
-        token: 'demo-token-' + crypto.randomUUID(),
-      };
+    try {
+      return await request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
+        '/auth/login',
+        { method: 'POST', body: data },
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        // Demo mode response
+        return {
+          user: {
+            id: crypto.randomUUID(),
+            name: 'Demo User',
+            email: data.email,
+            role: 'PASSENGER',
+          },
+          token: 'demo-token-' + crypto.randomUUID(),
+        };
+      }
+      throw error;
     }
-    return request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
-      '/auth/login',
-      { method: 'POST', body: data },
-    );
   },
   updateEmergencyContact: (data: { name: string; phone: string; relationship?: string }) =>
     request<{ emergencyContact: { id?: string; name: string; phone: string; relationship?: string } }>(
@@ -106,10 +115,36 @@ export const authApi = {
 
 // ============ Stops & Places ============
 export const stopsApi = {
-  getNearby: (lat: number, lng: number, radius = 5000) =>
-    request(`/stops/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
-  search: (query: string) => request(`/stops/search?q=${encodeURIComponent(query)}`),
-  getById: (id: string) => request(`/stops/${id}`),
+  getNearby: async (lat: number, lng: number, radius = 5000) => {
+    try {
+      return await request(`/stops/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
+  search: async (query: string) => {
+    try {
+      return await request(`/stops/search?q=${encodeURIComponent(query)}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      return await request(`/stops/${id}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return null;
+      }
+      throw error;
+    }
+  },
 
   searchPlaces: async (query: string) => {
     if (!query || query.trim().length === 0) return [];
@@ -118,8 +153,10 @@ export const stopsApi = {
       if (Array.isArray(res) && res.length > 0) {
         return res;
       }
-    } catch {
-      // fallback
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'DEMO_MODE') {
+        // only fallback if not demo mode
+      }
     }
     return searchPlacesLive(query);
   },
@@ -128,8 +165,10 @@ export const stopsApi = {
     try {
       const res = await request<{ displayName: string }>(`/stops/places/reverse?lat=${lat}&lng=${lng}`);
       if (res && res.displayName) return res.displayName;
-    } catch {
-      // fallback
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'DEMO_MODE') {
+        // only fallback if not demo mode
+      }
     }
     return reverseGeocodeLive(lat, lng);
   },
@@ -137,9 +176,36 @@ export const stopsApi = {
 
 // ============ Routes ============
 export const routesApi = {
-  getAll: () => request('/routes'),
-  getById: (id: string) => request(`/routes/${id}`),
-  getStops: (id: string) => request(`/routes/${id}/stops`),
+  getAll: async () => {
+    try {
+      return await request('/routes');
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      return await request(`/routes/${id}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return null;
+      }
+      throw error;
+    }
+  },
+  getStops: async (id: string) => {
+    try {
+      return await request(`/routes/${id}/stops`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Journeys ============
@@ -299,8 +365,10 @@ export const journeysApi = {
           options: mapped,
         };
       }
-    } catch {
-      // Backend request error -> compute client-side dynamically
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'DEMO_MODE') {
+        // Backend request error -> compute client-side dynamically
+      }
     }
 
     // Dynamic real-world client-side OSRM calculation
@@ -316,99 +384,336 @@ export const journeysApi = {
       options,
     };
   },
-  save: (data: unknown) => request('/journeys', { method: 'POST', body: data }),
-  start: (journeyId: string) => request(`/journeys/${journeyId}/start`, { method: 'POST' }),
-  complete: (journeyId: string) => request(`/journeys/${journeyId}/complete`, { method: 'POST' }),
-  getById: (journeyId: string) => request(`/journeys/${journeyId}`),
+  save: async (data: unknown) => {
+    try {
+      return await request('/journeys', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { id: crypto.randomUUID(), status: 'saved' };
+      }
+      throw error;
+    }
+  },
+  start: async (journeyId: string) => {
+    try {
+      return await request(`/journeys/${journeyId}/start`, { method: 'POST' });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'started' };
+      }
+      throw error;
+    }
+  },
+  complete: async (journeyId: string) => {
+    try {
+      return await request(`/journeys/${journeyId}/complete`, { method: 'POST' });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'completed' };
+      }
+      throw error;
+    }
+  },
+  getById: async (journeyId: string) => {
+    try {
+      return await request(`/journeys/${journeyId}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return null;
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Profile ============
 export const profileApi = {
-  get: () => request('/profile'),
-  update: (profile: unknown) => request('/profile', { method: 'PUT', body: profile }),
-  addEmergencyContact: (data: { name: string; phone: string; relationship: string; isPrimary?: boolean }) =>
-    request('/profile/emergency-contacts', { method: 'POST', body: data }),
-  deleteEmergencyContact: (id: string) =>
-    request(`/profile/emergency-contacts/${id}`, { method: 'DELETE' }),
+  get: async () => {
+    try {
+      return await request('/profile');
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return null;
+      }
+      throw error;
+    }
+  },
+  update: async (profile: unknown) => {
+    try {
+      return await request('/profile', { method: 'PUT', body: profile });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'updated' };
+      }
+      throw error;
+    }
+  },
+  addEmergencyContact: async (data: { name: string; phone: string; relationship: string; isPrimary?: boolean }) => {
+    try {
+      return await request('/profile/emergency-contacts', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { id: crypto.randomUUID(), ...data };
+      }
+      throw error;
+    }
+  },
+  deleteEmergencyContact: async (id: string) => {
+    try {
+      return await request(`/profile/emergency-contacts/${id}`, { method: 'DELETE' });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'deleted' };
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Reports & Incident Triage ============
 export const reportsApi = {
-  submitCrowding: (data: { routeId: string; vehicleId?: string; level: string; comment?: string }) =>
-    request('/reports/crowding', { method: 'POST', body: data }),
-  submitDelay: (data: { routeId: string; delayMinutes: number; comment?: string }) =>
-    request('/reports/delay', { method: 'POST', body: data }),
-  submitAccessibility: (data: { routeId: string; vehicleId?: string; type: string; issue?: string; comment?: string }) =>
-    request('/reports/accessibility', { method: 'POST', body: data }),
-  submitCrowdingFeedback: (data: { routeId: string; level: string; journeyId?: string }) =>
-    request('/feedback/crowding', { method: 'POST', body: data }),
+  submitCrowding: async (data: { routeId: string; vehicleId?: string; level: string; comment?: string }) => {
+    try {
+      return await request('/reports/crowding', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'submitted' };
+      }
+      throw error;
+    }
+  },
+  submitDelay: async (data: { routeId: string; delayMinutes: number; comment?: string }) => {
+    try {
+      return await request('/reports/delay', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'submitted' };
+      }
+      throw error;
+    }
+  },
+  submitAccessibility: async (data: { routeId: string; vehicleId?: string; type: string; issue?: string; comment?: string }) => {
+    try {
+      return await request('/reports/accessibility', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'submitted' };
+      }
+      throw error;
+    }
+  },
+  submitCrowdingFeedback: async (data: { routeId: string; level: string; journeyId?: string }) => {
+    try {
+      return await request('/feedback/crowding', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'submitted' };
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Proactive Safety ============
 export const safetyApi = {
-  start: (data: { journeyId: string; expectedArrivalAt: string; heartbeatIntervalMinutes?: number }) =>
-    request('/safety/start', { method: 'POST', body: data }),
-  heartbeat: (sessionId: string) =>
-    request('/safety/heartbeat', { method: 'POST', body: { sessionId } }),
-  emergency: (sessionId: string) =>
-    request('/safety/emergency', { method: 'POST', body: { sessionId } }),
-  sendEmergencySms: (data: {
+  start: async (data: { journeyId: string; expectedArrivalAt: string; heartbeatIntervalMinutes?: number }) => {
+    try {
+      return await request('/safety/start', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { sessionId: crypto.randomUUID(), status: 'active' };
+      }
+      throw error;
+    }
+  },
+  heartbeat: async (sessionId: string) => {
+    try {
+      return await request('/safety/heartbeat', { method: 'POST', body: { sessionId } });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'heartbeat_received' };
+      }
+      throw error;
+    }
+  },
+  emergency: async (sessionId: string) => {
+    try {
+      return await request('/safety/emergency', { method: 'POST', body: { sessionId } });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'emergency_triggered' };
+      }
+      throw error;
+    }
+  },
+  sendEmergencySms: async (data: {
     recipientPhone: string;
     recipientName?: string;
     senderName?: string;
     latitude?: number;
     longitude?: number;
     locationName?: string;
-  }) => request<{
-    dispatchId: string;
-    status: string;
-    recipientPhone: string;
-    recipientName: string;
-    message: string;
-    mapLink: string;
-    coordinates: [number, number];
-    timestamp: string;
-  }>('/safety/emergency-sms', { method: 'POST', body: data }),
-  complete: (sessionId: string) =>
-    request('/safety/complete', { method: 'POST', body: { sessionId } }),
-  getById: (sessionId: string) => request(`/safety/${sessionId}`),
+  }) => {
+    try {
+      return await request<{
+        dispatchId: string;
+        status: string;
+        recipientPhone: string;
+        recipientName: string;
+        message: string;
+        mapLink: string;
+        coordinates: [number, number];
+        timestamp: string;
+      }>('/safety/emergency-sms', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return {
+          dispatchId: crypto.randomUUID(),
+          status: 'sent',
+          recipientPhone: data.recipientPhone,
+          recipientName: data.recipientName || 'Contact',
+          message: 'Emergency alert sent',
+          mapLink: `https://maps.google.com/?q=${data.latitude},${data.longitude}`,
+          coordinates: [data.latitude || 0, data.longitude || 0],
+          timestamp: new Date().toISOString(),
+        };
+      }
+      throw error;
+    }
+  },
+  complete: async (sessionId: string) => {
+    try {
+      return await request('/safety/complete', { method: 'POST', body: { sessionId } });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'completed' };
+      }
+      throw error;
+    }
+  },
+  getById: async (sessionId: string) => {
+    try {
+      return await request(`/safety/${sessionId}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return null;
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Crowding & Fares ============
 export const crowdingApi = {
-  getByRoute: (routeId: string) => request(`/crowding/route/${routeId}`),
-  getByVehicle: (vehicleId: string) => request(`/crowding/vehicle/${vehicleId}`),
+  getByRoute: async (routeId: string) => {
+    try {
+      return await request(`/crowding/route/${routeId}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { level: 'LOW', confidence: 0.8 };
+      }
+      throw error;
+    }
+  },
+  getByVehicle: async (vehicleId: string) => {
+    try {
+      return await request(`/crowding/vehicle/${vehicleId}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { level: 'LOW', confidence: 0.8 };
+      }
+      throw error;
+    }
+  },
 };
 
 export const faresApi = {
-  estimate: (routeId?: string, originZoneId?: string, destinationZoneId?: string) => {
-    const query = new URLSearchParams();
-    if (routeId) query.set('routeId', routeId);
-    if (originZoneId) query.set('originZoneId', originZoneId);
-    if (destinationZoneId) query.set('destinationZoneId', destinationZoneId);
-    return request(`/fares/estimate?${query.toString()}`);
+  estimate: async (routeId?: string, originZoneId?: string, destinationZoneId?: string) => {
+    try {
+      const query = new URLSearchParams();
+      if (routeId) query.set('routeId', routeId);
+      if (originZoneId) query.set('originZoneId', originZoneId);
+      if (destinationZoneId) query.set('destinationZoneId', destinationZoneId);
+      return await request(`/fares/estimate?${query.toString()}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { min: 15, max: 25, currency: 'INR', confidence: 0.8 };
+      }
+      throw error;
+    }
   },
 };
 
 // ============ Shared Transport ============
 export const transportApi = {
-  getStandsNearby: (lat: number, lng: number, radius = 1000) =>
-    request(`/transport/stands/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
-  getCorridorsNearby: (lat: number, lng: number) =>
-    request(`/transport/corridors/nearby?lat=${lat}&lng=${lng}`),
+  getStandsNearby: async (lat: number, lng: number, radius = 1000) => {
+    try {
+      return await request(`/transport/stands/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
+  getCorridorsNearby: async (lat: number, lng: number) => {
+    try {
+      return await request(`/transport/corridors/nearby?lat=${lat}&lng=${lng}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Accessibility Evaluation ============
 export const evaluateApi = {
-  evaluateRoute: (data: { profileType?: string; customProfile?: unknown; route: unknown }) =>
-    request('/accessibility/evaluate', { method: 'POST', body: data }),
+  evaluateRoute: async (data: { profileType?: string; customProfile?: unknown; route: unknown }) => {
+    try {
+      return await request('/accessibility/evaluate', { method: 'POST', body: data });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { score: 85, accessible: true };
+      }
+      throw error;
+    }
+  },
 };
 
 // ============ Notifications ============
 export const notificationsApi = {
-  getAll: (unreadOnly = false) => request(`/notifications${unreadOnly ? '?unread=true' : ''}`),
-  markRead: (id: string) => request(`/notifications/${id}/read`, { method: 'POST' }),
-  markAllRead: () => request('/notifications/read-all', { method: 'POST' }),
+  getAll: async (unreadOnly = false) => {
+    try {
+      return await request(`/notifications${unreadOnly ? '?unread=true' : ''}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return [];
+      }
+      throw error;
+    }
+  },
+  markRead: async (id: string) => {
+    try {
+      return await request(`/notifications/${id}/read`, { method: 'POST' });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'marked_read' };
+      }
+      throw error;
+    }
+  },
+  markAllRead: async () => {
+    try {
+      return await request('/notifications/read-all', { method: 'POST' });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'DEMO_MODE') {
+        return { status: 'all_marked_read' };
+      }
+      throw error;
+    }
+  },
 };
 
 export default {
