@@ -32,8 +32,13 @@ export function PassengerLayout() {
       {/* Uber Desktop Top Nav */}
       <header className="hidden md:flex items-center justify-between bg-black text-white px-8 h-16 sticky top-0 z-40">
         <div className="flex items-center gap-8">
-          <Link to="/" className="flex items-center gap-2 group" aria-label="ACCESS Home">
-            <span className="font-black text-white text-2xl tracking-tighter">ACCESS</span>
+          <Link to="/" className="flex items-center gap-2.5 group" aria-label="Maarg Darshan Home">
+            <img
+              src="/logo.png"
+              alt="Maarg Darshan Logo"
+              className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain shadow-sm group-hover:scale-105 transition-transform"
+            />
+            <span className="font-black text-white text-xl tracking-tight">Maarg Darshan</span>
           </Link>
 
           <nav className="flex items-center gap-1" aria-label="Main navigation">
@@ -89,8 +94,13 @@ export function PassengerLayout() {
 
       {/* Mobile Top Bar */}
       <header className="md:hidden flex items-center justify-between bg-black text-white px-4 h-14 sticky top-0 z-40">
-        <Link to="/" className="font-black text-white text-xl tracking-tighter">
-          ACCESS
+        <Link to="/" className="flex items-center gap-2">
+          <img
+            src="/logo.png"
+            alt="Maarg Darshan Logo"
+            className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain"
+          />
+          <span className="font-black text-white text-lg tracking-tight">Maarg Darshan</span>
         </Link>
         <div className="flex items-center gap-2">
           <Link to="/notifications" className="relative p-2 text-neutral-300" aria-label="Notifications">
@@ -112,7 +122,14 @@ export function PassengerLayout() {
           <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-6 flex flex-col justify-between shadow-2xl">
             <div>
               <div className="flex justify-between items-center mb-6 pb-4 border-b border-neutral-200">
-                <span className="font-black text-xl tracking-tight text-neutral-900">ACCESS</span>
+                <div className="flex items-center gap-2">
+                  <img
+                    src="/logo.png"
+                    alt="Maarg Darshan Logo"
+                    className="w-7 h-7 rounded-lg bg-neutral-100 p-0.5 object-contain"
+                  />
+                  <span className="font-black text-lg tracking-tight text-neutral-900">Maarg Darshan</span>
+                </div>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-1 rounded-lg text-neutral-600">
                   <X className="w-5 h-5" />
                 </button>

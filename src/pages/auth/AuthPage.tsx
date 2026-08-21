@@ -99,8 +99,15 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
     <div className="min-h-screen bg-white text-neutral-900 flex flex-col justify-between">
       {/* Top Uber-Style Header */}
       <header className="bg-black text-white px-8 h-16 flex items-center justify-between">
-        <Link to="/" className="text-2xl font-black tracking-tight text-white">
-          ACCESS
+        <Link to="/" className="flex items-center gap-2.5">
+          <img
+            src="/logo.png"
+            alt="Maarg Darshan Logo"
+            className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain shadow-sm"
+          />
+          <span className="text-xl font-black tracking-tight text-white">
+            Maarg Darshan
+          </span>
         </Link>
         <Link to="/" className="text-xs font-semibold text-neutral-300 hover:text-white">
           Exit to Home
@@ -263,8 +270,13 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
       </div>
 
       {/* Footer */}
-      <footer className="py-6 px-8 text-center text-xs text-neutral-500 border-t border-neutral-200">
-        ACCESS • Accessible Public Transit Network
+      <footer className="py-6 px-8 text-center text-xs text-neutral-500 border-t border-neutral-200 flex items-center justify-center gap-2">
+        <img
+          src="/logo.png"
+          alt="Maarg Darshan Logo"
+          className="w-5 h-5 rounded-md bg-neutral-100 p-0.5 object-contain"
+        />
+        <span>Maarg Darshan (मार्ग Darshan) • Accessible Public Transit Network</span>
       </footer>
     </div>
   );
