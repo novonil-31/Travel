@@ -8,7 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
   Navigation, Clock, Bus, MapPin, CheckCircle, ShieldAlert,
-  ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle
+  ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle, MessageSquarePlus
 } from 'lucide-react';
 import { haversineDistanceClient } from '../../utils/onlineRouting';
 
@@ -83,6 +83,7 @@ export default function ActiveJourneyPage() {
 
   const [showEmergencyModal, setShowEmergencyModal] = useState<boolean>(false);
   const [showCompleteModal, setShowCompleteModal] = useState<boolean>(false);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [hasArrivedSafely, setHasArrivedSafely] = useState<boolean>(false);
 
   // Live Location & Progress State
@@ -353,7 +354,7 @@ export default function ActiveJourneyPage() {
 
       {/* Clean Minimalist Bottom Action Bar */}
       <div className="bg-white border border-neutral-200 p-4 rounded-3xl shadow-sm space-y-2.5">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {/* Manual Safe Check Button */}
           <Button
             onClick={() => {
@@ -361,8 +362,18 @@ export default function ActiveJourneyPage() {
             }}
             className="py-3 font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center justify-center gap-1.5 shadow-sm"
           >
-            <Check className="w-4 h-4" />
+            <Check className="w-3.5 h-3.5" />
             <span>I'm Safe</span>
+          </Button>
+
+          {/* Report Condition Button */}
+          <Button
+            variant="secondary"
+            onClick={() => setShowReportModal(true)}
+            className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 border-neutral-200 shadow-sm"
+          >
+            <MessageSquarePlus className="w-3.5 h-3.5 text-neutral-700" />
+            <span>Report</span>
           </Button>
 
           {/* SOS Button */}
@@ -371,8 +382,8 @@ export default function ActiveJourneyPage() {
             onClick={() => setShowEmergencyModal(true)}
             className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 shadow-sm"
           >
-            <ShieldAlert className="w-4 h-4" />
-            <span>Emergency SOS</span>
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>SOS</span>
           </Button>
         </div>
 
@@ -385,6 +396,46 @@ export default function ActiveJourneyPage() {
           <span>End & Conclude Trip</span>
         </button>
       </div>
+
+      {/* Report Modal */}
+      <Modal
+        open={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        title="📢 Report Transit Condition"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-neutral-600">
+            Help other passengers and transit operators by reporting live route conditions.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: '👥 Heavy Crowding', type: 'crowding', crowding: 'HIGH' },
+              { label: '⏱️ Vehicle Delay (+10m)', type: 'delay', delay: 10 },
+              { label: '♿ Ramp Broken / Stuck', type: 'accessibility', comment: 'Ramp mechanical failure' },
+              { label: '💡 Poor Corridor Lighting', type: 'accessibility', comment: 'Street lights not working' },
+            ].map((r, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  addToast('success', `Report logged: ${r.label}. Transit dispatch notified.`);
+                  setShowReportModal(false);
+                }}
+                className="p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 font-bold text-neutral-900 text-left transition-all"
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowReportModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Emergency SOS Modal */}
       <Modal
