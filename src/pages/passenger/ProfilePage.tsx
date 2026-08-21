@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
 import { Card, Button, Input } from '../../components/ui';
-import { Accessibility, Shield, Save, User, Sparkles, Check, Footprints, Users, Eye, Volume2, Moon } from 'lucide-react';
+import {
+  Accessibility, Shield, Save, User, Check, Footprints,
+  Users, Moon, Phone, WifiOff, Download, ArrowRight, ShieldCheck, HeartPulse
+} from 'lucide-react';
 import type { AccessibilityProfile, EmergencyContact, SafetyPreference } from '../../types';
+import { Link } from 'react-router-dom';
 
 export default function ProfilePage() {
-  const { state, updateProfile } = useAppStore();
+  const { state, updateProfile, setUser, dispatch } = useAppStore();
   const { addToast } = useToast();
 
   const [profile, setProfile] = useState<AccessibilityProfile>(
@@ -23,15 +27,29 @@ export default function ProfilePage() {
 
   const [emergencyContact, setEmergencyContact] = useState<EmergencyContact>(
     state.currentUser?.emergencyContact || {
-      name: 'Priya',
+      name: 'Priya Sharma',
       phone: '+91 98765 43210',
       relationship: 'Sister',
     }
   );
 
+  const [offlineDownloaded, setOfflineDownloaded] = useState<boolean>(false);
+
   const handleSave = () => {
     updateProfile(profile);
-    addToast('success', 'Accessibility profile & safety preferences saved.');
+    if (state.currentUser) {
+      setUser({
+        ...state.currentUser,
+        emergencyContact,
+        profile,
+      });
+    }
+    addToast('success', 'Profile and emergency contacts updated successfully.');
+  };
+
+  const handleDownloadOffline = () => {
+    setOfflineDownloaded(true);
+    addToast('success', 'Offline Transit Pack downloaded (3 corridors, 12 stops, offline schedule cached).');
   };
 
   const toggleSafetyPref = (pref: SafetyPreference) => {
@@ -47,173 +65,166 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-dark-900/80 backdrop-blur-2xl border border-white/10 p-6 rounded-3xl shadow-xl">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold shadow-glow-green">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Personal Transit DNA</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Accessibility Profile</h1>
-          <p className="text-xs sm:text-sm text-slate-400">Routes are evaluated and customized against these parameters.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
+            Account & Safety Profile
+          </h1>
+          <p className="text-xs sm:text-sm text-neutral-500 mt-0.5">
+            Calibrate mobility parameters, emergency contacts, and offline packs.
+          </p>
         </div>
-        <Button onClick={handleSave} size="lg" className="shadow-glow-green">
-          <Save className="w-4 h-4 mr-2" /> Save Profile
+        <Button onClick={handleSave} size="sm" className="shadow-sm">
+          <Save className="w-3.5 h-3.5 mr-1.5" /> Save Changes
         </Button>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Mobility Category */}
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center gap-3 pb-3 border-b border-white/10">
-            <div className="w-9 h-9 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
-              <Accessibility className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Physical Mobility Needs</h2>
-              <span className="text-xs text-slate-400">Filters vehicle ramps and station lift accessibility</span>
-            </div>
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Accessibility className="w-5 h-5 text-neutral-900" />
+            <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+              Mobility & Accessibility Preference
+            </h2>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {[
-              { id: 'wheelchair', label: 'Wheelchair', desc: 'Ramps & flat terrain only' },
-              { id: 'walking-difficulty', label: 'Walking Support', desc: 'Stairs limited' },
-              { id: 'elderly', label: 'Senior Support', desc: 'Seats & short walks' },
-              { id: 'none', label: 'Standard', desc: 'No restrictions' },
+              { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps & 0 Stairs' },
+              { id: 'walking-difficulty', label: '🦯 Walking Aid', desc: 'Minimal Walking' },
+              { id: 'elderly', label: '👵 Senior Citizen', desc: 'Seats & Short Walks' },
+              { id: 'none', label: '🚶 Standard', desc: 'Fastest Routes' },
             ].map(m => (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => setProfile({ ...profile, mobility: m.id as any })}
-                className={`p-4 rounded-2xl border text-left transition-all ${
+                className={`p-3.5 rounded-2xl border text-left transition-all ${
                   profile.mobility === m.id
-                    ? 'bg-emerald-500/15 border-emerald-400/80 shadow-glow-green ring-1 ring-emerald-400 text-white'
-                    : 'bg-dark-950/60 border-white/10 hover:border-white/20 text-slate-300'
+                    ? 'bg-black text-white border-black shadow-sm'
+                    : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:bg-neutral-100'
                 }`}
               >
-                <div className="font-bold text-sm">{m.label}</div>
-                <div className="text-[11px] text-slate-400 mt-1 leading-snug">{m.desc}</div>
+                <div className="font-bold text-xs">{m.label}</div>
+                <div className={`text-[10px] mt-0.5 ${profile.mobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                  {m.desc}
+                </div>
               </button>
             ))}
           </div>
-        </Card>
 
-        {/* Stairs & Walking Tolerance */}
-        <div className="grid sm:grid-cols-2 gap-6">
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-white/10">
-              <Footprints className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Stair Tolerance</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: 'avoid', label: 'Avoid All Stairs', desc: 'Ramps/Elevators' },
-                { id: 'acceptable', label: 'Stairs OK', desc: 'Normal steps' },
-              ].map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setProfile({ ...profile, stairs: s.id as any })}
-                  className={`p-3.5 rounded-2xl border text-left transition-all ${
-                    profile.stairs === s.id
-                      ? 'bg-cyan-500/15 border-cyan-400 ring-1 ring-cyan-400 text-white shadow-glow-cyan'
-                      : 'bg-dark-950/60 border-white/10 text-slate-300'
-                  }`}
-                >
-                  <span className="font-bold text-xs block">{s.label}</span>
-                  <span className="text-[10px] text-slate-400">{s.desc}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
+          {/* Stairs & Lighting toggles */}
+          <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-neutral-100 text-xs">
+            <label className="flex items-center gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={profile.stairs === 'avoid'}
+                onChange={(e) => setProfile({ ...profile, stairs: e.target.checked ? 'avoid' : 'acceptable' })}
+                className="rounded text-black focus:ring-black"
+              />
+              <span className="font-semibold text-neutral-900">Strictly Avoid Stairs & Underpasses</span>
+            </label>
 
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-white/10">
-              <Users className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Crowd Sensitivity</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: 'avoid', label: 'Avoid Crowds', desc: 'Low density routes' },
-                { id: 'acceptable', label: 'Any Density', desc: 'Fastest transit' },
-              ].map(c => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setProfile({ ...profile, crowding: c.id as any })}
-                  className={`p-3.5 rounded-2xl border text-left transition-all ${
-                    profile.crowding === c.id
-                      ? 'bg-amber-500/15 border-amber-400 ring-1 ring-amber-400 text-white shadow-glow-amber'
-                      : 'bg-dark-950/60 border-white/10 text-slate-300'
-                  }`}
-                >
-                  <span className="font-bold text-xs block">{c.label}</span>
-                  <span className="text-[10px] text-slate-400">{c.desc}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
+            <label className="flex items-center gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={profile.safetyPreferences.includes('late-night')}
+                onChange={() => toggleSafetyPref('late-night')}
+                className="rounded text-black focus:ring-black"
+              />
+              <span className="font-semibold text-neutral-900">Prioritize Well-Lit Night Corridors</span>
+            </label>
+          </div>
         </div>
 
-        {/* Safety Preferences & Emergency Contact */}
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-3 pb-3 border-b border-white/10">
-            <div className="w-9 h-9 rounded-2xl bg-rose-500/15 flex items-center justify-center text-rose-400">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Emergency Contact & Safety Protocols</h2>
-              <span className="text-xs text-slate-400">Contact notified automatically if safety heartbeat is overdue</span>
-            </div>
+        {/* Emergency Contact & Safety Watchdog */}
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-emerald-700" />
+            <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+              Safety Check-in & Emergency Contact
+            </h2>
           </div>
+          <p className="text-xs text-neutral-500">
+            Designated contact notified automatically during emergencies or if a late journey experiences unexpected delays.
+          </p>
 
-          <div className="grid sm:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-3 gap-3">
             <Input
-              label="Contact Full Name"
+              label="Contact Name"
               value={emergencyContact.name}
               onChange={(e) => setEmergencyContact({ ...emergencyContact, name: e.target.value })}
+              placeholder="e.g. Priya Sharma"
             />
             <Input
-              label="Phone Number"
+              label="Emergency Phone"
               value={emergencyContact.phone}
               onChange={(e) => setEmergencyContact({ ...emergencyContact, phone: e.target.value })}
+              placeholder="+91 98765 43210"
             />
             <Input
               label="Relationship"
-              value={emergencyContact.relationship}
+              value={emergencyContact.relationship || 'Sister'}
               onChange={(e) => setEmergencyContact({ ...emergencyContact, relationship: e.target.value })}
+              placeholder="e.g. Sister / Parent"
             />
           </div>
+        </div>
 
-          <div className="space-y-2 pt-2 border-t border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Safety Features:</span>
-            <div className="flex flex-wrap gap-2.5">
-              {[
-                { id: 'late-night', label: '🌙 Late-Night Security Corridors' },
-                { id: 'prefer-safer', label: '🛡️ CCTV Monitored Routes' },
-                { id: 'safety-sensitive', label: '⚡ Fast SOS Escalation' },
-              ].map(sp => {
-                const active = profile.safetyPreferences.includes(sp.id as SafetyPreference);
-                return (
-                  <button
-                    key={sp.id}
-                    type="button"
-                    onClick={() => toggleSafetyPref(sp.id as SafetyPreference)}
-                    className={`px-4 py-2 rounded-2xl border text-xs font-bold transition-all ${
-                      active
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-glow-red'
-                        : 'bg-dark-950/60 text-slate-400 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {sp.label}
-                  </button>
-                );
-              })}
+        {/* Offline Route Information Module */}
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <WifiOff className="w-5 h-5 text-neutral-900" />
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+                  Offline Route Information
+                </h2>
+                <span className="text-xs text-neutral-500">
+                  Pre-download transit corridors for zero-network areas
+                </span>
+              </div>
             </div>
+
+            <Button
+              size="sm"
+              variant={offlineDownloaded ? 'secondary' : 'primary'}
+              onClick={handleDownloadOffline}
+            >
+              {offlineDownloaded ? (
+                <>
+                  <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Cached Offline
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5 mr-1" /> Download Pack
+                </>
+              )}
+            </Button>
           </div>
-        </Card>
+
+          <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs text-neutral-700 flex items-center justify-between">
+            <span>Offline Pack: Campus Gate, Patia, Master Canteen, Jaydev Vihar & ISBT</span>
+            <span className="font-bold text-neutral-900">1.4 MB</span>
+          </div>
+        </div>
+
+        {/* Driver / Operator Dashboard Access */}
+        <div className="p-4 bg-neutral-50 rounded-3xl border border-neutral-200 flex items-center justify-between text-xs">
+          <div>
+            <span className="font-bold text-neutral-900 block">Are you a Transit Operator or Driver?</span>
+            <span className="text-neutral-500">Access vehicle fleet dispatch, crowd management & condition overrides.</span>
+          </div>
+          <Link
+            to="/operator"
+            className="px-3.5 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs shrink-0 transition-colors"
+          >
+            Operator Portal →
+          </Link>
+        </div>
       </div>
     </div>
   );
