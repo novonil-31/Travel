@@ -149,12 +149,13 @@ export default function RouteDiscoveryPage() {
       {/* Main Split Layout: Clean Map (Top/Left) + Clean Uber-Style Ride Selector (Bottom/Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Google Maps Style Clean Route Map (7 Cols) */}
-        <div className="lg:col-span-7 h-[360px] sm:h-[450px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative">
+        <div className="lg:col-span-7 h-[360px] sm:h-[450px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
           <MapContainer
             center={originCoords}
             zoom={14}
             scrollWheelZoom={true}
             className="w-full h-full"
+            style={{ zIndex: 1 }}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <MapBoundsController coordinates={continuousRoute} />

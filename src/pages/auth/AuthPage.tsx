@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
 import { Button, Input } from '../../components/ui';
@@ -9,8 +9,20 @@ import { authApi } from '../../api';
 
 export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setUser, updateProfile } = useAppStore();
   const { addToast } = useToast();
+
+  const originParam = searchParams.get('origin');
+  const destParam = searchParams.get('destination');
+  const mobilityParam = searchParams.get('mobility');
+
+  const getTargetUrl = () => {
+    if (originParam && destParam) {
+      return `/plan?origin=${encodeURIComponent(originParam)}&destination=${encodeURIComponent(destParam)}&mobility=${encodeURIComponent(mobilityParam || 'wheelchair')}`;
+    }
+    return '/plan';
+  };
 
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
@@ -24,11 +36,13 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
     e.preventDefault();
     setIsLoading(true);
 
+    const displayName = name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Passenger');
+
     try {
       if (mode === 'signup') {
         const res = await authApi.register({
-          name: name || 'Aarav Sharma',
-          email: email || 'aarav@transit.access',
+          name: displayName,
+          email: email || 'passenger@transit.maarg',
           phoneNumber: phone || '+919876543210',
           password: password || 'SecureTransitPass123!',
         });
@@ -37,15 +51,15 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
         }
         setUser({
           ...DEMO_USER,
-          id: res?.user?.id || DEMO_USER.id,
-          name: res?.user?.name || name || 'Aarav Sharma',
-          email: res?.user?.email || email || 'aarav@transit.access',
+          id: res?.user?.id || `user-${Date.now()}`,
+          name: res?.user?.name || displayName,
+          email: res?.user?.email || email || 'passenger@transit.maarg',
           phoneNumber: phone || DEMO_USER.phoneNumber,
         });
-        addToast('success', `Account created! Welcome, ${res?.user?.name || name || 'Aarav'}`);
+        addToast('success', `Account created! Welcome, ${res?.user?.name || displayName}`);
       } else {
         const res = await authApi.login({
-          email: email || 'aarav@transit.access',
+          email: email || 'passenger@transit.maarg',
           phoneNumber: phone || undefined,
           password: password || 'SecureTransitPass123!',
         });
@@ -55,22 +69,23 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
         setUser({
           ...DEMO_USER,
           id: res?.user?.id || DEMO_USER.id,
-          name: res?.user?.name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Aarav'),
-          email: res?.user?.email || email || 'aarav@transit.access',
+          name: res?.user?.name || displayName,
+          email: res?.user?.email || email || 'passenger@transit.maarg',
         });
-        addToast('success', `Signed in as ${res?.user?.name || name || 'Aarav'}`);
+        addToast('success', `Signed in as ${res?.user?.name || displayName}`);
       }
-      navigate('/plan');
+      navigate(getTargetUrl());
     } catch (err: any) {
       console.warn('API auth fallback:', err);
       // Fallback for offline/demo mode
       setUser({
         ...DEMO_USER,
-        name: name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Aarav'),
-        email: email || 'aarav@transit.access',
+        id: `user-${Date.now()}`,
+        name: displayName,
+        email: email || 'passenger@transit.maarg',
       });
-      addToast('success', `Signed in as ${name || 'Aarav'}`);
-      navigate('/plan');
+      addToast('success', `Signed in as ${displayName}`);
+      navigate(getTargetUrl());
     } finally {
       setIsLoading(false);
     }
@@ -79,8 +94,8 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
   const handleQuickPersona = (persona: 'wheelchair' | 'senior') => {
     setUser({
       ...DEMO_USER,
-      name: persona === 'wheelchair' ? 'Aarav (Wheelchair)' : 'Meera (Senior)',
-      email: persona === 'wheelchair' ? 'aarav@access.org' : 'meera@access.org',
+      name: persona === 'wheelchair' ? 'Wheelchair Commuter' : 'Senior Passenger',
+      email: persona === 'wheelchair' ? 'wheelchair@maargdarshan.org' : 'senior@maargdarshan.org',
     });
     updateProfile({
       mobility: persona === 'wheelchair' ? 'wheelchair' : 'elderly',
@@ -92,13 +107,33 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
       safetyPreferences: ['late-night', 'prefer-safer'],
     });
     addToast('success', `Loaded ${persona === 'wheelchair' ? 'Wheelchair Profile' : 'Senior Profile'}`);
-    navigate('/plan');
+    navigate(getTargetUrl());
+  };
+
+  const handleGuestMode = () => {
+    setUser({
+      id: `guest-${Date.now()}`,
+      name: 'Guest Passenger',
+      email: 'guest@transit.maarg',
+      role: 'passenger',
+      profile: {
+        mobility: 'wheelchair',
+        stairs: 'avoid',
+        walkingTolerance: 'low',
+        crowding: 'avoid',
+        vision: 'normal',
+        hearing: 'normal',
+        safetyPreferences: ['prefer-safer'],
+      },
+    });
+    addToast('info', '⚡ Continuing in Guest Mode (No login required)');
+    navigate(getTargetUrl());
   };
 
   return (
     <div className="min-h-screen bg-white text-neutral-900 flex flex-col justify-between">
-      {/* Top Uber-Style Header */}
-      <header className="bg-black text-white px-8 h-16 flex items-center justify-between">
+      {/* Top Header */}
+      <header className="bg-black text-white px-8 h-16 flex items-center justify-between sticky top-0 z-[1100] shadow-md">
         <Link to="/" className="flex items-center gap-2.5">
           <img
             src="/logo.png"
@@ -115,8 +150,13 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
       </header>
 
       {/* Main Form Container */}
-      <div className="max-w-md w-full mx-auto px-6 py-12 space-y-6">
+      <div className="max-w-md w-full mx-auto px-6 py-10 space-y-6">
         <div>
+          {originParam && destParam && (
+            <div className="mb-3 px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center gap-1.5">
+              <span>📍 Route Selected: {originParam} → {destParam}</span>
+            </div>
+          )}
           <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
             {mode === 'login' ? 'What\'s your email or phone?' : 'Create your transit account'}
           </h1>
@@ -130,8 +170,8 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           <button
             type="button"
             onClick={() => setMode('login')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
-              mode === 'login' ? 'bg-white text-black shadow-sm' : 'text-neutral-600 hover:text-black'
+            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+              mode === 'login' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
             }`}
           >
             Sign In
@@ -139,56 +179,61 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           <button
             type="button"
             onClick={() => setMode('signup')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
-              mode === 'signup' ? 'bg-white text-black shadow-sm' : 'text-neutral-600 hover:text-black'
+            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+              mode === 'signup' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
             }`}
           >
             Create Account
           </button>
         </div>
 
+        {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           {mode === 'signup' && (
             <>
               <Input
                 label="Full Name"
-                placeholder="e.g. Aarav Sharma"
+                placeholder="e.g. Ananya Roy"
                 icon={<User className="w-4 h-4" />}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
+
               <Input
-                label="Emergency Phone"
+                label="Phone Number"
                 placeholder="+91 98765 43210"
                 icon={<Phone className="w-4 h-4" />}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                required
               />
 
+              {/* Mobility Preference Picker */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">
                   Primary Mobility Requirement
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'wheelchair', label: '♿ Wheelchair User' },
-                    { id: 'walking-difficulty', label: '🦯 Walking Aid' },
-                    { id: 'elderly', label: '👵 Senior Citizen' },
-                    { id: 'none', label: '🚶 Standard Transit' },
-                  ].map(item => (
+                    { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps only' },
+                    { id: 'walking-difficulty', label: '🦯 Walking Aid', desc: '0 stairs' },
+                    { id: 'elderly', label: '👵 Senior', desc: 'Minimal walk' },
+                    { id: 'none', label: '🚶 Standard', desc: 'Fastest routes' },
+                  ].map((m) => (
                     <button
-                      key={item.id}
+                      key={m.id}
                       type="button"
-                      onClick={() => setMobility(item.id as any)}
-                      className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
-                        mobility === item.id
-                          ? 'bg-neutral-900 border-neutral-900 text-white'
-                          : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:bg-neutral-100'
+                      onClick={() => setMobility(m.id as any)}
+                      className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all ${
+                        mobility === m.id
+                          ? 'bg-black text-white border-black shadow-sm'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
                       }`}
                     >
-                      {item.label}
+                      <div>{m.label}</div>
+                      <div className={`text-[10px] font-normal mt-0.5 ${mobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                        {m.desc}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -230,15 +275,7 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
         <div className="pt-6 border-t border-neutral-200 space-y-3">
           <button
             type="button"
-            onClick={() => {
-              setUser({
-                ...DEMO_USER,
-                name: 'Guest Passenger',
-                email: 'guest@access.org',
-              });
-              addToast('info', 'Continuing in Guest Mode (No login required)');
-              navigate('/plan');
-            }}
+            onClick={handleGuestMode}
             className="w-full py-3.5 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-all"
           >
             <span>⚡ Continue as Guest (One-Time / No Login)</span>

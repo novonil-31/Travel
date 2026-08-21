@@ -30,7 +30,7 @@ export function PassengerLayout() {
   return (
     <div className="min-h-screen bg-white text-neutral-900 font-sans">
       {/* Uber Desktop Top Nav */}
-      <header className="hidden md:flex items-center justify-between bg-black text-white px-8 h-16 sticky top-0 z-40">
+      <header className="hidden md:flex items-center justify-between bg-black text-white px-8 h-16 sticky top-0 z-[1100] shadow-md">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2.5 group" aria-label="Maarg Darshan Home">
             <img
@@ -93,7 +93,7 @@ export function PassengerLayout() {
       </header>
 
       {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between bg-black text-white px-4 h-14 sticky top-0 z-40">
+      <header className="md:hidden flex items-center justify-between bg-black text-white px-4 h-14 sticky top-0 z-[1100] shadow-md">
         <Link to="/" className="flex items-center gap-2">
           <img
             src="/logo.png"

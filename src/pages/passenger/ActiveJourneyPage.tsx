@@ -300,12 +300,13 @@ export default function ActiveJourneyPage() {
       </div>
 
       {/* Live Google Maps Continuous Polyline & Tracking Map */}
-      <div className="h-[340px] sm:h-[400px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative">
+      <div className="h-[340px] sm:h-[400px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
         <MapContainer
           center={livePos}
           zoom={15}
           scrollWheelZoom={true}
           className="w-full h-full"
+          style={{ zIndex: 1 }}
         >
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <NavBoundsController coordinates={continuousRoute} currentPos={livePos} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { Button } from '../../components/ui';
 import { journeysApi, stopsApi } from '../../api';
@@ -18,19 +18,24 @@ interface LocationState {
 
 export default function TripPlannerPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setSearchResults, state, updateProfile } = useAppStore();
 
+  const urlOrigin = searchParams.get('origin');
+  const urlDest = searchParams.get('destination');
+  const urlMobility = searchParams.get('mobility');
+
   // Location inputs state
-  const [originInput, setOriginInput] = useState<string>('Campus Gate');
+  const [originInput, setOriginInput] = useState<string>(urlOrigin || 'Campus Gate');
   const [originLocation, setOriginLocation] = useState<LocationState>({
-    name: 'Campus Gate',
+    name: urlOrigin || 'Campus Gate',
     lat: 20.3555,
     lng: 85.8145,
   });
 
-  const [destinationInput, setDestinationInput] = useState<string>('Patia Transit Station');
+  const [destinationInput, setDestinationInput] = useState<string>(urlDest || 'Patia Transit Station');
   const [destinationLocation, setDestinationLocation] = useState<LocationState>({
-    name: 'Patia Transit Station',
+    name: urlDest || 'Patia Transit Station',
     lat: 20.3450,
     lng: 85.8180,
   });
@@ -43,7 +48,7 @@ export default function TripPlannerPage() {
   const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
 
   // Mobility Mode (Simple 3 options like Uber/Google Maps)
-  const [selectedMobility, setSelectedMobility] = useState<string>('wheelchair');
+  const [selectedMobility, setSelectedMobility] = useState<string>(urlMobility || 'wheelchair');
 
   // Loading & GPS state
   const [isLocating, setIsLocating] = useState<boolean>(false);
@@ -51,6 +56,15 @@ export default function TripPlannerPage() {
   const [gpsError, setGpsError] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const autoPlannedRef = useRef<boolean>(false);
+
+  // Auto-plan if navigated from hero/auth with explicit query params
+  useEffect(() => {
+    if (urlOrigin && urlDest && !autoPlannedRef.current) {
+      autoPlannedRef.current = true;
+      executePlanning(urlOrigin, urlDest, urlMobility || 'wheelchair');
+    }
+  }, [urlOrigin, urlDest, urlMobility]);
 
   // Debounced search for Origin
   useEffect(() => {
@@ -175,24 +189,23 @@ export default function TripPlannerPage() {
     setActiveDropdown(null);
   };
 
-  // Search & Plan Submit
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Execute Dynamic Planning
+  const executePlanning = async (origText: string, destText: string, mobility: string) => {
     setIsPlanning(true);
 
     try {
       let finalOrigin = { ...originLocation };
       let finalDest = { ...destinationLocation };
 
-      if (originInput && originInput !== originLocation.name) {
-        const matches = await stopsApi.searchPlaces(originInput);
+      if (origText && origText !== originLocation.name) {
+        const matches = await stopsApi.searchPlaces(origText);
         if (matches && matches.length > 0) {
           finalOrigin = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
       }
 
-      if (destinationInput && destinationInput !== destinationLocation.name) {
-        const matches = await stopsApi.searchPlaces(destinationInput);
+      if (destText && destText !== destinationLocation.name) {
+        const matches = await stopsApi.searchPlaces(destText);
         if (matches && matches.length > 0) {
           finalDest = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
@@ -202,14 +215,14 @@ export default function TripPlannerPage() {
         origin: {
           lat: finalOrigin.lat,
           lng: finalOrigin.lng,
-          name: originInput || finalOrigin.name,
+          name: origText || finalOrigin.name,
         },
         destination: {
           lat: finalDest.lat,
           lng: finalDest.lng,
-          name: destinationInput || finalDest.name,
+          name: destText || finalDest.name,
         },
-        profileType: selectedMobility === 'wheelchair' ? 'WHEELCHAIR' : selectedMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+        profileType: mobility === 'wheelchair' ? 'WHEELCHAIR' : mobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
       });
 
       if (planRes && planRes.options && planRes.options.length > 0) {
@@ -223,6 +236,12 @@ export default function TripPlannerPage() {
     }
   };
 
+  // Search & Plan Submit
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executePlanning(originInput, destinationInput, selectedMobility);
+  };
+
   return (
     <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6" ref={dropdownRef}>
       {/* Clean Header */}
@@ -230,189 +249,233 @@ export default function TripPlannerPage() {
         <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
           Where to?
         </h1>
-        <p className="text-xs text-neutral-500 mt-1">
-          Accessible transit routes, live bus stops & closest shared taxi stands.
+        <p className="text-xs sm:text-sm text-neutral-500 mt-1">
+          Plan real-time accessible bus lines, shared auto stands & step-free paths.
         </p>
       </div>
 
-      {gpsError && (
-        <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-          <span>{gpsError}</span>
-        </div>
-      )}
-
-      {/* Main Search Form Card (Uber / Google Maps style) */}
-      <div className="bg-white border border-neutral-200 p-5 sm:p-6 rounded-3xl shadow-uber-elevated space-y-5">
-        <form onSubmit={handleSearch} className="space-y-4">
-          {/* Pickup & Destination Box */}
-          <div className="bg-neutral-50 p-2 rounded-2xl border border-neutral-200 relative space-y-1">
-            {/* Origin Input */}
-            <div className="relative flex items-center bg-white rounded-xl border border-neutral-200/80 px-3 py-2.5 shadow-2xs">
-              <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0 mr-3 ring-4 ring-emerald-100" />
-              <input
-                type="text"
-                value={originInput}
-                onChange={(e) => setOriginInput(e.target.value)}
-                onFocus={() => setActiveDropdown('origin')}
-                placeholder="Enter pickup location..."
-                className="w-full bg-transparent text-sm font-bold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleUseCurrentLocation}
-                disabled={isLocating}
-                title="Use current location"
-                className="p-1.5 rounded-lg text-neutral-500 hover:text-black hover:bg-neutral-100 transition-colors ml-1 shrink-0"
-              >
-                {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crosshair className="w-4 h-4 text-emerald-700" />}
-              </button>
-            </div>
-
-            {/* Origin Suggestions Dropdown */}
-            {activeDropdown === 'origin' && originSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-14 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-neutral-100">
-                {originSuggestions.map((place, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => handleSelectOrigin(place)}
-                    className="p-3 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 transition-colors"
-                  >
-                    <MapPin className="w-4 h-4 text-emerald-700 shrink-0" />
-                    <div className="truncate">
-                      <span className="text-xs font-bold text-neutral-900 block truncate">{place.name}</span>
-                      <span className="text-[10px] text-neutral-500 block truncate">{place.displayName}</span>
-                    </div>
-                  </div>
-                ))}
+      {/* Main Search Card (Uber / Ola Style) */}
+      <div className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">
+        <form onSubmit={handleSearch} className="space-y-3">
+          {/* Pickup Input Row */}
+          <div className="relative">
+            <div className="flex items-center gap-3">
+              {/* Green A Icon */}
+              <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800 font-black text-xs shrink-0">
+                A
               </div>
-            )}
 
-            {/* Swap Floating Button */}
-            <div className="flex justify-end pr-3 -my-2 relative z-10">
-              <button
-                type="button"
-                onClick={handleSwap}
-                className="w-7 h-7 rounded-full bg-white border border-neutral-300 shadow-sm flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition-all"
-                title="Swap pickup & destination"
-              >
-                <ArrowDownUp className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={originInput}
+                  onFocus={() => setActiveDropdown('origin')}
+                  onChange={(e) => {
+                    setOriginInput(e.target.value);
+                    setActiveDropdown('origin');
+                  }}
+                  placeholder="Enter pickup stop, campus or address..."
+                  className="w-full pl-3 pr-10 py-3.5 rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  required
+                />
 
-            {/* Destination Input */}
-            <div className="relative flex items-center bg-white rounded-xl border border-neutral-200/80 px-3 py-2.5 shadow-2xs">
-              <span className="w-3 h-3 rounded-xs bg-red-600 shrink-0 mr-3 ring-4 ring-red-100" />
-              <input
-                type="text"
-                value={destinationInput}
-                onChange={(e) => setDestinationInput(e.target.value)}
-                onFocus={() => setActiveDropdown('dest')}
-                placeholder="Where to? (Enter destination)"
-                className="w-full bg-transparent text-sm font-bold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-              />
-            </div>
-
-            {/* Destination Suggestions Dropdown */}
-            {activeDropdown === 'dest' && destinationSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-28 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-neutral-100">
-                {destinationSuggestions.map((place, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => handleSelectDest(place)}
-                    className="p-3 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 transition-colors"
-                  >
-                    <MapPin className="w-4 h-4 text-red-600 shrink-0" />
-                    <div className="truncate">
-                      <span className="text-xs font-bold text-neutral-900 block truncate">{place.name}</span>
-                      <span className="text-[10px] text-neutral-500 block truncate">{place.displayName}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick 1-Tap Popular Locations */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
-              Quick Shortcuts:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { label: 'Campus Gate → Patia', from: { name: 'Campus Gate', lat: 20.3555, lng: 85.8145 }, to: { name: 'Patia Station', lat: 20.3450, lng: 85.8180 } },
-                { label: 'Hospital → Jaydev Vihar', from: { name: 'Hospital', lat: 20.3570, lng: 85.8170 }, to: { name: 'Jaydev Vihar', lat: 20.3050, lng: 85.8200 } },
-                { label: 'Infocity → Railway Station', from: { name: 'Infocity', lat: 20.3600, lng: 85.8120 }, to: { name: 'Railway Station', lat: 20.2666, lng: 85.8436 } },
-              ].map((p, idx) => (
+                {/* 1-Click GPS Button */}
                 <button
-                  key={idx}
                   type="button"
-                  onClick={() => handleSelectPreset(p.from, p.to)}
-                  className="px-3 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-all"
+                  onClick={handleUseCurrentLocation}
+                  disabled={isLocating}
+                  title="Use current GPS location"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-xl hover:bg-neutral-200 text-neutral-600 hover:text-black transition-colors"
                 >
-                  {p.label}
+                  {isLocating ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <Crosshair className="w-4 h-4 text-emerald-600" />
+                  )}
                 </button>
-              ))}
+              </div>
             </div>
+
+            {/* Origin Autocomplete Dropdown */}
+            {activeDropdown === 'origin' && originSuggestions.length > 0 && (
+              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {originSuggestions.map((place, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectOrigin(place)}
+                    className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                  >
+                    <MapPin className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-neutral-900 font-bold">{place.name}</div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'Bhubaneswar Corridor'}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Simple Mobility Choice (Uber Style 3 Pills) */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
-              Accessibility Mode:
+          {/* Swap Button Divider */}
+          <div className="flex items-center justify-between pl-4 pr-1 py-0.5">
+            <div className="h-6 border-l-2 border-dashed border-neutral-300 ml-0.5" />
+            <button
+              type="button"
+              onClick={handleSwap}
+              className="p-2 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-black transition-colors"
+              title="Swap pickup & destination"
+            >
+              <ArrowDownUp className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Destination Input Row */}
+          <div className="relative">
+            <div className="flex items-center gap-3">
+              {/* Red B Icon */}
+              <div className="w-8 h-8 rounded-full bg-red-100 border border-red-300 flex items-center justify-center text-red-800 font-black text-xs shrink-0">
+                B
+              </div>
+
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={destinationInput}
+                  onFocus={() => setActiveDropdown('dest')}
+                  onChange={(e) => {
+                    setDestinationInput(e.target.value);
+                    setActiveDropdown('dest');
+                  }}
+                  placeholder="Where to? (Destination address, station, hospital)..."
+                  className="w-full pl-3 pr-4 py-3.5 rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Destination Autocomplete Dropdown */}
+            {activeDropdown === 'dest' && destinationSuggestions.length > 0 && (
+              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {destinationSuggestions.map((place, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectDest(place)}
+                    className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                  >
+                    <MapPin className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-neutral-900 font-bold">{place.name}</div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'Bhubaneswar Corridor'}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* GPS Error alert */}
+          {gpsError && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{gpsError}</span>
+            </div>
+          )}
+
+          {/* Mobility Mode Options */}
+          <div className="pt-2 space-y-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">
+              Mobility Priority
             </span>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { id: 'wheelchair', label: '♿ Wheelchair', sub: 'Ramps & 0 Stairs' },
-                { id: 'elderly', label: '🧓 Senior Citizen', sub: 'Minimal Walk' },
-                { id: 'none', label: '🚶 Standard', sub: 'Fastest Transit' },
+                { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps & 0 Stairs' },
+                { id: 'elderly', label: '🧓 Senior', desc: 'Minimal Walk' },
+                { id: 'standard', label: '🚶 Standard', desc: 'Fastest Route' },
               ].map((m) => (
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedMobility(m.id);
-                    updateProfile({ mobility: m.id as any });
-                  }}
-                  className={`p-2.5 rounded-2xl text-center border transition-all ${
+                  onClick={() => setSelectedMobility(m.id)}
+                  className={`p-2.5 rounded-2xl border text-left transition-all ${
                     selectedMobility === m.id
                       ? 'bg-black text-white border-black shadow-sm'
-                      : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
                   }`}
                 >
-                  <span className="text-xs font-bold block">{m.label}</span>
-                  <span className={`text-[10px] block ${selectedMobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                    {m.sub}
-                  </span>
+                  <div className="font-bold text-xs">{m.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${selectedMobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    {m.desc}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Minimal 1-Line Stand & Price Preview */}
-          {originInput && (
-            <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-neutral-900">🚏 Public Bus: ~₹15-20</span>
-                <span className="text-neutral-300">•</span>
-                <span className="font-bold text-neutral-700">🚖 Shared Auto: ~₹25-40</span>
-              </div>
-              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
-                Live Estimates
-              </span>
-            </div>
-          )}
-
-          {/* Big Clean Black Search Button (Like Uber/Ola) */}
-          <Button
+          {/* Submit Search CTA (Ola / Uber Style) */}
+          <button
             type="submit"
-            size="lg"
-            className="w-full text-base py-4 font-black shadow-md rounded-2xl bg-black hover:bg-neutral-800 text-white"
-            loading={isPlanning}
+            disabled={isPlanning}
+            className="w-full mt-3 py-4 rounded-2xl bg-black hover:bg-neutral-800 text-white font-bold text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2"
           >
-            <Search className="w-4 h-4 mr-2" /> See Routes & Fares
-          </Button>
+            {isPlanning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Finding Accessible Routes & Fares...</span>
+              </>
+            ) : (
+              <>
+                <Search className="w-4 h-4" />
+                <span>See Routes & Fares</span>
+              </>
+            )}
+          </button>
         </form>
+      </div>
+
+      {/* Popular Corridors Shortcuts */}
+      <div className="space-y-2.5">
+        <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+          Frequent Verified Transit Corridors
+        </span>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {[
+            {
+              from: { name: 'Campus Gate', lat: 20.3555, lng: 85.8145 },
+              to: { name: 'Patia Transit Station', lat: 20.3450, lng: 85.8180 },
+              tag: 'Line C3 • Ramp Certified • ₹20',
+            },
+            {
+              from: { name: 'Hospital', lat: 20.3570, lng: 85.8170 },
+              to: { name: 'Jaydev Vihar', lat: 20.3000, lng: 85.8230 },
+              tag: 'Line C5 • Hydraulic Lift • ₹20',
+            },
+            {
+              from: { name: 'Infocity', lat: 20.3590, lng: 85.8080 },
+              to: { name: 'Master Canteen', lat: 20.2640, lng: 85.8400 },
+              tag: 'Shared Auto & Express • ₹25 - ₹40',
+            },
+            {
+              from: { name: 'Campus 25', lat: 20.3540, lng: 85.8120 },
+              to: { name: 'KIIT Square', lat: 20.3530, lng: 85.8160 },
+              tag: 'Step-Free Shuttle • Free',
+            },
+          ].map((item, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleSelectPreset(item.from, item.to)}
+              className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-black text-left transition-all shadow-sm group flex flex-col justify-between"
+            >
+              <div className="font-bold text-xs text-neutral-900 group-hover:text-black">
+                {item.from.name} → {item.to.name}
+              </div>
+              <div className="text-[11px] text-neutral-500 mt-1">{item.tag}</div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -187,12 +187,13 @@ export default function HomePage() {
           </span>
         </div>
 
-        <div className="h-[280px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative">
+        <div className="h-[280px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative z-0 isolate">
           <MapContainer
             center={[20.3530, 85.8160]}
             zoom={14}
             scrollWheelZoom={false}
             className="w-full h-full"
+            style={{ zIndex: 1 }}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
