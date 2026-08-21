@@ -121,8 +121,9 @@ router.post('/', requireAuth, async (req, res, next) => {
  */
 router.get('/:id', requireAuth, async (req, res, next) => {
   try {
+    const journeyId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const journey = await prisma.journey.findUnique({
-      where: { id: req.params.id },
+      where: { id: journeyId },
       include: {
         segments: { orderBy: { sequence: 'asc' } },
         options: { orderBy: { rank: 'asc' } },
@@ -155,7 +156,8 @@ router.get('/:id', requireAuth, async (req, res, next) => {
  */
 router.post('/:id/start', requireAuth, async (req, res, next) => {
   try {
-    const journey = await prisma.journey.findUnique({ where: { id: req.params.id } });
+    const journeyId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const journey = await prisma.journey.findUnique({ where: { id: journeyId } });
 
     if (!journey) {
       sendError(res, Errors.NOT_FOUND, 'Journey not found', 404);
@@ -196,8 +198,9 @@ router.post('/:id/start', requireAuth, async (req, res, next) => {
  */
 router.post('/:id/complete', requireAuth, async (req, res, next) => {
   try {
+    const journeyId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const journey = await prisma.journey.findUnique({
-      where: { id: req.params.id },
+      where: { id: journeyId },
       include: { safetySession: true },
     });
 

@@ -16,6 +16,70 @@ interface LocationState {
   lng: number;
 }
 
+// Marker Icons
+const originIcon = L.divIcon({
+  className: 'custom-marker',
+  html: '<div style="background-color: #2563EB; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px;">A</div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+const destIcon = L.divIcon({
+  className: 'custom-marker',
+  html: '<div style="background-color: #DC2626; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px;">B</div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+const stopIcon = L.divIcon({
+  className: 'custom-stop-marker',
+  html: '<div style="background-color: #059669; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+interface PlaceSuggestion {
+  displayName: string;
+  name: string;
+  lat: number;
+  lng: number;
+  type?: string;
+  isStop?: boolean;
+}
+
+// Preset popular places in Bhubaneswar
+const POPULAR_HUBS: PlaceSuggestion[] = [
+  { name: 'KIIT Square / Campus Gate', displayName: 'KIIT Square, Patia, Bhubaneswar', lat: 20.3533, lng: 85.8164, isStop: true },
+  { name: 'Patia Square / Big Bazaar', displayName: 'Patia Chowk, Nandankanan Road, Bhubaneswar', lat: 20.3625, lng: 85.8241, isStop: true },
+  { name: 'Infocity IT Corridor', displayName: 'Infocity Road, Chandaka SEZ, Bhubaneswar', lat: 20.3585, lng: 85.8198, isStop: true },
+  { name: 'Master Canteen Railway Station', displayName: 'Bhubaneswar Central Railway Station, Master Canteen', lat: 20.2644, lng: 85.8398, isStop: true },
+  { name: 'Jayadev Vihar Junction', displayName: 'Jayadev Vihar Overbridge, National Highway 16', lat: 20.3012, lng: 85.8245, isStop: true },
+  { name: 'Biju Patnaik Airport (BBI)', displayName: 'Airport Road, Aerodrome Area, Bhubaneswar', lat: 20.2444, lng: 85.8178 },
+];
+
+const PROFILES = [
+  { id: 'WHEELCHAIR', label: 'Wheelchair User', desc: 'Ramp required, step-free low floor, zero stairs', icon: Accessibility, color: 'text-primary-600 border-primary-500 bg-primary-50' },
+  { id: 'ELDERLY', label: 'Elderly Passenger', desc: 'Minimal walk (<300m), low crowd, seat comfort', icon: Shield, color: 'text-amber-600 border-amber-500 bg-amber-50' },
+  { id: 'NIGHT_TRAVELLER', label: 'Night Travel', desc: 'Well-lit stops, safe corridors, active monitoring', icon: Clock, color: 'text-purple-600 border-purple-500 bg-purple-50' },
+  { id: 'GENERAL', label: 'Standard Route', desc: 'Balanced time, reliability, and cost', icon: Sparkles, color: 'text-blue-600 border-blue-500 bg-blue-50' },
+];
+
+// Map click handler component
+function MapClickHandler({
+  onSelectPoint,
+  clickMode,
+}: {
+  onSelectPoint: (lat: number, lng: number) => void;
+  clickMode: 'origin' | 'destination';
+}) {
+  useMapEvents({
+    click(e) {
+      onSelectPoint(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 export default function TripPlannerPage() {
   const navigate = useNavigate();
   const { setSearchResults, state, updateProfile } = useAppStore();
@@ -121,6 +185,7 @@ export default function TripPlannerPage() {
       setGpsError('Geolocation is not supported by your browser.');
       return;
     }
+  };
 
     setIsLocating(true);
     setGpsError(null);
@@ -345,16 +410,13 @@ export default function TripPlannerPage() {
                 { label: 'Infocity → Railway Station', from: { name: 'Infocity', lat: 20.3600, lng: 85.8120 }, to: { name: 'Railway Station', lat: 20.2666, lng: 85.8436 } },
               ].map((p, idx) => (
                 <button
-                  key={idx}
                   type="button"
                   onClick={() => handleSelectPreset(p.from, p.to)}
                   className="px-3 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-all"
                 >
                   {p.label}
                 </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
           {/* Simple Mobility Choice (Uber Style 3 Pills) */}
           <div className="space-y-1.5">

@@ -12,11 +12,12 @@
 
 import { prisma } from '../db.js';
 import { dayOfWeek, isWeekend } from '../utils/geo.js';
-import type { CrowdingLevel } from '@prisma/client';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
+
+type CrowdingLevel = 'EMPTY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'FULL' | 'UNKNOWN';
 
 export interface CrowdingEstimate {
   level: CrowdingLevel;
