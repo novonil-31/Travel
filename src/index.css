@@ -4,12 +4,18 @@
 
 @layer base {
   body {
-    @apply bg-slate-900 text-slate-100 font-sans antialiased selection:bg-access-green selection:text-dark-950;
+    @apply bg-slate-950 text-slate-100 font-sans antialiased;
     -webkit-tap-highlight-color: transparent;
   }
 
+  ::selection {
+    background-color: #10b981;
+    color: #040812;
+  }
+
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-access-green;
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
   }
 
   /* Custom scrollbar */
