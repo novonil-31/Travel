@@ -5,6 +5,10 @@
   # मार्ग Darshan (Maarg Darshan)
   ### *Safer, Smarter & Inclusive Accessible Public Transit Navigation*
 
+  [![Vercel](https://img.shields.io/badge/Live%20Demo-maargdarshan.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://maargdarshan.vercel.app)
+
+  <br />
+
   [![Vite](https://img.shields.io/badge/Vite-6.3.5-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
   [![React](https://img.shields.io/badge/React-19.1.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -15,10 +19,19 @@
 
   <p align="center">
     <b>Your Journey. Your Accessibility. Your Safety.</b><br />
-    <i>Not just the fastest route — the SAFEST and most ACCESSIBLE route for YOU.</i>
+    <i>Not just the fastest route — the SAFEST and most ACCESSIBLE route for YOU.</i><br />
+    🌐 <b>Live Production App:</b> <a href="https://maargdarshan.vercel.app" target="_blank"><b>maargdarshan.vercel.app</b></a>
   </p>
 
 </div>
+
+---
+
+## 🌐 Live Deployment
+
+Maarg Darshan is deployed in production on Vercel:
+- 🔗 **Production URL**: [https://maargdarshan.vercel.app](https://maargdarshan.vercel.app)
+- ⚡ **Continuous Deployment**: Automated CI/CD deployments triggered on every push to branch `main`.
 
 ---
 
