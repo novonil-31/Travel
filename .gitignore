@@ -36,3 +36,4 @@ backend/data/gtfs/*
 .env.production
 
 .vercel
+.env*
