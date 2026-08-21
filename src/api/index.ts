@@ -8,7 +8,7 @@ import { DEMO_STOPS, DEMO_TRANSPORT_STANDS, generateDynamicSearchResults } from 
 import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '../utils/onlineRouting';
 import type { RouteSearchResult } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
 
 interface RequestOptions {
   method?: string;

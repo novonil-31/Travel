@@ -3,7 +3,7 @@
 // All dynamic records carry provenance: source, confidence, observed_at, retrieved_at, expires_at
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
