@@ -57,14 +57,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // ============ Auth ============
 export const authApi = {
   register: (data: { name: string; email?: string; phoneNumber?: string; password: string }) =>
-    request<{ user: { id: string; name: string; email?: string; role: string }; token: string }>(
+    request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
       '/auth/register',
       { method: 'POST', body: data },
     ),
   login: (data: { email?: string; phoneNumber?: string; password: string }) =>
-    request<{ user: { id: string; name: string; email?: string; role: string }; token: string }>(
+    request<{ user: { id: string; name: string; email?: string; role: string; emergencyContact?: { name: string; phone: string; relationship?: string } }; token: string }>(
       '/auth/login',
       { method: 'POST', body: data },
+    ),
+  updateEmergencyContact: (data: { name: string; phone: string; relationship?: string }) =>
+    request<{ emergencyContact: { id?: string; name: string; phone: string; relationship?: string } }>(
+      '/auth/emergency-contact',
+      { method: 'PUT', body: data }
     ),
   getMe: () => request('/auth/me'),
 };
@@ -317,6 +322,23 @@ export const safetyApi = {
     request('/safety/heartbeat', { method: 'POST', body: { sessionId } }),
   emergency: (sessionId: string) =>
     request('/safety/emergency', { method: 'POST', body: { sessionId } }),
+  sendEmergencySms: (data: {
+    recipientPhone: string;
+    recipientName?: string;
+    senderName?: string;
+    latitude?: number;
+    longitude?: number;
+    locationName?: string;
+  }) => request<{
+    dispatchId: string;
+    status: string;
+    recipientPhone: string;
+    recipientName: string;
+    message: string;
+    mapLink: string;
+    coordinates: [number, number];
+    timestamp: string;
+  }>('/safety/emergency-sms', { method: 'POST', body: data }),
   complete: (sessionId: string) =>
     request('/safety/complete', { method: 'POST', body: { sessionId } }),
   getById: (sessionId: string) => request(`/safety/${sessionId}`),

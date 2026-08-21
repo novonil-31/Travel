@@ -33,29 +33,55 @@ const defaultProfile: AccessibilityProfile = {
   safetyPreferences: ['late-night', 'prefer-safer'],
 };
 
-const initialState: AppState = {
-  currentUser: null,
-  accessibilityProfile: defaultProfile,
-  activeJourney: null,
-  routes: [],
-  searchResults: [],
-  transportConditions: {},
-  notifications: [],
-  reports: [],
-  operatorAlerts: [],
-  journeyHistory: [],
-  demoMode: import.meta.env.VITE_DEMO_MODE === 'true',
-  isOffline: false,
-  accessibilitySettings: {
-    largerText: false,
-    highContrast: false,
-    reducedMotion: false,
-  },
-};
+function getInitialState(): AppState {
+  let savedUser: User | null = null;
+  let savedProfile = defaultProfile;
+  let savedJourney: Journey | null = null;
+  let savedHistory: Journey[] = [];
+
+  try {
+    const rawUser = localStorage.getItem('access_user');
+    if (rawUser) savedUser = JSON.parse(rawUser);
+
+    const rawProfile = localStorage.getItem('access_profile');
+    if (rawProfile) savedProfile = JSON.parse(rawProfile);
+
+    const rawJourney = localStorage.getItem('access_active_journey');
+    if (rawJourney) savedJourney = JSON.parse(rawJourney);
+
+    const rawHistory = localStorage.getItem('access_journey_history');
+    if (rawHistory) savedHistory = JSON.parse(rawHistory);
+  } catch (e) {
+    console.warn('Failed to parse localStorage cache', e);
+  }
+
+  return {
+    currentUser: savedUser,
+    accessibilityProfile: savedProfile,
+    activeJourney: savedJourney,
+    routes: [],
+    searchResults: [],
+    transportConditions: {},
+    notifications: [],
+    reports: [],
+    operatorAlerts: [],
+    journeyHistory: savedHistory,
+    demoMode: import.meta.env.VITE_DEMO_MODE === 'true',
+    isOffline: false,
+    accessibilitySettings: {
+      largerText: false,
+      highContrast: false,
+      reducedMotion: false,
+    },
+  };
+}
+
+const initialState: AppState = getInitialState();
 
 // ---- Actions ----
 type Action =
-  | { type: 'SET_USER'; user: User }
+  | { type: 'SET_USER'; user: User | null }
+  | { type: 'SET_EMERGENCY_CONTACT'; contact: { name: string; phone: string; relationship: string } }
   | { type: 'UPDATE_PROFILE'; profile: Partial<AccessibilityProfile> }
   | { type: 'SET_ACTIVE_JOURNEY'; journey: Journey | null }
   | { type: 'UPDATE_JOURNEY'; updates: Partial<Journey> }
@@ -80,24 +106,71 @@ type Action =
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_USER':
+    case 'SET_USER': {
+      try {
+        if (action.user) {
+          localStorage.setItem('access_user', JSON.stringify(action.user));
+        } else {
+          localStorage.removeItem('access_user');
+          localStorage.removeItem('access_token');
+        }
+      } catch {}
       return { ...state, currentUser: action.user };
+    }
 
-    case 'UPDATE_PROFILE':
+    case 'SET_EMERGENCY_CONTACT': {
+      const updatedUser = state.currentUser
+        ? {
+            ...state.currentUser,
+            emergencyContact: {
+              name: action.contact.name,
+              phone: action.contact.phone,
+              relationship: action.contact.relationship || 'Family',
+            },
+          }
+        : null;
+      try {
+        if (updatedUser) localStorage.setItem('access_user', JSON.stringify(updatedUser));
+      } catch {}
       return {
         ...state,
-        accessibilityProfile: { ...state.accessibilityProfile, ...action.profile },
+        currentUser: updatedUser,
+      };
+    }
+
+    case 'UPDATE_PROFILE': {
+      const newProfile = { ...state.accessibilityProfile, ...action.profile };
+      try {
+        localStorage.setItem('access_profile', JSON.stringify(newProfile));
+      } catch {}
+      return {
+        ...state,
+        accessibilityProfile: newProfile,
         currentUser: state.currentUser
           ? { ...state.currentUser, profile: { ...state.currentUser.profile, ...action.profile } }
           : state.currentUser,
       };
+    }
 
-    case 'SET_ACTIVE_JOURNEY':
+    case 'SET_ACTIVE_JOURNEY': {
+      try {
+        if (action.journey) {
+          localStorage.setItem('access_active_journey', JSON.stringify(action.journey));
+        } else {
+          localStorage.removeItem('access_active_journey');
+        }
+      } catch {}
       return { ...state, activeJourney: action.journey };
+    }
 
-    case 'UPDATE_JOURNEY':
+    case 'UPDATE_JOURNEY': {
       if (!state.activeJourney) return state;
-      return { ...state, activeJourney: { ...state.activeJourney, ...action.updates } };
+      const updatedJourney = { ...state.activeJourney, ...action.updates };
+      try {
+        localStorage.setItem('access_active_journey', JSON.stringify(updatedJourney));
+      } catch {}
+      return { ...state, activeJourney: updatedJourney };
+    }
 
     case 'COMPLETE_JOURNEY': {
       if (!state.activeJourney) return state;
@@ -106,10 +179,15 @@ function reducer(state: AppState, action: Action): AppState {
         status: 'completed' as JourneyStatus,
         completedAt: new Date().toISOString(),
       };
+      const newHistory = [completed, ...state.journeyHistory];
+      try {
+        localStorage.removeItem('access_active_journey');
+        localStorage.setItem('access_journey_history', JSON.stringify(newHistory));
+      } catch {}
       return {
         ...state,
         activeJourney: null,
-        journeyHistory: [completed, ...state.journeyHistory],
+        journeyHistory: newHistory,
       };
     }
 
@@ -286,7 +364,8 @@ interface AppContextValue {
   resetDemo: () => void;
   triggerEvent: (event: { type: string; [key: string]: unknown }) => void;
   startJourney: (routeResult: RouteSearchResult) => void;
-  setUser: (user: User) => void;
+  setUser: (user: User | null) => void;
+  setEmergencyContact: (contact: { name: string; phone: string; relationship?: string }) => void;
   setJourneyHistory: (history: Journey[]) => void;
   setAccessibilitySettings: (settings: Partial<AccessibilitySettings>) => void;
 }
@@ -348,8 +427,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'RESET_DEMO' });
   }, []);
 
-  const setUser = useCallback((user: User) => {
+  const setUser = useCallback((user: User | null) => {
     dispatch({ type: 'SET_USER', user });
+  }, []);
+
+  const setEmergencyContact = useCallback((contact: { name: string; phone: string; relationship?: string }) => {
+    dispatch({
+      type: 'SET_EMERGENCY_CONTACT',
+      contact: {
+        name: contact.name,
+        phone: contact.phone,
+        relationship: contact.relationship || 'Family',
+      },
+    });
   }, []);
 
   const setJourneyHistory = useCallback((history: Journey[]) => {
@@ -445,6 +535,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     triggerEvent,
     startJourney,
     setUser,
+    setEmergencyContact,
     setJourneyHistory,
     setAccessibilitySettings,
   };

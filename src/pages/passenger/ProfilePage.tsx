@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { AccessibilityProfile, EmergencyContact, SafetyPreference } from '../../types';
 import { Link } from 'react-router-dom';
+import { authApi } from '../../api';
 
 export default function ProfilePage() {
   const { state, updateProfile, setUser, dispatch } = useAppStore();
@@ -34,17 +35,41 @@ export default function ProfilePage() {
   );
 
   const [offlineDownloaded, setOfflineDownloaded] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
     updateProfile(profile);
-    if (state.currentUser) {
-      setUser({
-        ...state.currentUser,
-        emergencyContact,
-        profile,
-      });
+
+    const updatedUser = state.currentUser ? {
+      ...state.currentUser,
+      emergencyContact,
+      profile,
+    } : {
+      id: 'local-user',
+      name: 'Registered Passenger',
+      role: 'passenger' as const,
+      emergencyContact,
+      profile,
+    };
+
+    setUser(updatedUser);
+
+    try {
+      if (localStorage.getItem('access_token')) {
+        await authApi.updateEmergencyContact({
+          name: emergencyContact.name,
+          phone: emergencyContact.phone,
+          relationship: emergencyContact.relationship,
+        });
+      }
+      addToast('success', 'Emergency SOS contact & profile saved successfully!');
+    } catch (err: any) {
+      console.warn('Backend sync failed, saved locally in browser storage.', err);
+      addToast('success', 'Emergency SOS contact saved locally in your account.');
+    } finally {
+      setIsSaving(false);
     }
-    addToast('success', 'Profile and emergency contacts updated successfully.');
   };
 
   const handleDownloadOffline = () => {

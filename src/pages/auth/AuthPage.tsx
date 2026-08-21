@@ -2,15 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
-import { Button, Input } from '../../components/ui';
-import { Lock, Mail, User, Phone, ArrowRight } from 'lucide-react';
-import { DEMO_USER } from '../../data/mock';
+import { Button, Input, Modal } from '../../components/ui';
+import { Lock, Mail, User, Phone, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { authApi } from '../../api';
 
 export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setUser, updateProfile } = useAppStore();
+  const { setUser, updateProfile, setEmergencyContact } = useAppStore();
   const { addToast } = useToast();
 
   const originParam = searchParams.get('origin');
@@ -31,290 +30,416 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
   const [phone, setPhone] = useState('');
   const [mobility, setMobility] = useState<'wheelchair' | 'walking-difficulty' | 'elderly' | 'none'>('wheelchair');
   const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Post-login Emergency SOS Setup Modal
+  const [showSosModal, setShowSosModal] = useState<boolean>(false);
+  const [emergencyName, setEmergencyName] = useState<string>('');
+  const [emergencyPhone, setEmergencyPhone] = useState<string>('');
+  const [emergencyRelation, setEmergencyRelation] = useState<string>('Family');
+  const [savedUserTemp, setSavedUserTemp] = useState<any>(null);
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setAuthError(null);
 
-    const displayName = name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Passenger');
+    // Client-side validations
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      setAuthError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setAuthError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (mode === 'signup' && (!name || name.trim().length === 0)) {
+      setAuthError('Please enter your full name.');
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       if (mode === 'signup') {
         const res = await authApi.register({
-          name: displayName,
-          email: email || 'passenger@transit.maarg',
-          phoneNumber: phone || '+919876543210',
-          password: password || 'SecureTransitPass123!',
+          name: name.trim(),
+          email: email.trim(),
+          phoneNumber: phone.trim() || undefined,
+          password,
         });
+
         if (res?.token) {
           localStorage.setItem('access_token', res.token);
         }
-        setUser({
-          ...DEMO_USER,
+
+        const newUser = {
           id: res?.user?.id || `user-${Date.now()}`,
-          name: res?.user?.name || displayName,
-          email: res?.user?.email || email || 'passenger@transit.maarg',
-          phoneNumber: phone || DEMO_USER.phoneNumber,
-        });
-        addToast('success', `Account created! Welcome, ${res?.user?.name || displayName}`);
+          name: res?.user?.name || name.trim(),
+          email: res?.user?.email || email.trim(),
+          phoneNumber: phone.trim() || undefined,
+          role: 'passenger' as const,
+          profile: {
+            mobility: mobility,
+            stairs: mobility === 'wheelchair' ? ('avoid' as const) : ('acceptable' as const),
+            walkingTolerance: mobility === 'wheelchair' || mobility === 'elderly' ? ('low' as const) : ('moderate' as const),
+            crowding: 'avoid' as const,
+            vision: 'normal' as const,
+            hearing: 'normal' as const,
+            safetyPreferences: ['late-night' as const, 'prefer-safer' as const],
+          },
+          emergencyContact: res?.user?.emergencyContact ? {
+            name: res.user.emergencyContact.name,
+            phone: res.user.emergencyContact.phone,
+            relationship: res.user.emergencyContact.relationship || 'Family',
+          } : undefined,
+        };
+
+        setUser(newUser);
+        updateProfile(newUser.profile);
+
+        addToast('success', `Account created successfully! Welcome, ${newUser.name}`);
+
+        // If user does not have emergency SOS set, prompt for SOS contact
+        if (!newUser.emergencyContact?.phone) {
+          setSavedUserTemp(newUser);
+          setShowSosModal(true);
+          return;
+        }
+
+        navigate(getTargetUrl());
       } else {
         const res = await authApi.login({
-          email: email || 'passenger@transit.maarg',
-          phoneNumber: phone || undefined,
-          password: password || 'SecureTransitPass123!',
+          email: email.trim(),
+          password,
         });
+
         if (res?.token) {
           localStorage.setItem('access_token', res.token);
         }
-        setUser({
-          ...DEMO_USER,
-          id: res?.user?.id || DEMO_USER.id,
-          name: res?.user?.name || displayName,
-          email: res?.user?.email || email || 'passenger@transit.maarg',
-        });
-        addToast('success', `Signed in as ${res?.user?.name || displayName}`);
+
+        const loggedInUser = {
+          id: res?.user?.id || `user-${Date.now()}`,
+          name: res?.user?.name || email.split('@')[0],
+          email: res?.user?.email || email.trim(),
+          phoneNumber: (res?.user as any)?.phoneNumber,
+          role: 'passenger' as const,
+          profile: {
+            mobility: mobility,
+            stairs: 'avoid' as const,
+            walkingTolerance: 'low' as const,
+            crowding: 'avoid' as const,
+            vision: 'normal' as const,
+            hearing: 'normal' as const,
+            safetyPreferences: ['late-night' as const, 'prefer-safer' as const],
+          },
+          emergencyContact: res?.user?.emergencyContact ? {
+            name: res.user.emergencyContact.name,
+            phone: res.user.emergencyContact.phone,
+            relationship: res.user.emergencyContact.relationship || 'Family',
+          } : undefined,
+        };
+
+        setUser(loggedInUser);
+        addToast('success', `Signed in as ${loggedInUser.name}`);
+
+        // If user does not have emergency SOS set, prompt for SOS contact
+        if (!loggedInUser.emergencyContact?.phone) {
+          setSavedUserTemp(loggedInUser);
+          setShowSosModal(true);
+          return;
+        }
+
+        navigate(getTargetUrl());
       }
-      navigate(getTargetUrl());
     } catch (err: any) {
-      console.warn('API auth fallback:', err);
-      // Fallback for offline/demo mode
-      setUser({
-        ...DEMO_USER,
-        id: `user-${Date.now()}`,
-        name: displayName,
-        email: email || 'passenger@transit.maarg',
-      });
-      addToast('success', `Signed in as ${displayName}`);
-      navigate(getTargetUrl());
+      console.error('Authentication error:', err);
+      const errMsg = err?.message || 'Authentication failed. Please verify your credentials.';
+      setAuthError(errMsg);
+      addToast('error', errMsg);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickPersona = (persona: 'wheelchair' | 'senior') => {
-    setUser({
-      ...DEMO_USER,
-      name: persona === 'wheelchair' ? 'Wheelchair Commuter' : 'Senior Passenger',
-      email: persona === 'wheelchair' ? 'wheelchair@maargdarshan.org' : 'senior@maargdarshan.org',
-    });
-    updateProfile({
-      mobility: persona === 'wheelchair' ? 'wheelchair' : 'elderly',
-      stairs: 'avoid',
-      walkingTolerance: 'low',
-      crowding: 'avoid',
-      vision: 'normal',
-      hearing: 'normal',
-      safetyPreferences: ['late-night', 'prefer-safer'],
-    });
-    addToast('success', `Loaded ${persona === 'wheelchair' ? 'Wheelchair Profile' : 'Senior Profile'}`);
+  const handleSaveSosModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emergencyPhone || emergencyPhone.trim().length < 6) {
+      addToast('error', 'Please provide a valid emergency contact phone number.');
+      return;
+    }
+
+    const contact = {
+      name: emergencyName.trim() || 'Emergency Contact',
+      phone: emergencyPhone.trim(),
+      relationship: emergencyRelation || 'Family',
+    };
+
+    setEmergencyContact(contact);
+
+    try {
+      await authApi.updateEmergencyContact(contact);
+      addToast('success', 'Emergency SOS Contact saved to your account!');
+    } catch (err) {
+      console.warn('Saved SOS contact locally.', err);
+      addToast('success', 'Emergency SOS Contact saved locally.');
+    }
+
+    setShowSosModal(false);
+    navigate(getTargetUrl());
+  };
+
+  const handleSkipSosModal = () => {
+    setShowSosModal(false);
     navigate(getTargetUrl());
   };
 
   const handleGuestMode = () => {
-    setUser({
+    const guestUser = {
       id: `guest-${Date.now()}`,
       name: 'Guest Passenger',
       email: 'guest@transit.maarg',
-      role: 'passenger',
+      role: 'passenger' as const,
       profile: {
-        mobility: 'wheelchair',
-        stairs: 'avoid',
-        walkingTolerance: 'low',
-        crowding: 'avoid',
-        vision: 'normal',
-        hearing: 'normal',
-        safetyPreferences: ['prefer-safer'],
+        mobility: 'wheelchair' as const,
+        stairs: 'avoid' as const,
+        walkingTolerance: 'low' as const,
+        crowding: 'avoid' as const,
+        vision: 'normal' as const,
+        hearing: 'normal' as const,
+        safetyPreferences: ['late-night' as const, 'prefer-safer' as const],
       },
-    });
-    addToast('info', '⚡ Continuing in Guest Mode (No login required)');
+      emergencyContact: {
+        name: 'Family Contact',
+        phone: '+91 98765 43210',
+        relationship: 'Family',
+      },
+    };
+
+    setUser(guestUser);
+    updateProfile(guestUser.profile);
+    addToast('success', 'Continuing as Guest Passenger (No Login Required)');
     navigate(getTargetUrl());
   };
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900 flex flex-col justify-between">
-      {/* Top Header */}
-      <header className="bg-black text-white px-8 h-16 flex items-center justify-between sticky top-0 z-[1100] shadow-md">
-        <Link to="/" className="flex items-center gap-2.5">
-          <img
-            src="/logo.png"
-            alt="Maarg Darshan Logo"
-            className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain shadow-sm"
-          />
-          <span className="text-xl font-black tracking-tight text-white">
-            Maarg Darshan
-          </span>
-        </Link>
-        <Link to="/" className="text-xs font-semibold text-neutral-300 hover:text-white">
-          Exit to Home
-        </Link>
-      </header>
-
-      {/* Main Form Container */}
-      <div className="max-w-md w-full mx-auto px-6 py-10 space-y-6">
-        <div>
-          {originParam && destParam && (
-            <div className="mb-3 px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center gap-1.5">
-              <span>📍 Route Selected: {originParam} → {destParam}</span>
-            </div>
-          )}
-          <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
-            {mode === 'login' ? 'What\'s your email or phone?' : 'Create your transit account'}
+    <div className="min-h-[85vh] flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md bg-white border border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+        {/* Brand Logo & Heading */}
+        <div className="text-center space-y-1.5">
+          <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mx-auto mb-2 font-black text-xl shadow-md">
+            M
+          </div>
+          <h1 className="text-2xl font-black text-neutral-900 tracking-tight">
+            {mode === 'signup' ? 'Create Passenger Account' : 'Sign in to Maarg Darshan'}
           </h1>
-          <p className="text-xs text-neutral-600 mt-1">
-            {mode === 'login' ? 'Sign in to access saved barrier-free journeys & safety contacts.' : 'Configure your mobility requirements for customized step-free transit.'}
+          <p className="text-xs text-neutral-500">
+            {mode === 'signup'
+              ? 'Join to save accessible routes & emergency SOS contacts'
+              : 'Enter your credentials to continue your journey'}
           </p>
         </div>
 
-        {/* Tab Selector */}
-        <div className="flex bg-neutral-100 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setMode('login')}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-              mode === 'login' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('signup')}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-              mode === 'signup' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
+        {/* Error Banner */}
+        {authError && (
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <span>{authError}</span>
+          </div>
+        )}
 
         {/* Form */}
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleAuthSubmit} className="space-y-3.5">
           {mode === 'signup' && (
-            <>
-              <Input
-                label="Full Name"
-                placeholder="e.g. Ananya Roy"
-                icon={<User className="w-4 h-4" />}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-
-              <Input
-                label="Phone Number"
-                placeholder="+91 98765 43210"
-                icon={<Phone className="w-4 h-4" />}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-
-              {/* Mobility Preference Picker */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">
-                  Primary Mobility Requirement
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps only' },
-                    { id: 'walking-difficulty', label: '🦯 Walking Aid', desc: '0 stairs' },
-                    { id: 'elderly', label: '👵 Senior', desc: 'Minimal walk' },
-                    { id: 'none', label: '🚶 Standard', desc: 'Fastest routes' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setMobility(m.id as any)}
-                      className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all ${
-                        mobility === m.id
-                          ? 'bg-black text-white border-black shadow-sm'
-                          : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
-                      }`}
-                    >
-                      <div>{m.label}</div>
-                      <div className={`text-[10px] font-normal mt-0.5 ${mobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                        {m.desc}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
+            <Input
+              label="Full Name"
+              placeholder="e.g. Ananya Roy"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              icon={<User className="w-4 h-4" />}
+              required
+            />
           )}
 
           <Input
             label="Email Address"
             type="email"
-            placeholder="name@example.com"
-            icon={<Mail className="w-4 h-4" />}
+            placeholder="e.g. you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            icon={<Mail className="w-4 h-4" />}
             required
           />
+
+          {mode === 'signup' && (
+            <Input
+              label="Mobile Number (Optional)"
+              type="tel"
+              placeholder="+91 98765 43210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              icon={<Phone className="w-4 h-4" />}
+            />
+          )}
 
           <Input
             label="Password"
             type="password"
-            placeholder="••••••••"
-            icon={<Lock className="w-4 h-4" />}
+            placeholder="•••••••• (Min 6 characters)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            icon={<Lock className="w-4 h-4" />}
             required
           />
 
+          {mode === 'signup' && (
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-neutral-700 block">
+                Primary Mobility Preference
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'wheelchair', label: '♿ Wheelchair' },
+                  { id: 'elderly', label: '🧓 Senior' },
+                  { id: 'none', label: '🚶 Standard' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMobility(m.id as any)}
+                    className={`py-2 px-2 text-xs font-bold rounded-xl border text-center transition-all ${
+                      mobility === m.id
+                        ? 'bg-black text-white border-black'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Button
             type="submit"
-            size="lg"
-            className="w-full py-4 text-sm font-bold"
-            loading={isLoading}
+            disabled={isLoading}
+            className="w-full py-4 text-sm font-bold shadow-md mt-2"
           >
-            {mode === 'login' ? 'Continue' : 'Create Account'}
+            {isLoading
+              ? 'Validating & Authenticating...'
+              : mode === 'signup'
+              ? 'Create Account'
+              : 'Sign In'}
           </Button>
         </form>
 
-        {/* 1-Click Guest & Demo Access */}
-        <div className="pt-6 border-t border-neutral-200 space-y-3">
-          <button
-            type="button"
-            onClick={handleGuestMode}
-            className="w-full py-3.5 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-all"
-          >
-            <span>⚡ Continue as Guest (One-Time / No Login)</span>
-          </button>
-
-          <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block text-center pt-1">
-            Quick Persona Shortcuts:
-          </span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickPersona('wheelchair')}
-              className="p-3 rounded-2xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-center transition-all"
-            >
-              <span className="text-base block mb-0.5">♿</span>
-              <span className="text-xs font-bold text-neutral-900 block">Wheelchair User</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickPersona('senior')}
-              className="p-3 rounded-2xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-center transition-all"
-            >
-              <span className="text-base block mb-0.5">👵</span>
-              <span className="text-xs font-bold text-neutral-900 block">Senior Citizen</span>
-            </button>
-          </div>
+        {/* Toggle Login / Signup */}
+        <div className="text-center text-xs text-neutral-500 pt-1">
+          {mode === 'signup' ? (
+            <span>
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setAuthError(null);
+                }}
+                className="font-bold text-black hover:underline"
+              >
+                Sign In
+              </button>
+            </span>
+          ) : (
+            <span>
+              Don't have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setAuthError(null);
+                }}
+                className="font-bold text-black hover:underline"
+              >
+                Create Account
+              </button>
+            </span>
+          )}
         </div>
+
+        {/* Divider */}
+        <div className="relative border-t border-neutral-200 pt-3 text-center">
+          <span className="bg-white px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider relative -top-5.5">
+            Or quick access
+          </span>
+        </div>
+
+        {/* 1-Click Guest Mode Button */}
+        <button
+          type="button"
+          onClick={handleGuestMode}
+          className="w-full py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+        >
+          <span>⚡ Continue as Guest (One-Time / No Login)</span>
+        </button>
       </div>
 
-      {/* Footer */}
-      <footer className="py-6 px-8 text-center text-xs text-neutral-500 border-t border-neutral-200 flex items-center justify-center gap-2">
-        <img
-          src="/logo.png"
-          alt="Maarg Darshan Logo"
-          className="w-5 h-5 rounded-md bg-neutral-100 p-0.5 object-contain"
-        />
-        <span>Maarg Darshan (मार्ग Darshan) • Accessible Public Transit Network</span>
-      </footer>
+      {/* Mandatory / Recommended Post-Login Emergency SOS Setup Modal */}
+      <Modal
+        open={showSosModal}
+        onClose={handleSkipSosModal}
+        title="🛡️ Setup Emergency SOS Contact"
+      >
+        <form onSubmit={handleSaveSosModal} className="space-y-4 text-xs">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-900 flex items-start gap-2">
+            <ShieldCheck className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Keep Your Journeys Protected</span>
+              <span className="text-[11px] text-red-800 block mt-0.5">
+                Set up your emergency SOS contact number now so real-time SMS alerts with live GPS coordinates can be dispatched during late-night rides or emergencies.
+              </span>
+            </div>
+          </div>
+
+          <Input
+            label="Emergency Contact Name"
+            placeholder="e.g. Parent / Spouse / Guardian"
+            value={emergencyName}
+            onChange={(e) => setEmergencyName(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Emergency Mobile Phone"
+            type="tel"
+            placeholder="+91 98765 43210"
+            icon={<Phone className="w-4 h-4" />}
+            value={emergencyPhone}
+            onChange={(e) => setEmergencyPhone(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Relationship"
+            placeholder="e.g. Sister / Father / Friend"
+            value={emergencyRelation}
+            onChange={(e) => setEmergencyRelation(e.target.value)}
+          />
+
+          <div className="flex justify-between items-center pt-2">
+            <button
+              type="button"
+              onClick={handleSkipSosModal}
+              className="text-xs text-neutral-500 hover:text-black underline font-semibold"
+            >
+              Setup Later
+            </button>
+            <Button type="submit" size="sm" className="font-bold">
+              Save SOS Contact & Continue
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
