@@ -59,7 +59,7 @@ export interface Route {
 export interface RouteStop {
   stopId: string;
   order: number;
-  arrivalOffset: number; // minutes from start
+  arrivalOffset: number;
   departureOffset: number;
 }
 
@@ -88,7 +88,7 @@ export type AccessibilityStatus = 'AVAILABLE' | 'LIMITED' | 'UNAVAILABLE';
 
 export interface TransportCondition {
   routeId: string;
-  delay: number; // minutes
+  delay: number;
   crowding: CrowdingLevel;
   accessibility: AccessibilityStatus;
   vehicleStatus: VehicleStatusType;
@@ -110,6 +110,26 @@ export interface RouteSearchResult {
   recommendation: RouteRecommendation;
   segments: JourneySegment[];
   condition: TransportCondition;
+  // Enhanced Real-world Map & Navigation Geometry
+  originCoords?: { lat: number; lng: number };
+  destinationCoords?: { lat: number; lng: number };
+  originName?: string;
+  destinationName?: string;
+  geometry?: {
+    originToBoardWalk: Array<[number, number]>;
+    transitPath: Array<[number, number]>;
+    alightToDestWalk: Array<[number, number]>;
+    fullRoute: Array<[number, number]>;
+  };
+  intermediateStops?: Array<{
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    sequence: number;
+    hasRamp?: boolean;
+  }>;
+  turnByTurn?: string[];
 }
 
 export interface RouteScores {
@@ -149,6 +169,23 @@ export interface Journey {
   currentStopId?: string;
   delay: number;
   crowding: CrowdingLevel;
+  // Enhanced Real-world Map & Navigation Geometry
+  originCoords?: { lat: number; lng: number };
+  destinationCoords?: { lat: number; lng: number };
+  geometry?: {
+    originToBoardWalk: Array<[number, number]>;
+    transitPath: Array<[number, number]>;
+    alightToDestWalk: Array<[number, number]>;
+    fullRoute: Array<[number, number]>;
+  };
+  intermediateStops?: Array<{
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    sequence: number;
+  }>;
+  turnByTurn?: string[];
 }
 
 export type JourneyStatus = 'planned' | 'active' | 'completed' | 'cancelled';
@@ -191,23 +228,28 @@ export type SafetyStatus =
   | 'EMERGENCY'
   | 'COMPLETED';
 
-// --- Reports ---
+// --- Incident Reports ---
+export type ReportStatus = 'new' | 'reviewed' | 'resolved' | 'NEW' | 'REVIEWED' | 'RESOLVED';
+
 export interface Report {
   id: string;
-  type: ReportType;
+  userId?: string;
+  userName?: string;
+  reportedBy?: string;
   routeId: string;
-  routeName: string;
-  reportedBy: string;
-  timestamp: string;
+  routeName?: string;
+  type: ReportType;
   crowding?: CrowdingLevel;
+  delay?: number;
   delayMinutes?: number;
   accessibilityIssue?: string;
   comment?: string;
+  createdAt?: string;
+  timestamp?: string;
   status: ReportStatus;
 }
 
 export type ReportType = 'crowding' | 'delay' | 'accessibility';
-export type ReportStatus = 'NEW' | 'REVIEWED' | 'RESOLVED';
 
 // --- Notifications ---
 export interface Notification {
@@ -224,56 +266,24 @@ export interface Notification {
 }
 
 export type NotificationType =
-  | 'journey'
   | 'delay'
   | 'crowding'
   | 'accessibility'
   | 'safety'
+  | 'reroute'
+  | 'general'
   | 'system'
-  | 'route-update'
-  | 'recomputation';
+  | 'route-update';
 
-// --- Modules ---
-export interface AccessModule {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  type: 'core' | 'acquired' | 'available';
-  status: 'CONNECTED' | 'PENDING' | 'DEMO' | 'AVAILABLE';
-  version?: string;
-  provider?: string;
-  endpoints?: ModuleEndpoint[];
-  complexity?: 'LOW' | 'MEDIUM' | 'HIGH';
-  format?: string;
-}
-
-export interface ModuleEndpoint {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  path: string;
-  description: string;
-}
-
-// --- Events ---
-export type LiveEvent =
-  | { type: 'ROUTE_DELAY_UPDATED'; routeId: string; delay: number }
-  | { type: 'CROWDING_UPDATED'; routeId: string; crowding: CrowdingLevel }
-  | { type: 'ACCESSIBILITY_UPDATED'; routeId: string; status: AccessibilityStatus }
-  | { type: 'VEHICLE_STATUS_UPDATED'; vehicleId: string; status: VehicleStatusType }
-  | { type: 'SAFETY_CHECKIN_DUE'; sessionId: string }
-  | { type: 'SAFETY_CHECKIN_OVERDUE'; sessionId: string }
-  | { type: 'JOURNEY_COMPLETED'; journeyId: string }
-  | { type: 'NOTIFICATION_RECEIVED'; notification: Notification }
-  | { type: 'ROUTE_RECOMPUTED'; routeId: string; newRank: number };
-
-// --- UI State ---
+// --- Accessibility UI Settings ---
 export interface AccessibilitySettings {
   largerText: boolean;
   highContrast: boolean;
   reducedMotion: boolean;
 }
 
-export type ToastType = 'success' | 'info' | 'warning' | 'error';
+// --- Toast ---
+export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
 export interface Toast {
   id: string;
@@ -281,3 +291,74 @@ export interface Toast {
   message: string;
   duration?: number;
 }
+
+// --- Live Event & Module Interfaces ---
+export interface LiveEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  routeId?: string;
+  delay?: number;
+  crowding?: CrowdingLevel;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface AccessModule {
+  id: string;
+  name: string;
+  version?: string;
+  category?: string;
+  description: string;
+  price?: number;
+  rating?: number;
+  reviewsCount?: number;
+  author?: string;
+  endpoints?: Array<{ path: string; method: string; description: string }>;
+  installed?: boolean;
+  icon?: string;
+  color?: string;
+  type?: string;
+  status?: string;
+  provider?: string;
+  complexity?: string;
+  format?: string;
+  stats?: Record<string, unknown>;
+}
+
+// --- Module Marketplace ---
+export interface TradableModule {
+  id: string;
+  name: string;
+  version: string;
+  category: ModuleCategory;
+  description: string;
+  price: number;
+  rating: number;
+  reviewsCount: number;
+  author: string;
+  compatibleWith: string[];
+  features: string[];
+  installed: boolean;
+  icon: string;
+  color: string;
+  type?: string;
+  status?: string;
+  provider?: string;
+  complexity?: string;
+  format?: string;
+  endpoints?: Array<{ path: string; method: string; description: string }>;
+  stats?: {
+    accuracy?: string;
+    responseTime?: string;
+    uptime?: string;
+  };
+}
+
+export type ModuleCategory =
+  | 'safety'
+  | 'scoring'
+  | 'crowding'
+  | 'navigation'
+  | 'notifications'
+  | 'reporting';

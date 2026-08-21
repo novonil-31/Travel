@@ -1,5 +1,9 @@
+// ACCESS — Prisma Schema
+// Database: SQLite (development / hackathon) — switch provider to "postgresql" for production PostGIS
+// All dynamic records carry provenance: source, confidence, observed_at, retrieved_at, expires_at
+
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -7,136 +11,54 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum Role {
-  PASSENGER
-  OPERATOR
-  ADMIN
-}
-
-enum MobilityType {
-  WHEELCHAIR
-  WALKING_DIFFICULTY
-  ELDERLY
-  NONE
-}
-
-enum StairsPreference {
-  AVOID
-  ACCEPTABLE
-}
-
-enum WalkingTolerance {
-  MINIMAL
-  LOW
-  MODERATE
-  HIGH
-}
-
-enum CrowdingPreference {
-  AVOID
-  LOW_PREFERENCE
-  ACCEPTABLE
-}
-
-enum VisionType {
-  LOW_VISION
-  NORMAL
-}
-
-enum HearingType {
-  HEARING_ASSISTANCE
-  NORMAL
-}
-
-enum CrowdingLevel {
-  LOW
-  MEDIUM
-  HIGH
-}
-
-enum AccessibilityStatus {
-  AVAILABLE
-  LIMITED
-  UNAVAILABLE
-}
-
-enum VehicleStatusType {
-  ACTIVE
-  DELAYED
-  OUT_OF_SERVICE
-}
-
-enum JourneyStatus {
-  PLANNED
-  ACTIVE
-  COMPLETED
-  CANCELLED
-}
-
-enum SafetyStatus {
-  NOT_STARTED
-  ACTIVE
-  CHECK_IN_DUE
-  OVERDUE
-  SAFE
-  EMERGENCY
-  COMPLETED
-}
-
-enum ReportType {
-  CROWDING
-  DELAY
-  ACCESSIBILITY
-}
-
-enum ReportStatus {
-  NEW
-  REVIEWED
-  RESOLVED
-}
-
-enum SegmentType {
-  WALK
-  BOARD
-  RIDE
-  TRANSFER
-  ALIGHT
-}
-
-enum VehicleType {
-  BUS
-  SHARED_TRANSPORT
-  CAMPUS_VEHICLE
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE USER / PROFILE
+// ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id                String                 @id @default(uuid())
-  email             String?                @unique
-  name              String
-  avatar            String?
-  role              Role                   @default(PASSENGER)
-  profile           AccessibilityProfile?
-  emergencyContacts EmergencyContact[]
-  journeys          Journey[]
-  reports           Report[]
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  id                  String               @id @default(uuid())
+  email               String?              @unique
+  phoneNumber         String?              @unique
+  name                String
+  avatar              String?
+  passwordHash        String?
+  role                String               @default("PASSENGER") // PASSENGER, OPERATOR, ADMIN
+  isActive            Boolean              @default(true)
+  profile             AccessibilityProfile?
+  emergencyContacts   EmergencyContact[]
+  journeys            Journey[]
+  reports             Report[]
+  crowdingFeedback    CrowdingFeedback[]
+  locationSignals     UserLocationSignal[]
+  notifications       Notification[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("users")
 }
 
 model AccessibilityProfile {
-  id                String             @id @default(uuid())
-  userId            String             @unique
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mobility          MobilityType       @default(NONE)
-  stairs            StairsPreference   @default(ACCEPTABLE)
-  walkingTolerance  WalkingTolerance   @default(MODERATE)
-  crowding          CrowdingPreference @default(ACCEPTABLE)
-  vision            VisionType         @default(NORMAL)
-  hearing           HearingType        @default(NORMAL)
-  safetyPreferences String[]
-  updatedAt         DateTime           @updatedAt
+  id                  String               @id @default(uuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mobility            String               @default("NONE") // WHEELCHAIR, WALKING_DIFFICULTY, ELDERLY, VISUALLY_IMPAIRED, HEARING_IMPAIRED, NONE
+  stairs              String               @default("ACCEPTABLE") // AVOID, ACCEPTABLE
+  walkingToleranceM   Int                  @default(800) // max walking metres
+  crowdingPref        String               @default("ACCEPTABLE") // AVOID, LOW_PREFERENCE, ACCEPTABLE
+  safetyPref          String               @default("NONE") // NIGHT_SAFE_ONLY, WELL_LIT_ONLY, PREFER_BUSY_STOPS, NONE
+  requiresWheelchair  Boolean              @default(false)
+  requiresLowFloor    Boolean              @default(false)
+  requiresAudioAids   Boolean              @default(false)
+  requiresVisualAids  Boolean              @default(false)
+  nightTravelOk       Boolean              @default(true)
+  // Journey score weights — user can tune these (0.0–1.0)
+  weightAccessibility Float                @default(0.3)
+  weightSafety        Float                @default(0.2)
+  weightCrowding      Float                @default(0.2)
+  weightReliability   Float                @default(0.15)
+  weightTime          Float                @default(0.1)
+  weightCost          Float                @default(0.05)
+  updatedAt           DateTime             @updatedAt
 
   @@map("accessibility_profiles")
 }
@@ -154,187 +76,702 @@ model EmergencyContact {
   @@map("emergency_contacts")
 }
 
-model Stop {
-  id          String      @id @default(uuid())
-  name        String
-  latitude    Float
-  longitude   Float
-  accessible  Boolean     @default(true)
-  hasRamp     Boolean     @default(false)
-  hasStairs   Boolean     @default(false)
-  hasLighting Boolean     @default(true)
-  sheltered   Boolean     @default(false)
-  routeStops  RouteStop[]
-  createdAt   DateTime    @default(now())
+// ─────────────────────────────────────────────────────────────────────────────
+// GEOGRAPHIC / TRANSIT DATA
+// ─────────────────────────────────────────────────────────────────────────────
 
+model City {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  country     String    @default("IN")
+  state       String?
+  centerLat   Float
+  centerLng   Float
+  radiusKm    Float     @default(30)
+  timezone    String    @default("Asia/Kolkata")
+  agencies    Agency[]
+  stops       Stop[]
+  createdAt   DateTime  @default(now())
+
+  @@map("cities")
+}
+
+model Agency {
+  id            String    @id @default(uuid())
+  cityId        String?
+  city          City?     @relation(fields: [cityId], references: [id])
+  gtfsAgencyId  String?   // external GTFS agency_id
+  name          String
+  url           String?
+  timezone      String    @default("Asia/Kolkata")
+  phone         String?
+  email         String?
+  fareUrl       String?
+  sourceId      String?   // FK to DataSource
+  routes        Route[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([gtfsAgencyId, sourceId])
+  @@map("agencies")
+}
+
+model DataSource {
+  id              String          @id @default(uuid())
+  name            String          @unique
+  type            String          @default("REST_API") // GTFS_STATIC, GTFS_REALTIME, REST_API, SCRAPE, DEMO, MANUAL
+  url             String?
+  authRequired    Boolean         @default(false)
+  license         String?
+  attribution     String?
+  updateFreqMins  Int?            // how often data refreshes
+  coverageDesc    String?
+  isActive        Boolean         @default(true)
+  isRealtime      Boolean         @default(false)
+  limitations     String?
+  lastCheckedAt   DateTime?
+  ingestionRuns   IngestionRun[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("data_sources")
+}
+
+model IngestionRun {
+  id              String          @id @default(uuid())
+  sourceId        String
+  source          DataSource      @relation(fields: [sourceId], references: [id])
+  status          String          @default("RUNNING") // RUNNING, SUCCESS, FAILED, PARTIAL
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+  recordsRead     Int             @default(0)
+  recordsUpserted Int             @default(0)
+  recordsFailed   Int             @default(0)
+  errorMessage    String?
+  rawFilePath     String?         // where raw file was stored
+  checksumMd5     String?
+
+  @@map("ingestion_runs")
+}
+
+model Stop {
+  id                  String           @id @default(uuid())
+  cityId              String?
+  city                City?            @relation(fields: [cityId], references: [id])
+  gtfsStopId          String?          // external stop_id from GTFS
+  sourceId            String?          // which DataSource
+  name                String
+  code                String?          // short code displayed at stop
+  description         String?
+  latitude            Float
+  longitude           Float
+  // Accessibility
+  wheelchairBoarding  Int              @default(0) // 0=unknown, 1=yes, 2=no (GTFS standard)
+  hasRamp             Boolean          @default(false)
+  hasLift             Boolean          @default(false)
+  hasStairs           Boolean          @default(false)
+  hasShelter          Boolean          @default(false)
+  hasLighting         Boolean          @default(false)
+  hasTactilePaving    Boolean          @default(false)
+  hasAudioAids        Boolean          @default(false)
+  // Provenance
+  osmNodeId           String?
+  confidence          Float            @default(0.5)
+  dataStatus          String           @default("UNKNOWN") // CONFIRMED, ESTIMATED, HISTORICAL, UNKNOWN
+  retrievedAt         DateTime?
+  routeStops          RouteStop[]
+  stopTimes           StopTime[]
+  journeysOrigin      Journey[]        @relation("JourneyOriginStop")
+  journeysDest        Journey[]        @relation("JourneyDestStop")
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([gtfsStopId, sourceId])
+  @@index([latitude, longitude])
   @@map("stops")
 }
 
 model Route {
-  id          String               @id
-  name        String
-  shortName   String
-  vehicleType VehicleType          @default(BUS)
-  color       String               @default("#059669")
-  description String?
-  active      Boolean              @default(true)
-  stops       RouteStop[]
-  vehicles    Vehicle[]
-  condition   TransportCondition?
-  reports     Report[]
-  journeys    Journey[]
-  createdAt   DateTime             @default(now())
+  id                            String               @id @default(uuid())
+  agencyId                      String?
+  agency                        Agency?              @relation(fields: [agencyId], references: [id])
+  gtfsRouteId                   String?
+  sourceId                      String?
+  shortName                     String
+  longName                      String
+  description                   String?
+  vehicleType                   String               @default("BUS") // BUS, MINIBUS, AUTO_RICKSHAW, SHARED_TAXI, CAMPUS_SHUTTLE, UNKNOWN
+  color                         String?              // hex
+  textColor                     String?
+  isActive                      Boolean              @default(true)
+  // Accessibility metadata (aggregate from vehicles on route)
+  typicallyWheelchairAccessible Boolean              @default(false)
+  typicallyLowFloor             Boolean              @default(false)
+  // Provenance
+  confidence                    Float                @default(0.5)
+  dataStatus                    String               @default("UNKNOWN") // CONFIRMED, ESTIMATED, HISTORICAL, UNKNOWN
+  retrievedAt                   DateTime?
+  routeStops                    RouteStop[]
+  trips                         Trip[]
+  vehicles                      Vehicle[]
+  fares                         Fare[]
+  reports                       Report[]
+  journeys                      Journey[]
+  crowdingPredictions           CrowdingPrediction[]
+  crowdingObservations          CrowdingObservation[]
+  corridors                     SharedTransportCorridor[]
+  createdAt                     DateTime             @default(now())
+  updatedAt                     DateTime             @updatedAt
 
+  @@unique([gtfsRouteId, sourceId])
   @@map("routes")
 }
 
 model RouteStop {
-  id              String   @id @default(uuid())
-  routeId         String
-  route           Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  stopId          String
-  stop            Stop     @relation(fields: [stopId], references: [id], onDelete: Cascade)
-  order           Int
-  arrivalOffset   Int
-  departureOffset Int
+  id                 String    @id @default(uuid())
+  routeId            String
+  route              Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stopId             String
+  stop               Stop      @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  sequence           Int       // stop_sequence in GTFS
+  distanceAlongRoute Float?    // shape_dist_traveled
 
-  @@unique([routeId, stopId, order])
+  @@unique([routeId, stopId, sequence])
+  @@index([routeId])
+  @@index([stopId])
   @@map("route_stops")
 }
 
-model Vehicle {
-  id            String            @id @default(uuid())
-  routeId       String
-  route         Route             @relation(fields: [routeId], references: [id])
-  name          String
-  type          VehicleType
-  capacity      Int
-  accessible    Boolean           @default(true)
-  hasRamp       Boolean           @default(false)
-  hasLowFloor   Boolean           @default(false)
-  status        VehicleStatusType @default(ACTIVE)
-  currentStopId String?
-  latitude      Float?
-  longitude     Float?
-  updatedAt     DateTime          @updatedAt
+model Trip {
+  id                   String     @id @default(uuid())
+  routeId              String
+  route                Route      @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  gtfsTripId           String?
+  sourceId             String?
+  headsign             String?
+  shortName            String?
+  directionId          Int?       // 0 or 1
+  shapeId              String?
+  serviceId            String?    // calendar service
+  // Service days (derived from calendar)
+  monday               Boolean    @default(false)
+  tuesday              Boolean    @default(false)
+  wednesday            Boolean    @default(false)
+  thursday             Boolean    @default(false)
+  friday               Boolean    @default(false)
+  saturday             Boolean    @default(false)
+  sunday               Boolean    @default(false)
+  startDate            String?    // YYYYMMDD
+  endDate              String?    // YYYYMMDD
+  wheelchairAccessible Int        @default(0)
+  stopTimes            StopTime[]
+  createdAt            DateTime   @default(now())
 
+  @@unique([gtfsTripId, sourceId])
+  @@index([routeId])
+  @@map("trips")
+}
+
+model StopTime {
+  id            String    @id @default(uuid())
+  tripId        String
+  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  stopId        String
+  stop          Stop      @relation(fields: [stopId], references: [id])
+  arrivalTime   String    // HH:MM:SS (can exceed 24h for overnight)
+  departureTime String
+  stopSequence  Int
+  pickupType    Int       @default(0) // 0=regular, 1=none, 2=phone ahead, 3=driver
+  dropOffType   Int       @default(0)
+  distTraveled  Float?
+
+  @@unique([tripId, stopSequence])
+  @@index([tripId])
+  @@index([stopId])
+  @@map("stop_times")
+}
+
+model Fare {
+  id                String    @id @default(uuid())
+  routeId           String?
+  route             Route?    @relation(fields: [routeId], references: [id])
+  gtfsFareId        String?
+  sourceId          String?
+  originZoneId      String?
+  destinationZoneId String?
+  currency          String    @default("INR")
+  // Either exact or range
+  priceExact        Float?
+  priceMin          Float?
+  priceMax          Float?
+  isExact           Boolean   @default(false)
+  paymentMethod     Int       @default(0) // 0=on_board, 1=before_boarding
+  transfers         Int?
+  confidence        Float     @default(0.5)
+  dataStatus        String    @default("UNKNOWN")
+  source            String    @default("unknown")
+  retrievedAt       DateTime?
+
+  @@map("fares")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VEHICLES & REALTIME
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Vehicle {
+  id                    String             @id @default(uuid())
+  routeId               String?
+  route                 Route?             @relation(fields: [routeId], references: [id])
+  gtfsVehicleId         String?
+  sourceId              String?
+  label                 String?
+  licensePlate          String?
+  type                  String             @default("BUS")
+  capacity              Int                @default(50)
+  // Accessibility
+  wheelchairAccessible  Int                @default(0)
+  hasRamp               Boolean            @default(false)
+  hasLowFloor           Boolean            @default(false)
+  hasAudioAnnouncements Boolean            @default(false)
+  hasVisualDisplay      Boolean            @default(false)
+  status                String             @default("UNKNOWN") // ACTIVE, DELAYED, OUT_OF_SERVICE, UNKNOWN
+  positions             VehiclePosition[]
+  conditions            VehicleCondition[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([gtfsVehicleId, sourceId])
   @@map("vehicles")
 }
 
-model TransportCondition {
-  id            String              @id @default(uuid())
-  routeId       String              @unique
-  route         Route               @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  delay         Int                 @default(0)
-  crowding      CrowdingLevel       @default(LOW)
-  accessibility AccessibilityStatus @default(AVAILABLE)
-  vehicleStatus VehicleStatusType   @default(ACTIVE)
-  updatedAt     DateTime            @updatedAt
+model VehiclePosition {
+  id              String    @id @default(uuid())
+  vehicleId       String
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tripId          String?
+  routeId         String?
+  latitude        Float
+  longitude       Float
+  bearing         Float?
+  speed           Float?    // m/s
+  stopSequence    Int?
+  currentStopId   String?
+  status          String?   // IN_TRANSIT_TO, STOPPED_AT, INCOMING_AT
+  occupancyStatus String    @default("NO_DATA_AVAILABLE") // EMPTY, MANY_SEATS_AVAILABLE, etc.
+  // Provenance
+  source          String
+  externalId      String?
+  observedAt      DateTime
+  retrievedAt     DateTime  @default(now())
+  expiresAt       DateTime?
 
-  @@map("transport_conditions")
+  @@index([vehicleId])
+  @@index([observedAt])
+  @@map("vehicle_positions")
 }
 
+model VehicleCondition {
+  id              String              @id @default(uuid())
+  vehicleId       String
+  vehicle         Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  rampOperational String              @default("UNKNOWN") // AVAILABLE, LIMITED, UNAVAILABLE, UNKNOWN
+  liftOperational String              @default("UNKNOWN")
+  acWorking       Boolean?
+  overallStatus   String              @default("UNKNOWN")
+  // Provenance
+  source          String
+  reportedBy      String?             // user_report, operator, system
+  observedAt      DateTime            @default(now())
+  expiresAt       DateTime?
+  confidence      Float               @default(0.5)
+
+  @@index([vehicleId])
+  @@map("vehicle_conditions")
+}
+
+model ServiceAlert {
+  id              String    @id @default(uuid())
+  sourceId        String?
+  gtfsAlertId     String?
+  routeId         String?
+  stopId          String?
+  cause           String?
+  effect          String?
+  headerText      String?
+  descriptionText String?
+  severity        String    @default("INFO") // INFO, WARNING, SEVERE
+  startsAt        DateTime?
+  endsAt          DateTime?
+  isActive        Boolean   @default(true)
+  // Provenance
+  source          String
+  retrievedAt     DateTime  @default(now())
+
+  @@map("service_alerts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CROWDING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CrowdingObservation {
+  id              String        @id @default(uuid())
+  routeId         String
+  route           Route         @relation(fields: [routeId], references: [id])
+  tripId          String?
+  stopId          String?
+  level           String        // EMPTY, LOW, MEDIUM, HIGH, FULL, UNKNOWN
+  score           Float?        // 0.0–1.0
+  // Time bucket
+  hourOfDay       Int           // 0–23
+  dayOfWeek       Int           // 0=Mon … 6=Sun
+  isWeekend       Boolean
+  // Provenance
+  source          String        // "user_feedback", "gtfs_rt", "operator", "demo"
+  userId          String?
+  observedAt      DateTime      @default(now())
+  confidence      Float         @default(0.5)
+
+  @@index([routeId, hourOfDay, dayOfWeek])
+  @@map("crowding_observations")
+}
+
+model CrowdingPrediction {
+  id              String        @id @default(uuid())
+  routeId         String
+  route           Route         @relation(fields: [routeId], references: [id])
+  stopId          String?
+  hourOfDay       Int
+  dayOfWeek       Int
+  isWeekend       Boolean
+  predictedLevel  String        // EMPTY, LOW, MEDIUM, HIGH, FULL
+  predictedScore  Float         // 0.0–1.0
+  confidence      Float
+  sampleSize      Int           @default(0)
+  // Model provenance
+  modelVersionId  String?
+  computedAt      DateTime      @default(now())
+  validUntil      DateTime
+
+  @@unique([routeId, stopId, hourOfDay, dayOfWeek])
+  @@map("crowding_predictions")
+}
+
+model CrowdingFeedback {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  routeId         String?
+  tripId          String?
+  vehicleId       String?
+  level           String
+  journeyId       String?
+  submittedAt     DateTime      @default(now())
+
+  @@map("crowding_feedback")
+}
+
+model ModelVersion {
+  id              String    @id @default(uuid())
+  name            String    // "crowding_baseline_v1"
+  description     String?
+  trainedAt       DateTime  @default(now())
+  datasetSize     Int
+  metrics         String    // JSON: {mae, rmse, accuracy}
+  isActive        Boolean   @default(false)
+  hyperparams     String?   // JSON
+
+  @@map("model_versions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED TRANSPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TransportStand {
+  id              String      @id @default(uuid())
+  name            String
+  type            String      @default("AUTO_RICKSHAW")
+  latitude        Float
+  longitude       Float
+  address         String?
+  operatingHours  String?     // e.g. "06:00-22:00"
+  typicalFareMin  Float?
+  typicalFareMax  Float?
+  currency        String      @default("INR")
+  // Provenance
+  source          String      @default("osm")
+  osmNodeId       String?
+  confidence      Float       @default(0.5)
+  dataStatus      String      @default("UNKNOWN")
+  retrievedAt     DateTime?
+
+  @@index([latitude, longitude])
+  @@map("transport_stands")
+}
+
+model SharedTransportCorridor {
+  id              String      @id @default(uuid())
+  routeId         String?
+  route           Route?      @relation(fields: [routeId], references: [id])
+  name            String
+  fromArea        String
+  toArea          String
+  vehicleType     String      @default("AUTO_RICKSHAW")
+  fareMin         Float?
+  fareMax         Float?
+  currency        String      @default("INR")
+  operatingHours  String?
+  frequencyMins   Int?        // typical headway
+  isActive        Boolean     @default(true)
+  // Provenance
+  source          String      @default("historical")
+  confidence      Float       @default(0.5)
+  verifiedAt      DateTime?
+
+  @@map("shared_transport_corridors")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JOURNEY
+// ─────────────────────────────────────────────────────────────────────────────
+
 model Journey {
-  id                  String           @id @default(uuid())
+  id                  String          @id @default(uuid())
   userId              String
-  user                User             @relation(fields: [userId], references: [id])
-  routeId             String
-  route               Route            @relation(fields: [routeId], references: [id])
-  originId            String
-  destinationId       String
+  user                User            @relation(fields: [userId], references: [id])
+  // Resolved from stop IDs after planning
+  originStopId        String?
+  originStop          Stop?           @relation("JourneyOriginStop", fields: [originStopId], references: [id])
+  destinationStopId   String?
+  destinationStop     Stop?           @relation("JourneyDestStop", fields: [destinationStopId], references: [id])
+  originLat           Float
+  originLng           Float
+  destinationLat      Float
+  destinationLng      Float
   originName          String
   destinationName     String
-  routeName           String
-  status              JourneyStatus    @default(PLANNED)
+  status              String          @default("PLANNED") // PLANNED, ACTIVE, COMPLETED, CANCELLED
   startedAt           DateTime?
   completedAt         DateTime?
-  eta                 DateTime?
+  plannedEta          DateTime?
   durationMinutes     Int
-  accessibilityScore  Int
-  safetyScore         Int
-  reliabilityScore    Int
-  comfortScore        Int
-  overallScore        Int
-  currentSegmentIndex Int              @default(0)
-  currentStopId       String?
-  delayMinutes        Int              @default(0)
-  crowding            CrowdingLevel    @default(LOW)
+  walkingDistanceM    Float           @default(0)
+  // Scoring
+  accessibilityScore  Float           @default(0)
+  safetyScore         Float           @default(0)
+  reliabilityScore    Float           @default(0)
+  crowdingScore       Float           @default(0)
+  overallScore        Float           @default(0)
+  scoreExplanation    String?         // human-readable explanation
+  // State tracking
+  currentSegmentIndex Int             @default(0)
+  delayMinutes        Int             @default(0)
+  // Relations
+  routeId             String?
+  route               Route?          @relation(fields: [routeId], references: [id])
+  options             JourneyOption[]
   segments            JourneySegment[]
   safetySession       SafetySession?
-  createdAt           DateTime         @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   @@map("journeys")
+}
+
+model JourneyOption {
+  id                  String        @id @default(uuid())
+  journeyId           String
+  journey             Journey       @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  rank                Int           // 1 = recommended
+  routeId             String?
+  tripId              String?
+  vehicleId           String?
+  headsign            String?
+  boardStopId         String?
+  alightStopId        String?
+  departureTime       String?
+  arrivalTime         String?
+  durationMinutes     Int
+  walkingDistanceM    Float         @default(0)
+  transferCount       Int           @default(0)
+  // Scores
+  accessibilityScore  Float
+  safetyScore         Float
+  reliabilityScore    Float
+  crowdingScore       Float
+  costScore           Float
+  overallScore        Float
+  scoreExplanation    String?
+  // Crowding
+  crowdingLevel       String        @default("UNKNOWN")
+  crowdingConfidence  Float?
+  crowdingSource      String?
+  crowdingStatus      String        @default("UNKNOWN")
+  // Fare
+  fareMin             Float?
+  fareMax             Float?
+  fareExact           Float?
+  fareIsExact         Boolean       @default(false)
+  fareCurrency        String        @default("INR")
+  fareSource          String?
+  fareConfidence      Float?
+  // ETA
+  etaSource           String?       // realtime / scheduled / estimated
+  etaConfidence       Float?
+  // Accessibility
+  wheelchairCompatible Boolean      @default(false)
+  rampAvailable       Boolean?
+  lowFloor            Boolean?
+  accessibilityStatus String        @default("UNKNOWN")
+  // Safety flags
+  isNightSafe         Boolean       @default(true)
+  safetyNotes         String?
+
+  @@map("journey_options")
 }
 
 model JourneySegment {
   id          String      @id @default(uuid())
   journeyId   String
   journey     Journey     @relation(fields: [journeyId], references: [id], onDelete: Cascade)
-  type        SegmentType
+  type        String      // WALK, BOARD, RIDE, TRANSFER, ALIGHT
   fromName    String
   toName      String
-  fromId      String?
-  toId        String?
-  distance    Float?
-  duration    Int
+  fromLat     Float?
+  fromLng     Float?
+  toLat       Float?
+  toLng       Float?
+  fromStopId  String?
+  toStopId    String?
+  distanceM   Float?
+  durationMin Int
   routeId     String?
-  routeName   String?
-  vehicleType VehicleType?
+  tripId      String?
+  vehicleId   String?
+  vehicleType String?
   accessible  Boolean     @default(true)
-  stairs      Int         @default(0)
-  crowding    CrowdingLevel?
+  hasStairs   Boolean     @default(false)
+  crowding    String?
   notes       String?
-  order       Int
+  sequence    Int
 
+  @@index([journeyId])
   @@map("journey_segments")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFETY
+// ─────────────────────────────────────────────────────────────────────────────
+
 model SafetySession {
-  id                       String       @id @default(uuid())
-  journeyId                String       @unique
-  journey                  Journey      @relation(fields: [journeyId], references: [id], onDelete: Cascade)
-  status                   SafetyStatus @default(NOT_STARTED)
-  startedAt                DateTime     @default(now())
-  lastCheckIn              DateTime?
-  nextCheckInDue           DateTime?
-  checkInIntervalMinutes   Int          @default(10)
-  emergencyContactNotified Boolean      @default(false)
-  updatedAt                DateTime     @updatedAt
+  id                        String        @id @default(uuid())
+  journeyId                 String        @unique
+  journey                   Journey       @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId                    String
+  status                    String        @default("NOT_STARTED") // NOT_STARTED, ACTIVE, OVERDUE, SAFE, EMERGENCY, COMPLETED
+  startedAt                 DateTime      @default(now())
+  lastHeartbeatAt           DateTime?
+  nextHeartbeatDue          DateTime?
+  heartbeatIntervalMinutes  Int           @default(10)
+  expectedArrivalAt         DateTime?
+  firstEscalationAt         DateTime?     // ETA + grace1
+  secondEscalationAt        DateTime?     // ETA + grace2
+  emergencyContactNotified  Boolean       @default(false)
+  resolvedAt                DateTime?
+  events                    SafetyEvent[]
+  updatedAt                 DateTime      @updatedAt
 
   @@map("safety_sessions")
 }
 
-model Report {
-  id                 String        @id @default(uuid())
-  userId             String?
-  user               User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  routeId            String
-  route              Route         @relation(fields: [routeId], references: [id])
-  routeName          String
-  reportedBy         String        @default("Anonymous")
-  type               ReportType
-  crowding           CrowdingLevel?
-  delayMinutes       Int?
-  accessibilityIssue String?
-  comment            String?
-  status             ReportStatus  @default(NEW)
-  createdAt          DateTime      @default(now())
+model SafetyEvent {
+  id              String        @id @default(uuid())
+  sessionId       String
+  session         SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type            String        // STARTED, HEARTBEAT, OVERDUE_WARNING, EMERGENCY_TRIGGERED, RESOLVED
+  message         String?
+  metadata        String?       // JSON
+  occurredAt      DateTime      @default(now())
 
+  @@map("safety_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Report {
+  id                  String        @id @default(uuid())
+  userId              String?
+  user                User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  routeId             String?
+  route               Route?        @relation(fields: [routeId], references: [id])
+  vehicleId           String?
+  stopId              String?
+  type                String        // CROWDING, DELAY, INACCESSIBLE_VEHICLE, BROKEN_RAMP, etc.
+  crowdingLevel       String?
+  delayMinutes        Int?
+  accessibilityIssue  String?
+  comment             String?
+  status              String        @default("NEW") // NEW, ACKNOWLEDGED, RESOLVED, EXPIRED
+  isDuplicate         Boolean       @default(false)
+  originalReportId    String?       // points to first report if duplicate
+  expiresAt           DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([routeId, type, createdAt])
   @@map("reports")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
 model Notification {
   id          String    @id @default(uuid())
-  userId      String?
-  type        String
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    // SAFETY_OVERDUE, JOURNEY_UPDATE, SERVICE_ALERT, etc.
   title       String
   message     String
-  read        Boolean   @default(false)
+  isRead      Boolean   @default(false)
+  channel     String    @default("in_app") // in_app, push, sms, email
   routeId     String?
   journeyId   String?
+  sessionId   String?
   actionUrl   String?
   actionLabel String?
+  sentAt      DateTime?
   createdAt   DateTime  @default(now())
 
+  @@index([userId, isRead])
   @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCATION SIGNALS (opt-in, privacy-preserving)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserLocationSignal {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routeId     String?
+  tripId      String?
+  // Snapped to route segment, not raw GPS
+  segmentId   String?
+  latitude    Float
+  longitude   Float
+  accuracy    Float?    // metres
+  heading     Float?
+  speed       Float?
+  recordedAt  DateTime  @default(now())
+  // Privacy: signals expire and are aggregated
+  expiresAt   DateTime
+
+  @@index([routeId, recordedAt])
+  @@map("user_location_signals")
 }

@@ -1,62 +1,115 @@
-# ACCESS — Accessible Public Transport Assistant
+# ACCESS — Accessible Public Transport Assistant Backend
+
 > **Not the fastest route. The BEST route for YOU.**  
 > *Your journey. Your accessibility. Your safety.*
 
----
-
-## 🌟 Overview
-**ACCESS** is an accessibility-first public transport navigation and safety assistant. Unlike traditional transit apps that solely optimize for the shortest transit time, ACCESS calculates the **optimal route for each individual's mobility profile** (wheelchair, stair avoidance, low walking tolerance, crowd sensitivity, low vision, hearing assistance, and late-night travel).
+ACCESS is a production-grade backend service designed to empower passengers with disabilities, elderly commuters, night travelers, and crowd-sensitive passengers to plan safer and more accessible journeys across buses, campus shuttles, and shared transport.
 
 ---
 
-## 📱 Features (Desktop & Mobile Optimized)
+## 🏗️ Architecture & Highlights
 
-- **Explainable Route Decisions**: Transparent scoring comparing Accessibility, Safety, Reliability, and Comfort with clear trade-off explanations.
-- **Proactive Safety Check-in Lifecycle**: Live heartbeat monitor with automatic overdue escalation and emergency contact alert workflows.
-- **Live Transport Conditions & Recalculations**: Real-time delay and crowd level telemetry updates trigger automatic route re-ranking.
-- **Closed-Loop Passenger Incident Reporting**: Passengers can report crowding and lift/ramp outages directly into the operator triage queue.
-- **Operator Command Center**: Live fleet telemetry, Recharts analytics, route condition publisher, and report resolution workflow.
-- **Modular Adapter Architecture**: Built for the HACQUIRE integration sprint with tradable plug-and-play modules (Safety Check-in, Evaluation Engine, Condition Reporting, Maps, Crowding ML, Push Notifications).
-
----
-
-## 🏗️ Architecture & Tech Stack
-
-- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, React Leaflet (OpenStreetMap), Recharts, Lucide React, Zustand-style Reactive Context Store.
-- **Backend (Architecture & Stubs)**: Node.js, Express / Fastify, Prisma ORM, WebSockets.
-- **Database (Schema)**: PostgreSQL + PostGIS with complete Prisma models.
-- **Design System**: High contrast mode, large text mode, reduced motion support, responsive bottom nav for mobile & multi-column split view for desktop.
+- **Explainable Multi-Criteria Planning**: Ranks routes by accessibility compatibility, stairs avoidance, walking tolerance, lighting/safety, crowding, and reliability rather than purely travel time.
+- **Never Fabricate Data**: Every dynamic response carries source provenance (`source`, `confidence`, `observedAt`, `dataStatus`). If data is unavailable, it explicitly returns `status: "unknown"` with confidence metrics.
+- **Dynamic Data Freshness**: Classifies real-time telemetry into `fresh` (<2m), `stale` (2-10m), or `expired` (>10m).
+- **Proactive Safety Lifecycles**: Journey check-in heartbeats, ETA-driven overdue scanners, automated multi-stage escalations, and emergency alerts.
+- **Closed-Loop Feedback & Crowding Baseline**: User post-trip feedback directly feeds into the statistical hourly baseline models without requiring opaque ML cold-starts.
+- **Shared Transport & Stands**: Discovery of auto/taxi stands and known corridors with honest live-availability disclosures.
+- **Deploy Anywhere**: Runs locally via SQLite / Prisma, scales to PostgreSQL/PostGIS, and deploys directly to Vercel Serverless.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Backend)
 
-### 1. Install & Run Frontend
+### 1. Install & Setup Database
+
 ```bash
+cd backend
 npm install
+npx prisma db push
+npm run db:seed
+```
+
+### 2. Run Automated Test Suite
+
+```bash
+npm run test
+```
+
+All 22 integration tests will execute against live database fixtures.
+
+### 3. Run Development Server
+
+```bash
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### 2. Build for Production
+- API Server: `http://localhost:3000`
+- Interactive Swagger API Documentation: `http://localhost:3000/docs`
+- Health Check: `http://localhost:3000/health`
+
+---
+
+## 🧪 Demo Scenario: KIIT to Patia (Wheelchair Commuter)
+
+**Scenario**:
+- Commuter Aarav has a **Wheelchair profile** (requires ramp, step-free boarding, avoids stairs, max 300m walking).
+- Origin: **KIIT Square** (`20.3533, 85.8164`)
+- Destination: **Patia Square** (`20.3625, 85.8241`)
+
+**API Call**:
 ```bash
-npm run build
+curl -X POST http://localhost:3000/api/journeys/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "origin": { "lat": 20.3533, "lng": 85.8164, "name": "KIIT Square" },
+    "destination": { "lat": 20.3625, "lng": 85.8241, "name": "Patia Square" },
+    "profileType": "WHEELCHAIR"
+  }'
 ```
 
----
-
-## 📚 Documentation & Schemas
-
-- Complete System Architecture & Database Schema: [`docs/SCHEMA.md`](./docs/SCHEMA.md)
-- Prisma Database Models: [`backend/prisma/schema.prisma`](./backend/prisma/schema.prisma)
-- Backend Service Stubs: [`backend/src/server.ts`](./backend/src/server.ts)
+**ACCESS Decision**:
+- **Bus A (Route 10)**: Arrives in 5 minutes, but ramp is reported broken and crowding is high.
+- **Bus B (Route 11A)**: Arrives in 8 minutes, but has an operational ramp, low-floor boarding, and low crowding.
+- **ACCESS Recommendation**: Recommends **Bus B (Rank #1)** with clear trade-off explanation:
+  > *"Recommended because: Wheelchair ramp available, Low-floor bus (step-free), Predicted low crowding, Stop supports wheelchair boarding."*
 
 ---
 
-## 🧪 Demo Scenarios
+## 🌐 API Overview
 
-1. **Profile Setup**: Select wheelchair persona (*Aarav*).
-2. **Trip Search**: Route search between *Campus Gate* and *Patia*.
-3. **Smart Recommendation**: Observe Route C3 chosen over faster C2 due to zero stairs and accessible boarding.
-4. **Safety Tracking**: Start journey and test the active safety check-in heartbeat.
-5. **Operator Delay Injection**: Go to `/operator/routes`, set C2 delay to +8 min and crowding to HIGH, and watch passenger routes re-rank instantly.
+| Area | Method | Endpoint | Description |
+|---|---|---|---|
+| **Health** | `GET` | `/health` | Service health status |
+| **Docs** | `GET` | `/docs` | OpenAPI / Swagger interactive UI |
+| **Auth** | `POST` | `/api/auth/register` | Register new user & issue JWT |
+| **Auth** | `POST` | `/api/auth/login` | Login with email/phone |
+| **Profile** | `GET/PUT`| `/api/profile` | Manage accessibility preferences |
+| **Stops** | `GET` | `/api/stops/nearby` | Find stops within radius (Haversine) |
+| **Routes** | `GET` | `/api/routes/search` | Search transit routes |
+| **Journeys**| `POST` | `/api/journeys/plan` | Core journey planning engine |
+| **Journeys**| `POST` | `/api/journeys/:id/start` | Start journey & safety monitor |
+| **Safety** | `POST` | `/api/safety/heartbeat` | Check-in / I am safe |
+| **Safety** | `POST` | `/api/safety/emergency` | Trigger emergency escalation |
+| **Crowding**| `GET` | `/api/crowding/route/:id` | Crowding estimate with provenance |
+| **Fares** | `GET` | `/api/fares/estimate` | Exact or estimated fare range |
+| **Shared** | `GET` | `/api/transport/stands/nearby` | Nearby auto/taxi stands |
+| **Reports** | `POST` | `/api/reports/crowding` | Submit crowding report (deduped) |
+| **Feedback**| `POST` | `/api/feedback/crowding` | Post-trip crowding feedback |
+| **Admin** | `GET` | `/api/admin/sources` | Central Data Source registry |
+| **Admin** | `POST` | `/api/admin/ml/train` | Trigger ML baseline recalculation |
+
+---
+
+## ☁️ Deployment (Vercel & Docker)
+
+### Vercel Serverless
+The backend contains `backend/api/index.ts` and `vercel.json` configured for serverless execution.
+Simply connect the repository to Vercel and provide the environment variables (`DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`).
+
+---
+
+## 📄 Documentation Reference
+
+- **Authoritative Progress Checkpoint**: [`PROJECT_STATE.md`](./PROJECT_STATE.md)
+- **Engineer Handoff Guide**: [`HANDOFF.md`](./HANDOFF.md)

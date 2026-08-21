@@ -41,7 +41,7 @@ export default function ModuleMarketplacePage() {
             <Card key={module.id} className="p-6 flex flex-col h-full hover:shadow-xl transition-shadow border-t-4 border-t-indigo-500">
               <div className="flex justify-between items-start mb-4">
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  {getIcon(module.icon)}
+                  {getIcon(module.icon || '')}
                 </div>
                 <Badge variant="success">Connected</Badge>
               </div>
@@ -51,7 +51,7 @@ export default function ModuleMarketplacePage() {
               <div className="mb-6">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Key API Endpoints</p>
                 <div className="space-y-2">
-                  {module.endpoints?.slice(0, 3).map((ep, i) => (
+                  {module.endpoints?.slice(0, 3).map((ep: { method?: string; path?: string; description?: string }, i: number) => (
                     <div key={i} className="flex items-center text-sm">
                       <span className={`font-mono text-xs px-1.5 py-0.5 rounded mr-2 ${ep.method === 'GET' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
                         {ep.method}
@@ -81,7 +81,7 @@ export default function ModuleMarketplacePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {coreModules.map(m => (
               <div key={m.id} className="bg-white p-4 rounded-lg shadow-sm border border-green-200 flex flex-col items-center text-center">
-                <div className="mb-2">{getIcon(m.icon)}</div>
+                <div className="mb-2">{getIcon(m.icon || '')}</div>
                 <span className="font-medium text-sm">{m.name}</span>
                 <span className="text-xs text-green-600 mt-1 font-medium">Installed</span>
               </div>
@@ -89,7 +89,7 @@ export default function ModuleMarketplacePage() {
             
             {availableModules.map(m => (
               <div key={m.id} className="bg-white p-4 rounded-lg border border-dashed border-gray-300 flex flex-col items-center text-center opacity-70 hover:opacity-100 transition-opacity cursor-pointer">
-                <div className="mb-2">{getIcon(m.icon)}</div>
+                <div className="mb-2">{getIcon(m.icon || '')}</div>
                 <span className="font-medium text-sm text-gray-600">{m.name}</span>
                 <Button variant="ghost" size="sm" className="mt-2 text-xs">
                   <Plus size={14} className="mr-1" /> Add

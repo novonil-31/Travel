@@ -112,7 +112,7 @@ export default function OperatorDashboard() {
                   <p className="text-xs text-gray-500 mt-1">{report.comment || 'System alert triggered'}</p>
                 </div>
                 <span className="ml-auto text-xs text-gray-400">
-                  {new Date(report.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date(report.timestamp || report.createdAt || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                 </span>
               </div>
             ))}

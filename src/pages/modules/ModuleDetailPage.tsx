@@ -59,7 +59,7 @@ export default function ModuleDetailPage() {
                 <Server className="mr-2 text-indigo-500" /> API Reference
               </h2>
               <div className="space-y-6">
-                {module.endpoints.map((ep, i) => (
+                {module.endpoints.map((ep: { method?: string; path?: string; description?: string }, i: number) => (
                   <div key={i} className="border border-gray-100 rounded-lg p-4 bg-gray-50">
                     <div className="flex items-center mb-2">
                       <span className={`font-mono font-bold text-sm px-2 py-1 rounded mr-3 ${ep.method === 'GET' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>

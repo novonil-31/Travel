@@ -11,6 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+backend/dist
+
+# SQLite Databases & Cache
+*.db
+*.db-journal
+backend/data/osm_cache/*
+backend/data/gtfs/*
 
 # Editor directories and files
 .vscode/*

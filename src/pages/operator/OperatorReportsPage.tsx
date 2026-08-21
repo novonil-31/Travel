@@ -13,7 +13,7 @@ export default function OperatorReportsPage() {
 
   // Combine store reports with demo reports, preferring store
   const allReports = [...state.reports, ...DEMO_REPORTS.filter(dr => !state.reports.find(sr => sr.id === dr.id))]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    .sort((a, b) => new Date(b.timestamp || b.createdAt || 0).getTime() - new Date(a.timestamp || a.createdAt || 0).getTime());
 
   const filteredReports = activeTab === 'all' 
     ? allReports 
@@ -58,12 +58,12 @@ export default function OperatorReportsPage() {
               <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-2">
                 <div className="flex items-center space-x-2">
                   <h3 className="font-bold text-lg capitalize">{report.type} Report</h3>
-                  <Badge variant={report.status === 'NEW' ? 'danger' : report.status === 'REVIEWED' ? 'warning' : 'success'}>
+                  <Badge variant={report.status.toUpperCase() === 'NEW' ? 'danger' : report.status.toUpperCase() === 'REVIEWED' ? 'warning' : 'success'}>
                     {report.status}
                   </Badge>
                 </div>
                 <span className="text-sm text-gray-500">
-                  {new Date(report.timestamp).toLocaleString()}
+                  {new Date(report.timestamp || report.createdAt || Date.now()).toLocaleString()}
                 </span>
               </div>
               

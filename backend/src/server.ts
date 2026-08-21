@@ -1,101 +1,118 @@
+/**
+ * ACCESS — Main Application Server
+ * Accessible Public Transport Assistant Backend
+ */
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
+import { sendSuccess } from './middleware/response.js';
+import { startScheduler } from './ingestion/scheduler.js';
 
-dotenv.config();
+// Import routers
+import authRouter from './routes/auth.router.js';
+import profileRouter from './routes/profile.router.js';
+import stopsRouter from './routes/stops.router.js';
+import routesRouter from './routes/routes.router.js';
+import vehiclesRouter from './routes/vehicles.router.js';
+import journeysRouter from './routes/journeys.router.js';
+import crowdingRouter from './routes/crowding.router.js';
+import faresRouter from './routes/fares.router.js';
+import transportRouter from './routes/transport.router.js';
+import safetyRouter from './routes/safety.router.js';
+import reportsRouter, { feedbackRouter } from './routes/reports.router.js';
+import notificationsRouter from './routes/notifications.router.js';
+import locationsRouter from './routes/locations.router.js';
+import accessibilityRouter from './routes/accessibility.router.js';
+import adminRouter from './routes/admin.router.js';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+export const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Health Check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ACCESS Transport API', timestamp: new Date().toISOString() });
+// Swagger Docs Configuration
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'ACCESS Public Transport Assistant API',
+      version: '1.0.0',
+      description:
+        'Production backend for accessible, safe, and transparent public transit planning.',
+    },
+    servers: [
+      {
+        url: `http://localhost:${config.port}`,
+        description: 'Local Development Server',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+  },
+  apis: ['./src/routes/*.ts', './dist/routes/*.js'],
 });
 
-// =========================================================================
-// 1. ROUTE DISCOVERY & EVALUATION ENGINE
-// =========================================================================
-app.post('/api/routes/search', async (req, res) => {
-  const { origin, destination, profile } = req.body;
-  // TODO: Query Prisma and compute multi-criteria accessibility score
-  res.json({ message: 'Route search endpoint ready for implementation', search: { origin, destination, profile } });
+// Swagger UI Route
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Health check endpoint
+app.get(['/health', '/api/health'], (_req, res) => {
+  sendSuccess(res, {
+    status: 'healthy',
+    service: 'ACCESS Transport Backend',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    env: config.env,
+    demoMode: config.isDemoMode,
+  });
 });
 
-app.get('/api/routes/:id', async (req, res) => {
-  const { id } = req.params;
-  // TODO: Fetch route, stops, live vehicle telemetry and current conditions
-  res.json({ message: 'Route detail endpoint ready for implementation', routeId: id });
-});
+// Mount Routes (supporting both / and /api prefix for compatibility with frontends/proxies)
+const registerRoutes = (prefix: string) => {
+  app.use(`${prefix}/auth`, authRouter);
+  app.use(`${prefix}/profile`, profileRouter);
+  app.use(`${prefix}/stops`, stopsRouter);
+  app.use(`${prefix}/routes`, routesRouter);
+  app.use(`${prefix}/vehicles`, vehiclesRouter);
+  app.use(`${prefix}/journeys`, journeysRouter);
+  app.use(`${prefix}/crowding`, crowdingRouter);
+  app.use(`${prefix}/fares`, faresRouter);
+  app.use(`${prefix}/transport`, transportRouter);
+  app.use(`${prefix}/safety`, safetyRouter);
+  app.use(`${prefix}/reports`, reportsRouter);
+  app.use(`${prefix}/notifications`, notificationsRouter);
+  app.use(`${prefix}/locations`, locationsRouter);
+  app.use(`${prefix}/accessibility`, accessibilityRouter);
+  app.use(`${prefix}/admin`, adminRouter);
+  app.use(`${prefix}/feedback`, feedbackRouter);
+};
 
-// =========================================================================
-// 2. JOURNEY LIFECYCLE & PASSENGER TRACKING
-// =========================================================================
-app.post('/api/journeys/start', async (req, res) => {
-  const { routeId, origin, destination } = req.body;
-  // TODO: Create active Journey record and initialize SafetySession in database
-  res.json({ message: 'Journey start endpoint ready', journeyId: `journey-${Date.now()}` });
-});
+registerRoutes('');
+registerRoutes('/api');
 
-app.post('/api/journeys/:id/complete', async (req, res) => {
-  const { id } = req.params;
-  // TODO: Mark journey COMPLETED, calculate trip statistics and close safety session
-  res.json({ message: 'Journey completion logged', journeyId: id });
-});
+// Error Handling
+app.use(notFoundHandler);
+app.use(errorHandler);
 
-// =========================================================================
-// 3. PROACTIVE SAFETY CHECK-IN API (MODULE 1)
-// =========================================================================
-app.post('/api/checkin/start', async (req, res) => {
-  const { journeyId, intervalMinutes = 10 } = req.body;
-  res.json({ sessionId: `safety-${Date.now()}`, journeyId, status: 'ACTIVE', nextCheckInDue: new Date(Date.now() + intervalMinutes * 60000) });
-});
+// Start server if not running in serverless / test mode
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  app.listen(config.port, () => {
+    logger.info(`[ACCESS Backend] Running on http://localhost:${config.port}`);
+    logger.info(`[ACCESS Backend] Swagger documentation available at http://localhost:${config.port}/docs`);
+    startScheduler();
+  });
+}
 
-app.post('/api/checkin/heartbeat', async (req, res) => {
-  const { sessionId } = req.body;
-  res.json({ sessionId, status: 'SAFE', lastCheckIn: new Date() });
-});
-
-app.post('/api/checkin/emergency', async (req, res) => {
-  const { sessionId } = req.body;
-  // TODO: Dispatch simulated emergency alerts / SMS to registered emergency contact
-  res.json({ sessionId, status: 'EMERGENCY', emergencyContactNotified: true });
-});
-
-// =========================================================================
-// 4. TRANSPORT CONDITION & INCIDENT REPORTING (MODULE 3)
-// =========================================================================
-app.post('/api/reports/crowding', async (req, res) => {
-  const { routeId, crowding, comment } = req.body;
-  res.status(201).json({ reportId: `rpt-${Date.now()}`, routeId, crowding, comment, status: 'NEW' });
-});
-
-app.post('/api/reports/delay', async (req, res) => {
-  const { routeId, delayMinutes, comment } = req.body;
-  res.status(201).json({ reportId: `rpt-${Date.now()}`, routeId, delayMinutes, comment, status: 'NEW' });
-});
-
-app.post('/api/reports/accessibility', async (req, res) => {
-  const { routeId, accessibilityIssue, comment } = req.body;
-  res.status(201).json({ reportId: `rpt-${Date.now()}`, routeId, accessibilityIssue, comment, status: 'NEW' });
-});
-
-// =========================================================================
-// 5. OPERATOR DISPATCH & TELEMETRY PUBLISHER
-// =========================================================================
-app.get('/api/operator/routes', async (req, res) => {
-  res.json({ message: 'Operator routes telemetry list' });
-});
-
-app.put('/api/operator/routes/:id/conditions', async (req, res) => {
-  const { id } = req.params;
-  const { delay, crowding, accessibility, vehicleStatus } = req.body;
-  // TODO: Update TransportCondition and broadcast WebSocket event to active passengers
-  res.json({ routeId: id, updated: { delay, crowding, accessibility, vehicleStatus }, timestamp: new Date() });
-});
-
-app.listen(PORT, () => {
-  console.log(`[ACCESS Backend] Service running on http://localhost:${PORT}`);
-});
+export default app;
