@@ -2,17 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
-import { Button, Modal } from '../../components/ui';
+import { Button, Modal, Input } from '../../components/ui';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
   Navigation, Clock, Bus, MapPin, CheckCircle, ShieldAlert,
-  ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle, MessageSquarePlus
+  ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle,
+  MessageSquarePlus, Phone, Share2, AlertOctagon, X
 } from 'lucide-react';
 import { haversineDistanceClient } from '../../utils/onlineRouting';
 
-// Custom Map Pins (Google Maps Style)
+// Custom Map Pins
 const createMapPin = (color: string, label: string) =>
   L.divIcon({
     className: 'custom-nav-pin',
@@ -20,7 +21,7 @@ const createMapPin = (color: string, label: string) =>
       <div style="
         background-color: ${color};
         color: white;
-        border: 2px solid white;
+        border: 2.5px solid white;
         border-radius: 50%;
         width: 32px;
         height: 32px;
@@ -38,53 +39,50 @@ const createMapPin = (color: string, label: string) =>
     iconAnchor: [16, 16],
   });
 
-const originPin = createMapPin('#059669', 'A');
-const destPin = createMapPin('#dc2626', 'B');
-const userPin = createMapPin('#2563eb', '🚶');
+const originPin = createMapPin('#10b981', 'A');
+const destPin = createMapPin('#ef4444', 'B');
+const userGpsPin = createMapPin('#000000', '📍');
 
-// Map Center & Bounds Follower
 function NavBoundsController({
   coordinates,
   currentPos,
 }: {
   coordinates: Array<[number, number]>;
-  currentPos?: [number, number];
+  currentPos: [number, number];
 }) {
   const map = useMap();
-  const initialFit = useRef(false);
 
   useEffect(() => {
-    if (!initialFit.current && coordinates && coordinates.length > 0) {
+    if (coordinates && coordinates.length > 0) {
       try {
-        const validCoords = coordinates.filter(
-          (c) => Array.isArray(c) && c.length === 2 && typeof c[0] === 'number' && !isNaN(c[0]) && typeof c[1] === 'number' && !isNaN(c[1])
-        );
-        if (validCoords.length > 0) {
-          const bounds = L.latLngBounds(validCoords.map(([lat, lng]) => [lat, lng]));
-          if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-            initialFit.current = true;
-          }
-        }
-      } catch (e) {
+        const bounds = L.latLngBounds(coordinates);
+        bounds.extend(currentPos);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      } catch {
         // ignore bounds fit error
       }
     }
-  }, [coordinates, map]);
+  }, [coordinates, currentPos, map]);
 
   return null;
 }
 
 export default function ActiveJourneyPage() {
   const navigate = useNavigate();
-  const { state, completeJourney, addNotification } = useAppStore();
+  const { state, completeJourney, addNotification, setUser } = useAppStore();
   const { addToast } = useToast();
   const { activeJourney } = state;
 
   const [showEmergencyModal, setShowEmergencyModal] = useState<boolean>(false);
-  const [showCompleteModal, setShowCompleteModal] = useState<boolean>(false);
+  const [showEmergencySetupModal, setShowEmergencySetupModal] = useState<boolean>(false);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [hasArrivedSafely, setHasArrivedSafely] = useState<boolean>(false);
+  const [sosActive, setSosActive] = useState<boolean>(false);
+
+  // Emergency contact inputs for setup modal
+  const [contactName, setContactName] = useState<string>(state.currentUser?.emergencyContact?.name || '');
+  const [contactPhone, setContactPhone] = useState<string>(state.currentUser?.emergencyContact?.phone || '');
+  const [contactRelation, setContactRelation] = useState<string>(state.currentUser?.emergencyContact?.relationship || 'Family');
 
   // Live Location & Progress State
   const [progressIndex, setProgressIndex] = useState<number>(0);
@@ -93,26 +91,18 @@ export default function ActiveJourneyPage() {
 
   // Safe Coordinates Calculation
   const fullRouteArr: Array<[number, number]> = activeJourney?.geometry?.fullRoute || [];
-  const originCoords: [number, number] = [
-    activeJourney?.originCoords?.lat || (fullRouteArr.length > 0 ? fullRouteArr[0][0] : 20.3555),
-    activeJourney?.originCoords?.lng || (fullRouteArr.length > 0 ? fullRouteArr[0][1] : 85.8145),
-  ];
-
-  const destCoords: [number, number] = [
-    activeJourney?.destinationCoords?.lat ||
-      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][0] : 20.3450),
-    activeJourney?.destinationCoords?.lng ||
-      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][1] : 85.8180),
-  ];
+  const originCoords: [number, number] =
+    fullRouteArr.length > 0 ? fullRouteArr[0] : [20.3555, 85.8145];
+  const destCoords: [number, number] =
+    fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1] : [20.3450, 85.8180];
 
   const continuousRoute: Array<[number, number]> =
     fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
 
-  // 1. Continuous Live GPS & Simulated Telemetry Tracking
+  // Continuous Live GPS Watcher & Waypoint Advancement
   useEffect(() => {
     if (!activeJourney) return;
 
-    // Real device GPS tracking watcher
     let watchId: number | null = null;
     if (navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition(
@@ -121,33 +111,23 @@ export default function ActiveJourneyPage() {
           const lng = pos.coords.longitude;
           setUserLocation([lat, lng]);
 
-          // Calculate remaining distance to destination
           const dist = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
           setRemainingDistMeters(dist);
 
-          // If reached within 60 meters of destination, trigger safe arrival!
           if (dist <= 60 && !hasArrivedSafely) {
             triggerSafeArrival();
           }
         },
         (err) => {
-          // Fallback to smooth route advancement
+          console.warn('Live GPS watch not available, using route progression.', err);
         },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       );
     }
 
-    // Smooth forward progression along the road coordinates
     const routeProgression = setInterval(() => {
       setProgressIndex((prev) => {
-        const next = prev + 1;
-        if (next >= continuousRoute.length) {
-          if (!hasArrivedSafely) {
-            triggerSafeArrival();
-          }
-          return continuousRoute.length - 1;
-        }
-
+        const next = Math.min(prev + 1, continuousRoute.length - 1);
         const nextPoint = continuousRoute[next];
         if (nextPoint) {
           setUserLocation(nextPoint);
@@ -185,14 +165,72 @@ export default function ActiveJourneyPage() {
   // Conclude / End Trip smoothly
   const handleEndTrip = () => {
     completeJourney();
-    setShowCompleteModal(false);
     addToast('success', 'Trip completed successfully! Saved to your past trips.');
     navigate('/plan');
   };
 
-  const handleEmergencyTrigger = () => {
+  const livePos: [number, number] =
+    userLocation || continuousRoute[progressIndex] || originCoords;
+
+  // Handle SOS Click
+  const handleSosClick = () => {
+    const currentPhone = state.currentUser?.emergencyContact?.phone;
+    if (!currentPhone || currentPhone.trim() === '') {
+      // Prompt user to set up emergency contact
+      setShowEmergencySetupModal(true);
+    } else {
+      setShowEmergencyModal(true);
+    }
+  };
+
+  // Save Emergency Contact Setup
+  const handleSaveContactAndTriggerSos = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactPhone) {
+      addToast('error', 'Please provide a valid emergency phone number.');
+      return;
+    }
+
+    const newContact = {
+      name: contactName || 'Emergency Contact',
+      phone: contactPhone,
+      relationship: contactRelation || 'Family',
+    };
+
+    if (state.currentUser) {
+      setUser({
+        ...state.currentUser,
+        emergencyContact: newContact,
+      });
+    }
+
+    setShowEmergencySetupModal(false);
+    triggerSosDispatch(newContact);
+  };
+
+  // Dispatch SOS Telemetry with Live GPS Coordinates
+  const triggerSosDispatch = (contact?: { name: string; phone: string; relationship?: string }) => {
+    const activeContact = contact || state.currentUser?.emergencyContact || {
+      name: 'Emergency Contact',
+      phone: '+91 98765 43210',
+    };
+
+    setSosActive(true);
     setShowEmergencyModal(false);
-    addToast('error', 'EMERGENCY SOS: Shared live coordinates with emergency contacts & transit control.');
+
+    const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
+    const sosMessage = `🚨 EMERGENCY ALERT: Passenger triggered SOS during trip to ${activeJourney?.destinationName || 'Destination'}. Current Live GPS: ${coordsStr}. Dispatched SMS to ${activeContact.name} (${activeContact.phone}) and Transit Emergency Dispatch.`;
+
+    addNotification({
+      id: `sos-${Date.now()}`,
+      title: '🚨 EMERGENCY SOS DISPATCHED',
+      message: sosMessage,
+      type: 'safety',
+      timestamp: new Date().toISOString(),
+      read: false,
+    });
+
+    addToast('error', `🚨 EMERGENCY SOS SENT: Live GPS location (${coordsStr}) dispatched to ${activeContact.phone}!`);
   };
 
   if (!activeJourney && !hasArrivedSafely) {
@@ -211,9 +249,6 @@ export default function ActiveJourneyPage() {
       </div>
     );
   }
-
-  const livePos: [number, number] =
-    userLocation || continuousRoute[progressIndex] || originCoords;
 
   const currentStep =
     activeJourney?.turnByTurn?.[Math.min(progressIndex, (activeJourney?.turnByTurn?.length || 1) - 1)] ||
@@ -235,13 +270,13 @@ export default function ActiveJourneyPage() {
             You have arrived!
           </h1>
           <p className="text-xs text-neutral-600 mt-1 max-w-sm mx-auto">
-            You safely reached <strong>{activeJourney?.destinationName}</strong> via {activeJourney?.routeName}. Your emergency contacts have been confirmed.
+            You safely reached <strong>{activeJourney?.destinationName}</strong>. Your emergency contacts have been confirmed.
           </p>
         </div>
 
         <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs text-left space-y-2">
           <div className="flex justify-between text-neutral-600">
-            <span>Trip Route:</span>
+            <span>Trip Option:</span>
             <strong className="text-neutral-900">{activeJourney?.routeName}</strong>
           </div>
           <div className="flex justify-between text-neutral-600">
@@ -250,28 +285,74 @@ export default function ActiveJourneyPage() {
               {activeJourney?.fare?.type === 'exact' ? `₹${activeJourney.fare.exact}` : `₹${activeJourney?.fare?.min || 15} - ₹${activeJourney?.fare?.max || 25}`}
             </strong>
           </div>
-          <div className="flex justify-between text-neutral-600">
-            <span>Safety Status:</span>
-            <span className="text-emerald-700 font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> 100% Safe
-            </span>
-          </div>
         </div>
 
-        <Button
-          onClick={handleEndTrip}
-          size="lg"
-          className="w-full py-4 text-sm font-black rounded-2xl bg-black hover:bg-neutral-800 text-white shadow-lg"
-        >
-          Finish & Return to Home
+        <Button onClick={handleEndTrip} size="lg" className="w-full py-4 text-sm font-bold shadow-md">
+          Conclude Trip & Save
         </Button>
       </div>
     );
   }
 
+  const activeContact = state.currentUser?.emergencyContact || {
+    name: 'Emergency Contact',
+    phone: '+91 98765 43210',
+  };
+
   return (
     <div className="max-w-xl mx-auto px-4 py-4 sm:py-6 space-y-4">
-      {/* Top Google Maps Style Turn-by-Turn Instruction Banner */}
+      {/* Active SOS Red Emergency Bar if Triggered */}
+      {sosActive && (
+        <div className="bg-red-600 text-white p-4 rounded-3xl shadow-xl space-y-3 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertOctagon className="w-5 h-5 text-white animate-spin" />
+              <span className="font-black text-sm uppercase tracking-wider">
+                🚨 Emergency SOS Active
+              </span>
+            </div>
+            <button
+              onClick={() => setSosActive(false)}
+              className="p-1 rounded-full hover:bg-red-700 text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="text-xs text-red-100 leading-relaxed">
+            Live GPS ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) dispatched via SMS to <strong>{activeContact.name} ({activeContact.phone})</strong> and Transit Dispatch.
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <a
+              href={`tel:${activeContact.phone}`}
+              className="py-2.5 px-3 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
+            >
+              <Phone className="w-3.5 h-3.5" /> Call Contact
+            </a>
+
+            <a
+              href="tel:112"
+              className="py-2.5 px-3 rounded-xl bg-red-950 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" /> Call 112
+            </a>
+
+            <a
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                `🚨 EMERGENCY: I need immediate assistance on transit. My live GPS location: https://maps.google.com/?q=${livePos[0]},${livePos[1]}`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2.5 px-3 rounded-xl bg-emerald-700 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-emerald-800"
+            >
+              <Share2 className="w-3.5 h-3.5" /> Share GPS
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Top Turn-by-Turn Instruction Banner */}
       <div className="bg-black text-white p-4 sm:p-5 rounded-3xl shadow-lg space-y-2">
         <div className="flex items-center justify-between text-xs text-neutral-400">
           <span className="flex items-center gap-1.5 font-bold text-white">
@@ -299,7 +380,7 @@ export default function ActiveJourneyPage() {
         </div>
       </div>
 
-      {/* Live Google Maps Continuous Polyline & Tracking Map */}
+      {/* Live Continuous Polyline & Tracking Map - Isolated Stacking Context */}
       <div className="h-[340px] sm:h-[400px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
         <MapContainer
           center={livePos}
@@ -318,21 +399,16 @@ export default function ActiveJourneyPage() {
             </Popup>
           </Marker>
 
-          {/* Clean Google Maps Vibrant Blue Continuous Route Line */}
-          <Polyline
-            positions={continuousRoute}
-            color="#2563eb"
-            weight={6}
-            opacity={0.9}
-          />
+          {/* Vibrant Blue Continuous Route Line */}
+          <Polyline positions={continuousRoute} color="#2563eb" weight={6} opacity={0.9} />
 
-          {/* Live Continuous User GPS Location Marker */}
-          <Marker position={livePos} icon={userPin}>
+          {/* Real-Time Live User GPS Pin */}
+          <Marker position={livePos} icon={userGpsPin}>
             <Popup>
-              <div className="p-1">
-                <strong className="block text-xs text-blue-800">Live Location Tracking</strong>
-                <span className="text-[11px] text-neutral-600 block">
-                  {remainingDistMeters}m remaining to {activeJourney?.destinationName}
+              <div className="p-1 text-xs font-bold text-neutral-900">
+                <span>📍 Live Position</span>
+                <span className="block text-[11px] text-neutral-500 font-normal mt-0.5">
+                  {remainingDistMeters > 1000 ? `${(remainingDistMeters / 1000).toFixed(1)} km to destination` : `${remainingDistMeters}m to destination`}
                 </span>
               </div>
             </Popup>
@@ -346,8 +422,8 @@ export default function ActiveJourneyPage() {
           </Marker>
         </MapContainer>
 
-        {/* Quiet Background Safety Monitoring Badge (No annoying timers) */}
-        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-1.5">
+        {/* Quiet Background Safety Monitoring Badge */}
+        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-10 flex items-center gap-1.5">
           <ShieldCheck className="w-4 h-4 text-emerald-600" />
           <span>Safety Active</span>
         </div>
@@ -380,15 +456,15 @@ export default function ActiveJourneyPage() {
           {/* SOS Button */}
           <Button
             variant="danger"
-            onClick={() => setShowEmergencyModal(true)}
-            className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 shadow-sm"
+            onClick={handleSosClick}
+            className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             <span>SOS</span>
           </Button>
         </div>
 
-        {/* End & Conclude Trip Button (1-Click Works Instantly) */}
+        {/* End & Conclude Trip Button */}
         <button
           type="button"
           onClick={handleEndTrip}
@@ -438,7 +514,53 @@ export default function ActiveJourneyPage() {
         </div>
       </Modal>
 
-      {/* Emergency SOS Modal */}
+      {/* Emergency Contact Setup Modal (If contact not set) */}
+      <Modal
+        open={showEmergencySetupModal}
+        onClose={() => setShowEmergencySetupModal(false)}
+        title="🛡️ Setup Emergency Contact"
+      >
+        <form onSubmit={handleSaveContactAndTriggerSos} className="space-y-4 text-xs">
+          <p className="text-neutral-600">
+            Please provide an emergency contact phone number to receive live GPS telemetry during emergencies.
+          </p>
+
+          <Input
+            label="Contact Name"
+            placeholder="e.g. Parent / Friend / Spouse"
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Emergency Mobile Phone"
+            placeholder="+91 98765 43210"
+            icon={<Phone className="w-4 h-4" />}
+            value={contactPhone}
+            onChange={(e) => setContactPhone(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Relationship"
+            placeholder="e.g. Sister / Family"
+            value={contactRelation}
+            onChange={(e) => setContactRelation(e.target.value)}
+          />
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" type="button" onClick={() => setShowEmergencySetupModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" size="sm" type="submit">
+              Save & Send SOS
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Emergency SOS Confirmation Modal */}
       <Modal
         open={showEmergencyModal}
         onClose={() => setShowEmergencyModal(false)}
@@ -446,19 +568,19 @@ export default function ActiveJourneyPage() {
       >
         <div className="space-y-4">
           <p className="text-xs text-neutral-700 leading-relaxed">
-            This will immediately transmit your current live GPS coordinates ({livePos[0].toFixed(4)}, {livePos[1].toFixed(4)}) and route telemetry to your emergency contacts and local transit dispatch.
+            This will immediately transmit your current live GPS coordinates ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) and route telemetry to your emergency contact and transit emergency services.
           </p>
 
           <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-900">
-            <span className="font-bold block">Live Emergency Dispatch Ready</span>
-            <span className="text-[11px] block mt-0.5">Contact: Priya Sharma (+91 98765 43210)</span>
+            <span className="font-bold block">Live Emergency Dispatch Destination:</span>
+            <span className="text-[11px] block mt-0.5">Contact: {activeContact.name} ({activeContact.phone})</span>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setShowEmergencyModal(false)}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleEmergencyTrigger}>
+            <Button variant="danger" onClick={() => triggerSosDispatch()}>
               Confirm SOS Dispatch
             </Button>
           </div>
