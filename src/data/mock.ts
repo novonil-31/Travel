@@ -27,8 +27,8 @@ export const DEMO_STOPS: Stop[] = [
 // ============ ROUTES ============
 export const DEMO_ROUTES: Route[] = [
   {
-    id: 'C3', name: 'Campus Line C3 (Step-Free Low-Floor)', shortName: 'C3', vehicleType: 'bus', color: '#059669',
-    description: 'Campus Gate to Patia via KIIT Square (100% Ramp Accessible)', active: true,
+    id: 'C3', name: 'City Bus (Low-Floor Ramp)', shortName: 'Bus', vehicleType: 'bus', color: '#059669',
+    description: 'Direct step-free city bus with certified wheelchair ramp & priority seating', active: true,
     stops: [
       { stopId: 's1', order: 0, arrivalOffset: 0, departureOffset: 1 },
       { stopId: 's5', order: 1, arrivalOffset: 8, departureOffset: 9 },
@@ -37,8 +37,8 @@ export const DEMO_ROUTES: Route[] = [
     ],
   },
   {
-    id: 'C2', name: 'Express Line C2 (City Corridor)', shortName: 'C2', vehicleType: 'bus', color: '#2563eb',
-    description: 'Campus Gate to Railway Station via Patia & Vani Vihar', active: true,
+    id: 'C2', name: 'Fast City Bus (Express)', shortName: 'Bus', vehicleType: 'bus', color: '#2563eb',
+    description: 'Fast express city transit with limited stops', active: true,
     stops: [
       { stopId: 's1', order: 0, arrivalOffset: 0, departureOffset: 1 },
       { stopId: 's3', order: 1, arrivalOffset: 10, departureOffset: 11 },
@@ -47,26 +47,16 @@ export const DEMO_ROUTES: Route[] = [
     ],
   },
   {
-    id: 'C5', name: 'Campus Express C5 (Tech Corridor)', shortName: 'C5', vehicleType: 'bus', color: '#d97706',
-    description: 'Infocity to Campus 25 via KIIT Square & Jaydev Vihar', active: true,
-    stops: [
-      { stopId: 's4', order: 0, arrivalOffset: 0, departureOffset: 1 },
-      { stopId: 's2', order: 1, arrivalOffset: 12, departureOffset: 13 },
-      { stopId: 's10', order: 2, arrivalOffset: 25, departureOffset: 26 },
-      { stopId: 's7', order: 3, arrivalOffset: 35, departureOffset: 35 },
-    ],
-  },
-  {
-    id: 'S1', name: 'Accessible Shared Shuttle S1', shortName: 'S1', vehicleType: 'shared-transport', color: '#7c3aed',
-    description: 'Shared micro-transit corridor with doorstep ramp boarding', active: true,
+    id: 'S1', name: 'Sharing Taxi & Auto Stand', shortName: 'Taxi', vehicleType: 'shared-transport', color: '#7c3aed',
+    description: 'Shared auto & taxi micro-transit from nearest designated stand', active: true,
     stops: [
       { stopId: 's7', order: 0, arrivalOffset: 0, departureOffset: 1 },
       { stopId: 's10', order: 1, arrivalOffset: 15, departureOffset: 15 },
     ],
   },
   {
-    id: 'CV1', name: 'Electric Campus Cart CV1', shortName: 'CV1', vehicleType: 'campus-vehicle', color: '#0891b2',
-    description: 'Low-speed zero-emission wheelchair-accessible campus buggy', active: true,
+    id: 'CV1', name: 'Campus Shuttle Buggy', shortName: 'Cart', vehicleType: 'campus-vehicle', color: '#0891b2',
+    description: 'Step-free electric campus buggy connecting gates and departments', active: true,
     stops: [
       { stopId: 's1', order: 0, arrivalOffset: 0, departureOffset: 1 },
       { stopId: 's7', order: 1, arrivalOffset: 5, departureOffset: 6 },
@@ -77,30 +67,30 @@ export const DEMO_ROUTES: Route[] = [
 
 // ============ VEHICLES ============
 export const DEMO_VEHICLES: Vehicle[] = [
-  { id: 'v1', routeId: 'C3', name: 'C3-Bus-01 (Low Floor Ramp)', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's2', lat: 20.3530, lng: 85.8160 },
-  { id: 'v2', routeId: 'C2', name: 'C2-Bus-01', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: false, status: 'active', currentStopId: 's1', lat: 20.3555, lng: 85.8145 },
-  { id: 'v3', routeId: 'C2', name: 'C2-Bus-02', type: 'bus', capacity: 40, accessible: false, hasRamp: false, hasLowFloor: false, status: 'active', currentStopId: 's3', lat: 20.3450, lng: 85.8180 },
-  { id: 'v4', routeId: 'C5', name: 'C5-Bus-01 (Accessible)', type: 'bus', capacity: 35, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's4', lat: 20.3600, lng: 85.8120 },
-  { id: 'v5', routeId: 'C5', name: 'C5-Bus-02', type: 'bus', capacity: 35, accessible: false, hasRamp: false, hasLowFloor: false, status: 'delayed', currentStopId: 's10', lat: 20.3050, lng: 85.8200 },
-  { id: 'v6', routeId: 'S1', name: 'S1-Van-01 (Hydraulic Lift)', type: 'shared-transport', capacity: 8, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's7', lat: 20.3510, lng: 85.8130 },
-  { id: 'v7', routeId: 'CV1', name: 'CV1-Cart-01 (Campus Buggy)', type: 'campus-vehicle', capacity: 6, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's1', lat: 20.3555, lng: 85.8145 },
-  { id: 'v8', routeId: 'C3', name: 'C3-Bus-02 (Low Floor)', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's5', lat: 20.3570, lng: 85.8170 },
+  { id: 'v1', routeId: 'C3', name: 'City Bus-01 (Ramp Active)', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's2', lat: 20.3530, lng: 85.8160 },
+  { id: 'v2', routeId: 'C2', name: 'Fast Bus-01', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: false, status: 'active', currentStopId: 's1', lat: 20.3555, lng: 85.8145 },
+  { id: 'v3', routeId: 'C2', name: 'Fast Bus-02', type: 'bus', capacity: 40, accessible: false, hasRamp: false, hasLowFloor: false, status: 'active', currentStopId: 's3', lat: 20.3450, lng: 85.8180 },
+  { id: 'v4', routeId: 'C5', name: 'City Bus-03 (Accessible)', type: 'bus', capacity: 35, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's4', lat: 20.3600, lng: 85.8120 },
+  { id: 'v5', routeId: 'C5', name: 'City Bus-04', type: 'bus', capacity: 35, accessible: false, hasRamp: false, hasLowFloor: false, status: 'delayed', currentStopId: 's10', lat: 20.3050, lng: 85.8200 },
+  { id: 'v6', routeId: 'S1', name: 'Sharing Auto-01', type: 'shared-transport', capacity: 6, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's7', lat: 20.3510, lng: 85.8130 },
+  { id: 'v7', routeId: 'CV1', name: 'Campus Cart-01', type: 'campus-vehicle', capacity: 6, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's1', lat: 20.3555, lng: 85.8145 },
+  { id: 'v8', routeId: 'C3', name: 'City Bus-02 (Ramp)', type: 'bus', capacity: 40, accessible: true, hasRamp: true, hasLowFloor: true, status: 'active', currentStopId: 's5', lat: 20.3570, lng: 85.8170 },
 ];
 
 // ============ DEFAULT CONDITIONS ============
 export const DEMO_CONDITIONS: Record<string, TransportCondition> = {
   C3: { routeId: 'C3', delay: 0, crowding: 'LOW', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
-  C2: { routeId: 'C2', delay: 0, crowding: 'LOW', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
-  C5: { routeId: 'C5', delay: 3, crowding: 'MEDIUM', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
+  C2: { routeId: 'C2', delay: 3, crowding: 'MEDIUM', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
+  C5: { routeId: 'C5', delay: 8, crowding: 'HIGH', accessibility: 'LIMITED', vehicleStatus: 'delayed', updatedAt: new Date().toISOString() },
   S1: { routeId: 'S1', delay: 0, crowding: 'LOW', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
   CV1: { routeId: 'CV1', delay: 0, crowding: 'LOW', accessibility: 'AVAILABLE', vehicleStatus: 'active', updatedAt: new Date().toISOString() },
 };
 
 // ============ DEMO USER ============
 export const DEMO_USER: User = {
-  id: 'demo-user',
-  name: 'Aarav Sharma',
-  email: 'aarav.sharma@example.com',
+  id: 'guest-user',
+  name: 'Guest Passenger',
+  email: 'guest@transit.maarg',
   role: 'passenger',
   profile: {
     mobility: 'wheelchair',
@@ -112,9 +102,9 @@ export const DEMO_USER: User = {
     safetyPreferences: ['late-night', 'prefer-safer'],
   },
   emergencyContact: {
-    name: 'Priya Sharma',
+    name: 'Emergency Contact',
     phone: '+91 98765 43210',
-    relationship: 'Sister',
+    relationship: 'Family',
   },
 };
 
