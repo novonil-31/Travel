@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-navy-900 font-sans;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-navy-500;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-navy-200 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-navy-300;
+  }
+
+  /* High contrast mode */
+  .contrast-more * {
+    border-color: currentColor !important;
+  }
+  .contrast-more .text-navy-500,
+  .contrast-more .text-navy-400,
+  .contrast-more .text-gray-400,
+  .contrast-more .text-gray-500 {
+    @apply text-navy-800;
+  }
+}
+
+@layer components {
+  .leaflet-container {
+    @apply rounded-2xl;
+    z-index: 1;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Leaflet fixes */
+.leaflet-default-icon-path {
+  background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png);
+}
