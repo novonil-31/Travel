@@ -1,5 +1,5 @@
 // ACCESS — Prisma Schema
-// Database: SQLite (development / hackathon) — switch provider to "postgresql" for production PostGIS
+// Database: SQLite for development, PostgreSQL for production
 // All dynamic records carry provenance: source, confidence, observed_at, retrieved_at, expires_at
 
 datasource db {
