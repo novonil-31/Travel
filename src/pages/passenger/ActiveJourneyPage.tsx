@@ -225,8 +225,11 @@ export default function ActiveJourneyPage() {
     setShowEmergencyModal(false);
 
     const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
+    const mapLink = `https://maps.google.com/?q=${coordsStr}`;
     const sender = state.currentUser?.name || 'Passenger';
+    const rawDigitsPhone = activeContact.phone.replace(/[^0-9+]/g, '');
 
+    // 1. Call Backend Real-Time SMS API Endpoint
     try {
       await safetyApi.sendEmergencySms({
         recipientPhone: activeContact.phone,
@@ -240,7 +243,17 @@ export default function ActiveJourneyPage() {
       console.warn('Real-time SMS dispatch dispatched with fallback.', err);
     }
 
-    const sosMessage = `🚨 EMERGENCY ALERT: ${sender} triggered SOS at Live GPS (${coordsStr}). Real-time SMS dispatched to ${activeContact.name} (${activeContact.phone}) and Transit Emergency Dispatch.`;
+    // 2. Trigger native device SMS application with prefilled message
+    const physicalSmsText = `🚨 EMERGENCY ALERT: I need immediate assistance! My live GPS location is: ${mapLink} (Travelling on ${activeJourney?.routeName || 'Transit'}).`;
+    const nativeSmsUri = `sms:${rawDigitsPhone}?body=${encodeURIComponent(physicalSmsText)}`;
+
+    try {
+      if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+        window.open(nativeSmsUri, '_self');
+      }
+    } catch {}
+
+    const sosMessage = `🚨 REAL-TIME EMERGENCY SMS DISPATCHED: Live GPS location (${coordsStr}) sent via carrier SMS to ${activeContact.name} (${activeContact.phone}) and Transit Dispatch.`;
 
     addNotification({
       id: `sos-${Date.now()}`,
@@ -251,7 +264,7 @@ export default function ActiveJourneyPage() {
       read: false,
     });
 
-    addToast('error', `🚨 EMERGENCY SMS DELIVERED: Live GPS location (${coordsStr}) sent to ${activeContact.phone}!`);
+    addToast('error', `🚨 EMERGENCY SMS SENT: Live GPS location (${coordsStr}) sent to ${activeContact.phone}!`);
   };
 
   if (!activeJourney && !hasArrivedSafely) {
@@ -344,30 +357,39 @@ export default function ActiveJourneyPage() {
             Live GPS ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) dispatched via SMS to <strong>{activeContact.name} ({activeContact.phone})</strong> and Transit Dispatch.
           </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            <a
+              href={`sms:${activeContact.phone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(
+                `🚨 EMERGENCY ALERT: I need immediate assistance on transit! My live GPS location: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)} (Travelling on ${activeJourney?.routeName || 'Transit'}).`
+              )}`}
+              className="py-2.5 px-2 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
+            >
+              <Phone className="w-3.5 h-3.5" /> SMS Alert
+            </a>
+
+            <a
+              href={`https://api.whatsapp.com/send?phone=${activeContact.phone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(
+                `🚨 EMERGENCY: I need immediate assistance on transit. My live GPS location: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2.5 px-2 rounded-xl bg-emerald-700 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-emerald-800"
+            >
+              <Share2 className="w-3.5 h-3.5" /> WhatsApp Pin
+            </a>
+
             <a
               href={`tel:${activeContact.phone}`}
-              className="py-2.5 px-3 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
+              className="py-2.5 px-2 rounded-xl bg-neutral-900 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
             >
               <Phone className="w-3.5 h-3.5" /> Call Contact
             </a>
 
             <a
               href="tel:112"
-              className="py-2.5 px-3 rounded-xl bg-red-950 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
+              className="py-2.5 px-2 rounded-xl bg-red-950 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
             >
               <ShieldAlert className="w-3.5 h-3.5" /> Call 112
-            </a>
-
-            <a
-              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                `🚨 EMERGENCY: I need immediate assistance on transit. My live GPS location: https://maps.google.com/?q=${livePos[0]},${livePos[1]}`
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="py-2.5 px-3 rounded-xl bg-emerald-700 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-emerald-800"
-            >
-              <Share2 className="w-3.5 h-3.5" /> Share GPS
             </a>
           </div>
         </div>

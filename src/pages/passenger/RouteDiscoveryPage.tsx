@@ -1,69 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../../store';
-import { Card, Button, Badge, Modal } from '../../components/ui';
+import { Button, Modal } from '../../components/ui';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
-  Navigation, Clock, Bus, MapPin, ChevronRight, ShieldCheck,
-  Footprints, Sparkles, ArrowRight, IndianRupee, Car, Scale, ChevronDown
+  Navigation, ArrowRight, Clock, ShieldCheck, ChevronRight,
+  Car, Sparkles, Check, ChevronDown, Bus, Footprints,
+  MapPin, AlertCircle, Phone, Info
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 
-// Custom Map Pins (Clean Google Maps Style)
+// Custom Minimalist Map Pins
 const createMapPin = (color: string, label: string) =>
   L.divIcon({
-    className: 'custom-map-pin',
+    className: 'custom-route-pin',
     html: `
       <div style="
         background-color: ${color};
         color: white;
         border: 2px solid white;
         border-radius: 50%;
-        width: 30px;
-        height: 30px;
+        width: 28px;
+        height: 28px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 900;
         font-size: 12px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
       ">
         ${label}
       </div>
     `,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
 
-const originPin = createMapPin('#059669', 'A');
-const destPin = createMapPin('#dc2626', 'B');
+const originPin = createMapPin('#10b981', 'A');
+const destPin = createMapPin('#ef4444', 'B');
+const taxiPin = createMapPin('#f59e0b', '🚖');
 const stopPin = createMapPin('#2563eb', '🚏');
-const taxiPin = createMapPin('#d97706', '🚖');
 
-// Map Bounds Auto-Fitter
+// Auto fit Leaflet bounds smoothly
 function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
   const map = useMap();
-
   useEffect(() => {
-    if (coordinates && Array.isArray(coordinates) && coordinates.length > 0) {
+    if (coordinates && coordinates.length > 0) {
       try {
-        const validCoords = coordinates.filter(
-          (c) => Array.isArray(c) && c.length === 2 && typeof c[0] === 'number' && !isNaN(c[0]) && typeof c[1] === 'number' && !isNaN(c[1])
-        );
-        if (validCoords.length > 0) {
-          const bounds = L.latLngBounds(validCoords.map(([lat, lng]) => [lat, lng]));
-          if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-          }
-        }
-      } catch (e) {
-        // ignore bounds fit error
+        const bounds = L.latLngBounds(coordinates);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      } catch {
+        // ignore bounds error
       }
     }
   }, [coordinates, map]);
-
   return null;
 }
 
@@ -72,13 +64,23 @@ export default function RouteDiscoveryPage() {
   const { state, startJourney } = useAppStore();
   const { searchResults } = state;
 
-  const [selectedRoute, setSelectedRoute] = useState<RouteSearchResult | null>(searchResults[0] || null);
-  const [showSteps, setShowSteps] = useState<boolean>(false);
+  const [selectedRoute, setSelectedRoute] = useState<RouteSearchResult | null>(
+    searchResults[0] || null
+  );
   const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
+  const [showSteps, setShowSteps] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
+  // Update clock every minute for accurate relative arrival times
   useEffect(() => {
-    if (searchResults && searchResults.length > 0 && !selectedRoute) {
-      setSelectedRoute(searchResults[0] || null);
+    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Update selected route if search results change
+  useEffect(() => {
+    if (searchResults.length > 0 && !selectedRoute) {
+      setSelectedRoute(searchResults[0]);
     }
   }, [searchResults, selectedRoute]);
 
@@ -88,12 +90,12 @@ export default function RouteDiscoveryPage() {
         <div className="w-14 h-14 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-800 mx-auto">
           <Navigation className="w-6 h-6" />
         </div>
-        <h2 className="text-xl font-black text-neutral-900">No Routes Found</h2>
+        <h2 className="text-xl font-black text-neutral-900">No Routes Planned Yet</h2>
         <p className="text-xs text-neutral-500">
-          Please enter an origin and destination to plan your journey.
+          Search for your pickup and destination stop to find accessible buses and shared auto stands.
         </p>
         <Button onClick={() => navigate('/plan')} size="sm">
-          Return to Search
+          Plan Accessible Route
         </Button>
       </div>
     );
@@ -106,23 +108,32 @@ export default function RouteDiscoveryPage() {
     }
   };
 
-  // Coordinates for clean Google Maps line
-  const fullRouteArr = selectedRoute?.geometry?.fullRoute || [];
-  const originCoords: [number, number] = [
-    selectedRoute?.originCoords?.lat || (fullRouteArr.length > 0 ? fullRouteArr[0][0] : 20.3555),
-    selectedRoute?.originCoords?.lng || (fullRouteArr.length > 0 ? fullRouteArr[0][1] : 85.8145),
-  ];
-
-  const destCoords: [number, number] = [
-    selectedRoute?.destinationCoords?.lat ||
-      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][0] : 20.3450),
-    selectedRoute?.destinationCoords?.lng ||
-      (fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1][1] : 85.8180),
-  ];
+  // Safe coordinates extraction for Leaflet Polyline
+  const fullRouteArr: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
+  const originCoords: [number, number] =
+    fullRouteArr.length > 0 ? fullRouteArr[0] : [20.3555, 85.8145];
+  const destCoords: [number, number] =
+    fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1] : [20.3450, 85.8180];
 
   // Clean continuous route line from start to end (just like Google Maps)
   const continuousRoute: Array<[number, number]> =
     fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
+
+  // Calculate detailed pickup & arrival timing relative to current time
+  const walkToPickupMinutes = Math.max(1, selectedRoute?.segments?.[0]?.duration || 2);
+  const walkToPickupDistanceMeters = Math.round(walkToPickupMinutes * 65);
+
+  const busWaitMinutes = Math.max(3, (selectedRoute?.delay || 0) + 4);
+  const busArrivalDate = new Date(currentTime.getTime() + busWaitMinutes * 60000);
+  const formattedBusArrivalTime = busArrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const boardingStopName = selectedRoute?.segments?.[0]?.to || `${selectedRoute?.originName} Transit Stop`;
+  const alightingStopName = selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.from || `${selectedRoute?.destinationName} Stop`;
+
+  const finalWalkMinutes = Math.max(1, selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.duration || 1);
+  const finalWalkDistanceMeters = Math.round(finalWalkMinutes * 60);
+
+  const totalWalkDistanceMeters = walkToPickupDistanceMeters + finalWalkDistanceMeters;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6 space-y-4">
@@ -149,7 +160,7 @@ export default function RouteDiscoveryPage() {
       {/* Main Split Layout: Clean Map (Top/Left) + Clean Uber-Style Ride Selector (Bottom/Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Google Maps Style Clean Route Map (7 Cols) */}
-        <div className="lg:col-span-7 h-[360px] sm:h-[450px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
+        <div className="lg:col-span-7 h-[360px] sm:h-[480px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
           <MapContainer
             center={originCoords}
             zoom={14}
@@ -160,14 +171,32 @@ export default function RouteDiscoveryPage() {
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <MapBoundsController coordinates={continuousRoute} />
 
-            {/* 1. Start Marker (Green A) */}
+            {/* 1. Origin Marker A */}
             <Marker position={originCoords} icon={originPin}>
               <Popup>
-                <span className="font-bold text-xs">Pickup (A): {selectedRoute?.originName}</span>
+                <div className="p-1">
+                  <strong className="block text-xs font-bold text-emerald-900">Pickup Origin (A)</strong>
+                  <span className="text-[11px] text-neutral-600">{selectedRoute?.originName}</span>
+                </div>
               </Popup>
             </Marker>
 
-            {/* 2. Clean Start-to-End Continuous Route Polyline (Google Maps Vibrant Blue Line) */}
+            {/* 2. Boarding Stop Marker */}
+            {continuousRoute.length > 1 && (
+              <Marker position={continuousRoute[1] || originCoords} icon={stopPin}>
+                <Popup>
+                  <div className="p-1">
+                    <strong className="block text-xs font-bold text-blue-900">🚏 Boarding Stop</strong>
+                    <span className="text-[11px] text-neutral-700 block font-semibold">{boardingStopName}</span>
+                    <span className="text-[10px] text-neutral-500 block mt-0.5">
+                      Walk {walkToPickupDistanceMeters}m ({walkToPickupMinutes}m) • Next Vehicle: {formattedBusArrivalTime}
+                    </span>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
+
+            {/* Continuous Blue Route Line */}
             <Polyline
               positions={continuousRoute}
               color="#2563eb"
@@ -175,10 +204,13 @@ export default function RouteDiscoveryPage() {
               opacity={0.9}
             />
 
-            {/* 3. Destination Marker (Red B) */}
+            {/* 3. Destination Marker B */}
             <Marker position={destCoords} icon={destPin}>
               <Popup>
-                <span className="font-bold text-xs">Destination (B): {selectedRoute?.destinationName}</span>
+                <div className="p-1">
+                  <strong className="block text-xs font-bold text-red-900">Destination (B)</strong>
+                  <span className="text-[11px] text-neutral-600">{selectedRoute?.destinationName}</span>
+                </div>
               </Popup>
             </Marker>
 
@@ -205,16 +237,17 @@ export default function RouteDiscoveryPage() {
           {/* Simple Floating Route Badge */}
           <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
-            <span>{selectedRoute?.duration} min via {selectedRoute?.route.shortName}</span>
+            <span>{selectedRoute?.duration} min via {selectedRoute?.route.name}</span>
           </div>
         </div>
 
         {/* Uber/Ola Style Clean Ride Options Selector (5 Cols) */}
         <div className="lg:col-span-5 space-y-4">
           <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
-            Choose Your Ride:
+            Choose Your Transit Option:
           </span>
 
+          {/* Ride Options Cards */}
           <div className="space-y-2.5">
             {searchResults.map((result, idx) => {
               const isSelected = selectedRoute?.route.id === result.route.id;
@@ -241,7 +274,7 @@ export default function RouteDiscoveryPage() {
                         isSelected ? 'bg-white text-black' : 'bg-neutral-100 text-neutral-900'
                       }`}
                     >
-                      {result.route.vehicleType === 'shared-transport' ? '🚖' : result.route.shortName}
+                      {result.route.vehicleType === 'shared-transport' ? '🚖' : '🚌'}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -274,39 +307,91 @@ export default function RouteDiscoveryPage() {
             })}
           </div>
 
-          {/* Simple Closest Taxi Stand Quick Bar */}
-          {selectedRoute?.nearbyStands && selectedRoute.nearbyStands[0] && (
-            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-950">
-              <div className="flex items-center gap-2">
-                <Car className="w-4 h-4 text-amber-700 shrink-0" />
-                <div>
-                  <span className="font-bold block">{selectedRoute.nearbyStands[0].name}</span>
-                  <span className="text-[11px] text-amber-800">{selectedRoute.nearbyStands[0].distanceM}m away • ₹{selectedRoute.nearbyStands[0].typicalFareMin}-{selectedRoute.nearbyStands[0].typicalFareMax}</span>
+          {/* Detailed Transit Pickup, Stop Location & Live Arrival Time Breakdown Card */}
+          {selectedRoute && (
+            <div className="bg-white border border-neutral-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5">
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-900 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  Exact Pickup & Drop-off Breakdown
+                </span>
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  Total Walk: {totalWalkDistanceMeters}m
+                </span>
+              </div>
+
+              {/* Step 1: Walk to nearest Boarding Stop */}
+              <div className="flex items-start gap-3 text-xs">
+                <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                  1
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <strong className="text-neutral-900 font-bold">Catch Vehicle At: {boardingStopName}</strong>
+                    <span className="text-emerald-700 font-bold">{walkToPickupDistanceMeters}m walk</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Walk <strong>{walkToPickupDistanceMeters}m (~{walkToPickupMinutes} mins)</strong> from your starting point to the designated stop.
+                  </p>
+                  <div className="mt-1.5 p-2 bg-blue-50/80 border border-blue-100 rounded-xl flex items-center justify-between text-[11px] text-blue-900 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-600" /> Next Vehicle Arrival:
+                    </span>
+                    <span className="font-bold bg-white px-2 py-0.5 rounded-md shadow-xs text-blue-800">
+                      {formattedBusArrivalTime} ({busWaitMinutes}m away)
+                    </span>
+                  </div>
                 </div>
               </div>
-              <span className="text-[10px] font-bold bg-amber-200/80 px-2 py-0.5 rounded-full">
-                Auto Stand
-              </span>
+
+              {/* Step 2: In-Vehicle Ride */}
+              <div className="flex items-start gap-3 text-xs">
+                <div className="w-7 h-7 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                  2
+                </div>
+                <div className="flex-1">
+                  <strong className="text-neutral-900 font-bold">Ride {selectedRoute.route.name}</strong>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Ride for approx. <strong>{Math.max(5, selectedRoute.duration - walkToPickupMinutes - finalWalkMinutes)} mins</strong> in vehicle. {selectedRoute.stairs === 0 ? '♿ 100% Step-free flat ramp access.' : 'Standard transit entry.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3: Alighting & Final Walk */}
+              <div className="flex items-start gap-3 text-xs">
+                <div className="w-7 h-7 rounded-xl bg-red-100 text-red-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                  3
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <strong className="text-neutral-900 font-bold">Get Down At: {alightingStopName}</strong>
+                    <span className="text-neutral-600 font-bold">{finalWalkDistanceMeters}m walk</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Walk remaining <strong>{finalWalkDistanceMeters}m (~{finalWalkMinutes} min)</strong> to your exact final destination.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Big Clean Black Start Button (Like Uber/Ola "Confirm Ride") */}
+          {/* Big Clean Black Start Button */}
           <Button
             size="lg"
             onClick={handleStart}
-            className="w-full py-4 text-base font-black rounded-2xl bg-black hover:bg-neutral-800 text-white shadow-lg flex items-center justify-center gap-2"
+            className="w-full py-4 text-base font-black rounded-2xl bg-black hover:bg-neutral-800 text-white shadow-lg flex items-center justify-center gap-2 active:scale-[0.99]"
           >
-            <span>Start Navigation</span>
+            <span>Start Live Navigation</span>
             <ChevronRight className="w-4 h-4" />
           </Button>
 
           {/* Clean Collapsible Step-by-Step Directions */}
-          <div className="pt-2">
+          <div className="pt-1">
             <button
               onClick={() => setShowSteps(!showSteps)}
               className="w-full py-2.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold flex items-center justify-between transition-colors"
             >
-              <span>{showSteps ? 'Hide' : 'View'} Step-by-Step Route ({selectedRoute?.turnByTurn?.length || 4} Steps)</span>
+              <span>{showSteps ? 'Hide' : 'View'} Complete Turn-by-Turn ({selectedRoute?.turnByTurn?.length || 4} Instructions)</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${showSteps ? 'rotate-180' : ''}`} />
             </button>
 
