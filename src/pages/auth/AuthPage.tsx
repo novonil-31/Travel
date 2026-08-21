@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
 import { Button, Input } from '../../components/ui';
-import { Lock, Mail, User, Phone } from 'lucide-react';
+import { Lock, Mail, User, Phone, ArrowRight } from 'lucide-react';
 import { DEMO_USER } from '../../data/mock';
 import { authApi } from '../../api';
 

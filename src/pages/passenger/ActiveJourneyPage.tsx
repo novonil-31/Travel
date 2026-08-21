@@ -75,39 +75,7 @@ function NavBoundsController({
   return null;
 }
 
-const destIcon = L.divIcon({
-  className: 'custom-marker',
-  html: '<div style="background-color: #DC2626; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px;">B</div>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
-
-const busLiveIcon = L.divIcon({
-  className: 'custom-bus-live',
-  html: '<div style="background-color: #059669; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 12px rgba(5,150,105,0.7); display: flex; align-items: center; justify-content: center; color: white; animation: pulse 2s infinite;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4C2.9 6 1.9 6.8 1.6 7.8l-1.4 5c-.1.4-.2.8-.2 1.2 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/><circle cx="7" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg></div>',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
-});
-
-const stopMarkerIcon = L.divIcon({
-  className: 'custom-stop',
-  html: '<div style="background-color: #4B5563; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-});
-
-function MapBoundsFitter({ points }: { points: Array<[number, number]> }) {
-  const map = useMap();
-  useEffect(() => {
-    if (points && points.length > 0) {
-      const bounds = L.latLngBounds(points);
-      map.fitBounds(bounds, { padding: [30, 30] });
-    }
-  }, [points, map]);
-  return null;
-}
-
-const ActiveJourneyPage: React.FC = () => {
+export default function ActiveJourneyPage() {
   const navigate = useNavigate();
   const { state, completeJourney, addNotification } = useAppStore();
   const { addToast } = useToast();
@@ -442,18 +410,8 @@ const ActiveJourneyPage: React.FC = () => {
               Confirm SOS Dispatch
             </Button>
           </div>
-
-          <Button
-            onClick={handleComplete}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl"
-            disabled={isSubmittingFeedback}
-          >
-            {isSubmittingFeedback ? 'Submitting Feedback...' : 'Done & Submit'}
-          </Button>
         </div>
       </Modal>
     </div>
   );
-};
-
-export default ActiveJourneyPage;
+}
