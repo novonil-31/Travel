@@ -8,8 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
   MapPin, Navigation, ArrowRight, Clock, AlertTriangle, Bus,
-  Shield, HeartPulse, ChevronRight, Compass, Search, Filter,
-  Maximize2, Minimize2
+  Shield, HeartPulse, ChevronRight, Compass, Search, Filter
 } from 'lucide-react';
 import { DEMO_CONDITIONS, DEMO_STOPS } from '../../data/mock';
 
@@ -22,7 +21,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 export default function HomePage() {
   const navigate = useNavigate();
   const { state } = useAppStore();
-  const { currentUser, accessibilityProfile, activeJourney, journeyHistory } = state;
+  const { currentUser, accessibilityProfile, activeJourney } = state;
 
   const [viewMode, setViewMode] = useState<'dashboard' | 'map'>('dashboard');
   const [mapFilter, setMapFilter] = useState<'all' | 'accessible' | 'buses'>('all');
@@ -61,18 +60,18 @@ export default function HomePage() {
 
   return (
     <div
-      className="max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6 min-h-[85vh]"
+      className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 min-h-[85vh]"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Uber Top Control Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
+          <h1 className="text-2xl sm:text-4xl font-black text-neutral-900 tracking-tight">
             {greeting}, {currentUser?.name || 'Aarav'}
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-600">
-            Accessible public transit calibrated to your mobility profile.
+          <p className="text-xs sm:text-sm text-neutral-600 mt-0.5">
+            Accessible public transit calibrated to your mobility settings.
           </p>
         </div>
 
@@ -82,7 +81,9 @@ export default function HomePage() {
             <button
               onClick={() => setViewMode('dashboard')}
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'dashboard' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
+                viewMode === 'dashboard'
+                  ? 'bg-black text-white shadow-sm'
+                  : 'text-neutral-600 hover:text-black'
               }`}
             >
               Dashboard
@@ -90,7 +91,9 @@ export default function HomePage() {
             <button
               onClick={() => setViewMode('map')}
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'map' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:text-black'
+                viewMode === 'map'
+                  ? 'bg-black text-white shadow-sm'
+                  : 'text-neutral-600 hover:text-black'
               }`}
             >
               <Compass className="w-3.5 h-3.5" />
@@ -113,11 +116,13 @@ export default function HomePage() {
           {accessibilityProfile && (
             <div className="bg-neutral-50 border border-neutral-200 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3 overflow-x-auto w-full sm:w-auto no-scrollbar">
-                <div className="w-8 h-8 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-800 shrink-0 font-bold text-sm">
+                <div className="w-8 h-8 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-900 shrink-0 font-bold text-sm">
                   ♿
                 </div>
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">Personal Profile Active</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">
+                    Accessibility Profile Active
+                  </span>
                   <ProfileBadges profile={accessibilityProfile} />
                 </div>
               </div>
@@ -133,18 +138,20 @@ export default function HomePage() {
               {/* Active Journey Card */}
               {activeJourney && (
                 <section className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">Active Trip In Progress</span>
-                  <Card className="p-6 border-l-4 border-l-black shadow-sm">
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+                    Active Trip In Progress
+                  </span>
+                  <div className="bg-white border-2 border-black p-6 rounded-2xl shadow-sm">
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-500 mb-1">
+                        <div className="flex items-center gap-2 text-xs text-neutral-500 mb-1 font-medium">
                           <span>{activeJourney.originName}</span>
-                          <ArrowRight className="w-3 h-3 text-neutral-800" />
+                          <ArrowRight className="w-3 h-3 text-neutral-900" />
                           <span className="font-bold text-neutral-900">{activeJourney.destinationName}</span>
                         </div>
                         <h3 className="text-2xl font-black text-neutral-900">{activeJourney.routeName}</h3>
                       </div>
-                      <Badge variant="glow">Live Active</Badge>
+                      <Badge variant="glow">Live</Badge>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4 py-4 my-2 border-y border-neutral-100">
@@ -171,13 +178,15 @@ export default function HomePage() {
                         </Button>
                       </Link>
                     </div>
-                  </Card>
+                  </div>
                 </section>
               )}
 
               {/* Quick Trip Search Box (Uber Style) */}
               <section className="bg-neutral-50 border border-neutral-200 p-6 rounded-2xl space-y-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-600 block">Frequent Accessible Routes</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+                  Frequent Accessible Routes
+                </span>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <button
                     onClick={() => navigate('/plan')}
@@ -208,13 +217,15 @@ export default function HomePage() {
 
             {/* Right Telemetry Column (4 Cols) */}
             <div className="lg:col-span-4 space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-neutral-600 block">Real-Time Vehicle Feed</span>
-              <Card className="p-0 overflow-hidden divide-y divide-neutral-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+                Live Vehicle Updates
+              </span>
+              <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden divide-y divide-neutral-100 shadow-sm">
                 {Object.entries(state.transportConditions && Object.keys(state.transportConditions).length > 0 ? state.transportConditions : DEMO_CONDITIONS).map(([routeId, cond], i) => (
                   <div key={i} className="p-4 space-y-2 hover:bg-neutral-50 transition-colors">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Bus className="w-4 h-4 text-neutral-800" />
+                        <Bus className="w-4 h-4 text-neutral-900" />
                         <span className="font-bold text-neutral-900 text-sm">Route {routeId}</span>
                       </div>
                       <LastUpdated timestamp={cond.updatedAt} />
@@ -226,7 +237,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 ))}
-              </Card>
+              </div>
             </div>
           </div>
         </div>
@@ -236,8 +247,8 @@ export default function HomePage() {
       {viewMode === 'map' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 bg-neutral-100 p-4 rounded-2xl border border-neutral-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-neutral-600 uppercase mr-1">Filter:</span>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-bold text-neutral-600 uppercase mr-1">Filter:</span>
               {[
                 { id: 'all', label: 'All Stops' },
                 { id: 'accessible', label: '♿ Accessible Only' },
@@ -246,8 +257,10 @@ export default function HomePage() {
                 <button
                   key={f.id}
                   onClick={() => setMapFilter(f.id as any)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    mapFilter === f.id ? 'bg-black text-white' : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                  className={`px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+                    mapFilter === f.id
+                      ? 'bg-black text-white shadow-sm'
+                      : 'bg-white text-neutral-800 border border-neutral-300 hover:bg-neutral-50'
                   }`}
                 >
                   {f.label}
@@ -256,7 +269,7 @@ export default function HomePage() {
             </div>
 
             <Button size="sm" variant="secondary" onClick={() => setViewMode('dashboard')}>
-              Back to Dashboard
+              Return to Dashboard
             </Button>
           </div>
 
@@ -268,10 +281,10 @@ export default function HomePage() {
               {DEMO_STOPS.map(stop => (
                 <Marker key={stop.id} position={[stop.lat, stop.lng]}>
                   <Popup>
-                    <div className="p-1 text-neutral-900">
-                      <strong className="text-sm font-bold block">{stop.name}</strong>
+                    <div className="p-1 font-sans">
+                      <strong className="text-neutral-900 text-sm font-bold block">{stop.name}</strong>
                       <span className="text-xs block text-neutral-600">
-                        {stop.accessible ? '♿ Electric Ramp & Level Boarding' : 'Standard Stop'}
+                        {stop.accessible ? '♿ Electric Ramp & Elevator' : 'Standard Stop'}
                       </span>
                     </div>
                   </Popup>
@@ -280,8 +293,8 @@ export default function HomePage() {
 
               <Marker position={[20.3530, 85.8160]}>
                 <Popup>
-                  <div className="p-1">
-                    <strong className="text-sm text-neutral-900 block">🚌 Low-Floor Bus C3-01</strong>
+                  <div className="p-1 font-sans">
+                    <strong className="text-sm text-neutral-900 font-bold block">🚌 Low-Floor Bus C3-01</strong>
                     <span className="text-xs text-neutral-600 block">Wheelchair Ramp • Low Crowding</span>
                   </div>
                 </Popup>

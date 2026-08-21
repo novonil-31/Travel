@@ -10,7 +10,7 @@ import type { RouteSearchResult } from '../../types';
 
 export default function TripPlannerPage() {
   const navigate = useNavigate();
-  const { setSearchResults, state, updateProfile } = useAppStore();
+  const { setSearchResults, state } = useAppStore();
   
   const [origin, setOrigin] = useState<string>('Campus Gate');
   const [destination, setDestination] = useState<string>('Patia');
@@ -28,11 +28,9 @@ export default function TripPlannerPage() {
     setIsSearching(true);
 
     try {
-      // Find stop coords if available
       const originStop = DEMO_STOPS.find(s => s.name.toLowerCase().includes(origin.toLowerCase())) || DEMO_STOPS[0];
       const destStop = DEMO_STOPS.find(s => s.name.toLowerCase().includes(destination.toLowerCase())) || DEMO_STOPS[DEMO_STOPS.length - 1];
 
-      // Try backend journey planner
       const backendRes = await journeysApi.plan({
         origin: { lat: originStop.lat, lng: originStop.lng, name: origin },
         destination: { lat: destStop.lat, lng: destStop.lng, name: destination },
@@ -40,7 +38,6 @@ export default function TripPlannerPage() {
       });
 
       if (backendRes && backendRes.options && backendRes.options.length > 0) {
-        // Map backend options to frontend RouteSearchResult format
         const mapped: RouteSearchResult[] = backendRes.options.map((opt) => ({
           route: {
             id: opt.routeId,
@@ -106,7 +103,7 @@ export default function TripPlannerPage() {
         return;
       }
     } catch {
-      // Fallback to offline generator if backend not active
+      // Offline fallback
     }
 
     const fallbackResults = generateDemoSearchResults(origin, destination);
