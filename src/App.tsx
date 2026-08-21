@@ -8,6 +8,7 @@ import { DEMO_USER, DEMO_CONDITIONS, DEMO_NOTIFICATIONS, DEMO_JOURNEY_HISTORY } 
 
 // Lazy-load pages for performance
 const LandingPage = lazy(() => import('./pages/passenger/LandingPage'));
+const AuthPage = lazy(() => import('./pages/auth/AuthPage'));
 const HomePage = lazy(() => import('./pages/passenger/HomePage'));
 const ProfilePage = lazy(() => import('./pages/passenger/ProfilePage'));
 const TripPlannerPage = lazy(() => import('./pages/passenger/TripPlannerPage'));
@@ -78,8 +79,10 @@ export default function App() {
     <>
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
-          {/* Landing */}
+          {/* Landing & Auth */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<AuthPage initialMode="login" />} />
+          <Route path="/signup" element={<AuthPage initialMode="signup" />} />
 
           {/* Passenger Routes */}
           <Route element={<PassengerLayout />}>

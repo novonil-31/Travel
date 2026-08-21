@@ -4,100 +4,64 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    @apply bg-white text-neutral-900 font-sans antialiased;
     -webkit-tap-highlight-color: transparent;
   }
 
   ::selection {
-    background-color: #10b981;
-    color: #040812;
+    background-color: #000000;
+    color: #ffffff;
   }
 
   :focus-visible {
-    outline: 2px solid #10b981;
+    outline: 2px solid #000000;
     outline-offset: 2px;
   }
 
-  /* Custom scrollbar */
+  /* Clean Scrollbars */
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.6);
+    background: #f6f6f6;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(100, 116, 139, 0.4);
+    background: #d4d4d4;
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(16, 185, 129, 0.6);
-  }
-
-  /* Mobile viewport & safe-area padding */
-  @supports (padding: env(safe-area-inset-bottom)) {
-    .safe-bottom {
-      padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
-    }
+    background: #a3a3a3;
   }
 }
 
 @layer components {
-  /* Ultra-modern Glassmorphism cards */
-  .glass-panel {
-    @apply bg-dark-900/80 backdrop-blur-xl border border-white/10 shadow-2xl;
-  }
-  
-  .glass-card {
-    @apply bg-dark-850/70 backdrop-blur-lg border border-white/10 rounded-2xl shadow-xl transition-all duration-300;
+  /* Uber-style Clean Input Cards */
+  .uber-input {
+    @apply w-full bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black rounded-xl px-4 py-3.5 text-neutral-900 placeholder:text-neutral-500 font-medium transition-all focus:outline-none focus:ring-0;
   }
 
-  .glass-card-hover {
-    @apply hover:border-access-green/40 hover:bg-dark-800/80 hover:shadow-glow-green hover:-translate-y-0.5;
+  .uber-button-black {
+    @apply bg-black hover:bg-neutral-800 text-white font-bold rounded-xl px-5 py-3.5 transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center;
   }
 
-  .glass-input {
-    @apply bg-dark-950/60 border border-white/15 rounded-xl text-white placeholder-slate-400 focus:border-access-green focus:ring-2 focus:ring-access-green/20 focus:outline-none transition-all;
+  .uber-button-secondary {
+    @apply bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-semibold rounded-xl px-5 py-3.5 transition-all active:scale-[0.99];
   }
 
-  .glass-button-primary {
-    @apply bg-gradient-to-r from-emerald-500 to-teal-600 text-dark-950 font-bold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-400 hover:to-teal-500 active:scale-[0.98] transition-all;
-  }
-
-  .glass-pill {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md border;
-  }
-
-  /* Futuristic gradient text */
-  .gradient-text-emerald {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400;
-  }
-
-  .gradient-text-cyan {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400;
-  }
-
-  .gradient-text-amber {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-300 via-orange-400 to-red-400;
-  }
-
-  /* Leaflet Map Dark Styling */
+  /* Crisp Leaflet Map (Google Maps / Uber style clean light tiles) */
   .leaflet-container {
-    @apply rounded-2xl w-full h-full;
-    background-color: #070f1e !important;
+    @apply w-full h-full rounded-2xl;
+    background-color: #f6f6f6 !important;
     z-index: 10;
   }
 
-  .leaflet-tile {
-    filter: brightness(0.75) invert(1) contrast(2.2) hue-rotate(200deg) saturate(0.5) !important;
-  }
-
   .leaflet-popup-content-wrapper {
-    @apply bg-dark-900/95 text-white backdrop-blur-xl border border-white/20 rounded-2xl shadow-modal;
+    @apply bg-white text-neutral-900 rounded-xl shadow-uber-elevated border border-neutral-200;
   }
 
   .leaflet-popup-tip {
-    @apply bg-dark-900;
+    @apply bg-white;
   }
 }
 

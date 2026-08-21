@@ -1,205 +1,292 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Shield, Sparkles, Navigation, CheckCircle, ArrowRight, Accessibility, HeartPulse, MapPin, Eye, Volume2, Users, Clock } from 'lucide-react';
-import { RadialScore } from '../../components/ui';
+import { Link, useNavigate } from 'react-router-dom';
+import { MapPin, Navigation, Clock, Shield, Accessibility, Users, ArrowRight, CheckCircle2, ChevronDown, Sparkles } from 'lucide-react';
+import { useAppStore } from '../../store';
+import { generateDemoSearchResults, DEMO_STOPS } from '../../data/mock';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix leaflet default icon
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+L.Marker.prototype.options.icon = DefaultIcon;
 
 export default function LandingPage() {
-  const [activePersona, setActivePersona] = useState<'wheelchair' | 'elderly' | 'night'>('wheelchair');
+  const navigate = useNavigate();
+  const { setSearchResults, updateProfile } = useAppStore();
 
-  const personaConfig = {
-    wheelchair: {
-      name: 'Aarav (Wheelchair User)',
-      profile: 'Zero Stairs • Ramp Vehicle • Low Crowds',
-      route: 'Route C3 (Recommended)',
-      score: 92,
-      duration: '28 min',
-      benefit: 'Avoids 2 flights of stairs at underpass and confirms low-floor bus with electric ramp.',
-    },
-    elderly: {
-      name: 'Meera (Senior Citizen)',
-      profile: 'Minimal Walking • Flat Terrain • Shelter',
-      route: 'Route S1 + C3 (Recommended)',
-      score: 89,
-      duration: '24 min',
-      benefit: 'Shortest walking distance (120m) with fully sheltered stops and bench seating.',
-    },
-    night: {
-      name: 'Rohan (Late Night Traveler)',
-      profile: 'Well-Lit Paths • Verified Safety • CCTV',
-      route: 'Route C5 Express (Recommended)',
-      score: 95,
-      duration: '30 min',
-      benefit: 'High-security corridor with active CCTV coverage, 10-min safety check-in heartbeat.',
-    },
+  const [pickup, setPickup] = useState('Campus Gate');
+  const [dropoff, setDropoff] = useState('Patia');
+  const [timeMode, setTimeMode] = useState('now');
+  const [mobilityFilter, setMobilityFilter] = useState<'wheelchair' | 'walking' | 'senior' | 'all'>('wheelchair');
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pickup || !dropoff) return;
+    
+    // Calibrate profile
+    if (mobilityFilter === 'wheelchair') {
+      updateProfile({ mobility: 'wheelchair', stairs: 'avoid', walkingTolerance: 'low' });
+    } else if (mobilityFilter === 'senior') {
+      updateProfile({ mobility: 'elderly', stairs: 'avoid', walkingTolerance: 'low' });
+    }
+
+    const results = generateDemoSearchResults(pickup, dropoff);
+    setSearchResults(results);
+    navigate('/routes');
   };
 
-  const current = personaConfig[activePersona];
+  const polylineCoords: [number, number][] = [
+    [20.3555, 85.8145], // Campus Gate
+    [20.3570, 85.8170], // Hospital
+    [20.3530, 85.8160], // KIIT Square
+    [20.3450, 85.8180], // Patia
+  ];
 
   return (
-    <div className="min-h-screen bg-dark-950 text-slate-100 font-sans selection:bg-emerald-400 selection:text-dark-950 relative overflow-hidden">
-      {/* Background Glow Mesh */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] bg-mesh-dark pointer-events-none opacity-80" />
+    <div className="min-h-screen bg-white text-neutral-900 font-sans">
+      {/* Uber-style Clean Top Navbar */}
+      <header className="bg-black text-white px-6 sm:px-12 h-16 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-10">
+          <Link to="/" className="text-2xl font-black tracking-tight text-white">
+            ACCESS
+          </Link>
+          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
+            <Link to="/app" className="text-white hover:text-neutral-300">Ride</Link>
+            <Link to="/plan" className="text-neutral-300 hover:text-white">Plan Trip</Link>
+            <Link to="/operator" className="text-neutral-300 hover:text-white">Operator</Link>
+          </nav>
+        </div>
 
-      {/* Top Navbar */}
-      <nav className="relative z-20 max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center shadow-glow-green">
-            <Accessibility className="w-6 h-6 text-dark-950 font-black" />
-          </div>
-          <span className="text-2xl font-black tracking-tight text-white">ACCESS</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link to="/demo" className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 transition-all">
-            <Sparkles className="w-3.5 h-3.5" /> Demo HUD
+          <Link to="/login" className="text-sm font-bold text-white hover:text-neutral-300 px-3 py-2">
+            Log in
           </Link>
-          <Link to="/app" className="px-5 py-2.5 rounded-2xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-dark-950 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:from-emerald-400 hover:to-teal-400 transition-all">
-            Launch App
+          <Link to="/signup" className="bg-white text-black hover:bg-neutral-200 px-4 py-2 rounded-full text-xs font-bold transition-all">
+            Sign up
           </Link>
         </div>
-      </nav>
+      </header>
 
-      {/* Hero Section */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 pt-12 pb-24">
-        <div className="text-center max-w-3xl mx-auto space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold backdrop-blur-md shadow-glow-green animate-float">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>AI-Powered Accessible Transit Assistant</span>
-          </div>
-
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.1]">
-            Not the fastest route. <br />
-            <span className="gradient-text-emerald">The BEST route for YOU.</span>
-          </h1>
-
-          <p className="text-base sm:text-xl text-slate-400 font-normal max-w-2xl mx-auto leading-relaxed">
-            Standard transit apps blindly optimize for minutes. <strong className="text-white">ACCESS</strong> calculates personalized accessibility scores, eliminates physical barriers, and protects you with proactive safety check-ins.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link to="/plan" className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-dark-950 font-black text-base shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
-              <Navigation className="w-5 h-5" /> Plan Accessible Journey
-            </Link>
-            <Link to="/demo/pitch" className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-base backdrop-blur-md transition-all flex items-center justify-center gap-2">
-              View Hackathon Pitch <ArrowRight className="w-5 h-5 text-slate-400" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Interactive Persona & Routing Showcase Card */}
-        <div className="mt-16 max-w-4xl mx-auto">
-          <div className="bg-dark-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-white/10">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 block mb-1">Interactive Routing Engine Simulator</span>
-                <h2 className="text-xl sm:text-2xl font-black text-white">See How ACCESS Re-Ranks Routes</h2>
-              </div>
-
-              {/* Persona Selector Tabs */}
-              <div className="flex bg-dark-950 p-1.5 rounded-2xl border border-white/10 gap-1 self-start sm:self-auto overflow-x-auto">
-                <button
-                  onClick={() => setActivePersona('wheelchair')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${activePersona === 'wheelchair' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-dark-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Wheelchair
-                </button>
-                <button
-                  onClick={() => setActivePersona('elderly')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${activePersona === 'elderly' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-dark-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Senior
-                </button>
-                <button
-                  onClick={() => setActivePersona('night')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${activePersona === 'night' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-dark-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Night Safety
-                </button>
-              </div>
+      {/* Hero Section: Uber-Style Split (Left Card + Right Live Map) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left Search Card (5 Cols) */}
+          <div className="lg:col-span-5 bg-white border border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-uber-elevated space-y-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 tracking-tight leading-tight">
+                Go anywhere with barrier-free transit.
+              </h1>
+              <p className="text-sm text-neutral-600 mt-2">
+                Real-time accessibility scores, wheelchair ramp confirmation, and zero unexpected stairs.
+              </p>
             </div>
 
-            <div className="grid sm:grid-cols-3 gap-6 items-center">
-              <div className="sm:col-span-2 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
-                    <Accessibility className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-white text-base">{current.name}</h3>
-                    <p className="text-xs text-slate-400">{current.profile}</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-bold text-white">{current.route}</span>
-                    <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> {current.duration}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    💡 <strong className="text-emerald-300">Decision Reason:</strong> {current.benefit}
-                  </p>
+            <form onSubmit={handleSearch} className="space-y-3.5">
+              {/* Pickup Input */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Pickup Location</label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-black pointer-events-none" />
+                  <select
+                    value={pickup}
+                    onChange={(e) => setPickup(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
+                  >
+                    {DEMO_STOPS.map(stop => (
+                      <option key={stop.id} value={stop.name}>
+                        {stop.name} {stop.accessible ? '♿' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="sm:col-span-1 flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-b from-emerald-500/10 to-transparent border border-emerald-500/20">
-                <RadialScore score={current.score} size="lg" />
-                <span className="text-xs text-slate-400 mt-2 font-medium">Match Rating</span>
+              {/* Drop-off Input */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Drop-off Destination</label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none" />
+                  <select
+                    value={dropoff}
+                    onChange={(e) => setDropoff(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
+                  >
+                    {DEMO_STOPS.map(stop => (
+                      <option key={stop.id} value={stop.name}>
+                        {stop.name} {stop.accessible ? '♿' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Mobility Profile & Schedule Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">Schedule</label>
+                  <select
+                    value={timeMode}
+                    onChange={(e) => setTimeMode(e.target.value)}
+                    className="w-full px-3 py-3 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="now">🕒 Leave Now</option>
+                    <option value="depart">Depart at...</option>
+                    <option value="arrive">Arrive by...</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">Mobility Mode</label>
+                  <select
+                    value={mobilityFilter}
+                    onChange={(e) => setMobilityFilter(e.target.value as any)}
+                    className="w-full px-3 py-3 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="wheelchair">♿ Wheelchair</option>
+                    <option value="senior">👵 Senior</option>
+                    <option value="walking">🦯 Walking Aid</option>
+                    <option value="all">🚶 Standard</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Uber Black CTA Button */}
+              <button
+                type="submit"
+                className="w-full py-4 bg-black hover:bg-neutral-800 text-white font-black text-base rounded-xl transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 mt-2"
+              >
+                <SearchIcon />
+                <span>Search Accessible Routes</span>
+              </button>
+            </form>
+
+            {/* Quick Presets */}
+            <div className="pt-4 border-t border-neutral-100 space-y-2">
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Popular routes in Bhubaneswar:</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { from: 'Campus Gate', to: 'Patia' },
+                  { from: 'Hospital', to: 'Jaydev Vihar' },
+                  { from: 'Infocity', to: 'Campus 25' },
+                ].map((p, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => { setPickup(p.from); setDropoff(p.to); }}
+                    className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-colors"
+                  >
+                    {p.from} → {p.to}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Feature Cards Grid */}
-        <div className="mt-20 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-dark-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-emerald-500/40 transition-all hover:-translate-y-1 group shadow-xl">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4 group-hover:scale-110 transition-transform shadow-glow-green">
-              <Accessibility className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Zero-Barrier Routing</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Filters out impassable stairs, broken lifts, and unpaved curbs in real time using verified station telemetry.
-            </p>
-          </div>
+          {/* Right Live Map Frame (7 Cols) */}
+          <div className="lg:col-span-7 h-[460px] lg:h-[560px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-uber-elevated relative">
+            <MapContainer center={[20.3530, 85.8160]} zoom={14} scrollWheelZoom={false} className="w-full h-full">
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Polyline positions={polylineCoords} color="#000000" weight={5} opacity={0.8} />
 
-          <div className="bg-dark-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-cyan-500/40 transition-all hover:-translate-y-1 group shadow-xl">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-4 group-hover:scale-110 transition-transform shadow-glow-cyan">
-              <HeartPulse className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Proactive Safety HUD</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Scheduled safety heartbeats with automatic escalation to emergency contacts if a check-in is overdue.
-            </p>
-          </div>
+              {DEMO_STOPS.map(stop => (
+                <Marker key={stop.id} position={[stop.lat, stop.lng]}>
+                  <Popup>
+                    <div className="p-1">
+                      <strong className="text-sm font-bold block">{stop.name}</strong>
+                      <span className="text-xs text-neutral-600 block">
+                        {stop.accessible ? '♿ Accessible Ramp & Flat Terrain' : 'Standard Stop'}
+                      </span>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
 
-          <div className="bg-dark-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-amber-500/40 transition-all hover:-translate-y-1 group shadow-xl">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 group-hover:scale-110 transition-transform shadow-glow-amber">
-              <Users className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Live Crowding AI</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Real-time vehicle density metrics ensure vulnerable users are never forced into overcrowded compartments.
-            </p>
-          </div>
+              <Marker position={[20.3530, 85.8160]}>
+                <Popup>
+                  <div className="p-1">
+                    <strong className="text-sm text-emerald-700 block">🚌 Low-Floor Bus C3-01</strong>
+                    <span className="text-xs">Ramp Active • On Time</span>
+                  </div>
+                </Popup>
+              </Marker>
+            </MapContainer>
 
-          <div className="bg-dark-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-purple-500/40 transition-all hover:-translate-y-1 group shadow-xl">
-            <div className="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 mb-4 group-hover:scale-110 transition-transform">
-              <Shield className="w-6 h-6" />
+            {/* Map Floating Overlay Badge */}
+            <div className="absolute top-4 right-4 z-[400] bg-white/95 backdrop-blur-md border border-neutral-200 px-3.5 py-2 rounded-xl shadow-md flex items-center gap-2 text-xs font-bold text-neutral-900">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+              <span>Live Campus Telemetry Active</span>
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Operator Dispatch Loop</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Two-way communication between fleet managers and passengers for instant route condition recalculation.
-            </p>
           </div>
         </div>
-      </main>
+      </section>
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-white/10 bg-dark-950/80 py-8 px-6 text-center text-xs text-slate-500">
-        ACCESS • Accessible Public Transport Assistant • Universal Mobility Platform
+      {/* Rapido / Uber Style Services Grid */}
+      <section className="bg-neutral-50 py-16 px-6 sm:px-12 border-t border-neutral-200">
+        <div className="max-w-7xl mx-auto space-y-10">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
+              Our Transit Accessibility Services
+            </h2>
+            <p className="text-sm text-neutral-600 mt-1">
+              Purpose-built navigation engineered for passengers with diverse mobility requirements.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-8 rounded-2xl border border-neutral-200 shadow-sm space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-900 font-bold">
+                <Accessibility className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900">Step-Free Journey Routing</h3>
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                Guarantees zero unexpected stairs, verified operating elevators, and low-floor electric ramp buses.
+              </p>
+            </div>
+
+            <div className="bg-white p-8 rounded-2xl border border-neutral-200 shadow-sm space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-900 font-bold">
+                <Shield className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900">Proactive Safety Watchdog</h3>
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                Automated check-in heartbeat monitors your transit journey and notifies your designated emergency contacts if delayed.
+              </p>
+            </div>
+
+            <div className="bg-white p-8 rounded-2xl border border-neutral-200 shadow-sm space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-900 font-bold">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900">Real-Time Vehicle Crowding</h3>
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                Live sensor occupancy metrics warn you before boarding crowded compartments so you can travel comfortably.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Clean Footer */}
+      <footer className="bg-black text-white py-12 px-6 sm:px-12 border-t border-neutral-800">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-400">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-white text-lg">ACCESS</span>
+            <span>• Accessible Public Transit Network</span>
+          </div>
+          <div>© {new Date().getFullYear()} ACCESS Technologies Inc. All rights reserved.</div>
+        </div>
       </footer>
     </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
   );
 }
