@@ -50,8 +50,15 @@ export default function LandingPage() {
       {/* Uber-style Clean Top Navbar */}
       <header className="bg-black text-white px-6 sm:px-12 h-16 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-10">
-          <Link to="/" className="text-2xl font-black tracking-tight text-white">
-            ACCESS
+          <Link to="/" className="flex items-center gap-2.5">
+            <img
+              src="/logo.png"
+              alt="Maarg Darshan Logo"
+              className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain shadow-sm"
+            />
+            <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
+              Maarg Darshan
+            </span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
             <Link to="/plan" className="text-white hover:text-neutral-300">Plan Trip</Link>
@@ -264,10 +271,15 @@ export default function LandingPage() {
       <footer className="bg-black text-white py-12 px-6 sm:px-12 border-t border-neutral-800">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-400">
           <div className="flex items-center gap-2">
-            <span className="font-black text-white text-lg">ACCESS</span>
+            <img
+              src="/logo.png"
+              alt="Maarg Darshan Logo"
+              className="w-6 h-6 rounded-md bg-white p-0.5 object-contain"
+            />
+            <span className="font-black text-white text-base">Maarg Darshan</span>
             <span>• Accessible Public Transit Network</span>
           </div>
-          <div>© {new Date().getFullYear()} ACCESS Technologies Inc. All rights reserved.</div>
+          <div>© {new Date().getFullYear()} Maarg Darshan (मार्ग Darshan). All rights reserved.</div>
         </div>
       </footer>
     </div>
