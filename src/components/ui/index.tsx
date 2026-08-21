@@ -401,3 +401,6 @@ export function MetricCard({ icon, label, value }: MetricCardProps) {
     </div>
   );
 }
+
+export { ErrorBoundary } from './ErrorBoundary';
+

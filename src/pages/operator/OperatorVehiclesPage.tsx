@@ -49,7 +49,7 @@ export default function OperatorVehiclesPage() {
                   <p className="text-gray-500 mb-1">Assigned Route</p>
                   <div className="flex items-center space-x-2 font-medium">
                     {route && (
-                      <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: route.color }}>
+                      <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: route?.color || '#059669' }}>
                         {route.shortName}
                       </span>
                     )}

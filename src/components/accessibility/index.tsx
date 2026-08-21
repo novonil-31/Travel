@@ -3,13 +3,13 @@ import { Users, Clock, Accessibility, ShieldCheck, Bus, AlertTriangle, CheckCirc
 import type { CrowdingLevel, AccessibilityStatus, SafetyStatus, VehicleStatusType } from '../../types';
 
 // ============ CROWDING INDICATOR ============
-export function CrowdingIndicator({ level, showLabel = true }: { level: CrowdingLevel; showLabel?: boolean }) {
+export function CrowdingIndicator({ level, showLabel = true }: { level?: CrowdingLevel; showLabel?: boolean }) {
   const config: Record<CrowdingLevel, { color: string; bg: string; border: string; text: string }> = {
     LOW: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'Low Crowding' },
     MEDIUM: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', text: 'Moderate' },
     HIGH: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', text: 'Crowded' },
   };
-  const c = config[level];
+  const c = (level && config[level]) || config.LOW;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${c.color} ${c.bg} ${c.border}`} role="status">
       <Users className="w-3.5 h-3.5" />
@@ -19,7 +19,7 @@ export function CrowdingIndicator({ level, showLabel = true }: { level: Crowding
 }
 
 // ============ DELAY BADGE ============
-export function DelayBadge({ delay }: { delay: number }) {
+export function DelayBadge({ delay = 0 }: { delay?: number }) {
   if (delay <= 0) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200" role="status">
@@ -38,14 +38,14 @@ export function DelayBadge({ delay }: { delay: number }) {
 }
 
 // ============ VEHICLE ACCESSIBILITY BADGE ============
-export function VehicleAccessibilityBadge({ status }: { status: AccessibilityStatus | boolean }) {
-  const s = typeof status === 'boolean' ? (status ? 'AVAILABLE' : 'UNAVAILABLE') : status;
+export function VehicleAccessibilityBadge({ status }: { status?: AccessibilityStatus | boolean }) {
+  const s = typeof status === 'boolean' ? (status ? 'AVAILABLE' : 'UNAVAILABLE') : (status || 'AVAILABLE');
   const config: Record<AccessibilityStatus, { color: string; bg: string; border: string; text: string }> = {
     AVAILABLE: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'Wheelchair Ramp' },
     LIMITED: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', text: 'Assistance Needed' },
     UNAVAILABLE: { color: 'text-neutral-600', bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'Standard Access' },
   };
-  const c = config[s];
+  const c = config[s] || config.AVAILABLE;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${c.color} ${c.bg} ${c.border}`} role="status">
       <Accessibility className="w-3.5 h-3.5" />
@@ -55,7 +55,7 @@ export function VehicleAccessibilityBadge({ status }: { status: AccessibilitySta
 }
 
 // ============ SAFETY STATUS ============
-export function SafetyStatusBadge({ status }: { status: SafetyStatus }) {
+export function SafetyStatusBadge({ status }: { status?: SafetyStatus }) {
   const config: Record<SafetyStatus, { color: string; bg: string; border: string; icon: React.ReactNode; text: string }> = {
     NOT_STARTED: { color: 'text-neutral-600', bg: 'bg-neutral-100', border: 'border-neutral-200', icon: <ShieldCheck className="w-3.5 h-3.5" />, text: 'Safety Inactive' },
     ACTIVE: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: <HeartPulse className="w-3.5 h-3.5" />, text: 'Watchdog Active' },
@@ -65,7 +65,7 @@ export function SafetyStatusBadge({ status }: { status: SafetyStatus }) {
     EMERGENCY: { color: 'text-white', bg: 'bg-red-600', border: 'border-red-600', icon: <AlertTriangle className="w-3.5 h-3.5" />, text: 'EMERGENCY' },
     COMPLETED: { color: 'text-neutral-700', bg: 'bg-neutral-100', border: 'border-neutral-200', icon: <CheckCircle className="w-3.5 h-3.5" />, text: 'Concluded' },
   };
-  const c = config[status];
+  const c = (status && config[status]) || config.ACTIVE;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${c.color} ${c.bg} ${c.border}`} role="status">
       {c.icon}{c.text}
@@ -74,13 +74,13 @@ export function SafetyStatusBadge({ status }: { status: SafetyStatus }) {
 }
 
 // ============ VEHICLE STATUS ============
-export function VehicleStatusBadge({ status }: { status: VehicleStatusType }) {
+export function VehicleStatusBadge({ status }: { status?: VehicleStatusType }) {
   const config: Record<VehicleStatusType, { color: string; bg: string; border: string; text: string }> = {
     active: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'In Service' },
     delayed: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', text: 'Delayed' },
     'out-of-service': { color: 'text-neutral-600', bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'Out of Service' },
   };
-  const c = config[status];
+  const c = (status && config[status]) || config.active;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${c.color} ${c.bg} ${c.border}`} role="status">
       <Bus className="w-3.5 h-3.5" />{c.text}

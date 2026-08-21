@@ -38,30 +38,36 @@
 @layer components {
   /* Uber-style Clean Input Cards */
   .uber-input {
-    @apply w-full bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black rounded-xl px-4 py-3.5 text-neutral-900 placeholder:text-neutral-500 font-medium transition-all focus:outline-none focus:ring-0;
+    @apply w-full bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black rounded-2xl px-4 py-3.5 text-neutral-900 placeholder:text-neutral-500 font-medium transition-all focus:outline-none focus:ring-0;
   }
 
   .uber-button-black {
-    @apply bg-black hover:bg-neutral-800 text-white font-bold rounded-xl px-5 py-3.5 transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center;
+    @apply bg-black hover:bg-neutral-800 text-white font-bold rounded-2xl px-5 py-3.5 transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center;
   }
 
   .uber-button-secondary {
-    @apply bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-semibold rounded-xl px-5 py-3.5 transition-all active:scale-[0.99];
+    @apply bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-semibold rounded-2xl px-5 py-3.5 transition-all active:scale-[0.99];
   }
 
   /* Crisp Leaflet Map (Google Maps / Uber style clean light tiles) */
   .leaflet-container {
-    @apply w-full h-full rounded-2xl;
+    @apply w-full h-full rounded-3xl;
     background-color: #f6f6f6 !important;
     z-index: 10;
   }
 
   .leaflet-popup-content-wrapper {
-    @apply bg-white text-neutral-900 rounded-xl shadow-uber-elevated border border-neutral-200;
+    @apply bg-white text-neutral-900 rounded-2xl shadow-uber-elevated border border-neutral-200;
+    padding: 2px;
   }
 
   .leaflet-popup-tip {
     @apply bg-white;
+  }
+
+  .custom-map-pin, .custom-nav-pin, .custom-home-pin {
+    background: transparent !important;
+    border: none !important;
   }
 }
 

@@ -1,223 +1,416 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
-import { Card, Button, Toggle } from '../../components/ui';
-import { DEMO_STOPS, generateDemoSearchResults } from '../../data/mock';
-import { journeysApi } from '../../api';
-import { Navigation, MapPin, ArrowDownUp, Accessibility, Search, Clock, Shield } from 'lucide-react';
-import { ProfileBadges } from '../../components/accessibility';
-import type { RouteSearchResult } from '../../types';
+import { Button } from '../../components/ui';
+import { journeysApi, stopsApi } from '../../api';
+import {
+  Navigation, MapPin, ArrowDownUp, Search, Clock,
+  Crosshair, Loader2, Sparkles, AlertCircle, CheckCircle,
+  Bus, Car, Shield, Accessibility
+} from 'lucide-react';
+import type { GeocodedPlace } from '../../utils/onlineRouting';
+
+interface LocationState {
+  name: string;
+  lat: number;
+  lng: number;
+}
 
 export default function TripPlannerPage() {
   const navigate = useNavigate();
   const { setSearchResults, state, updateProfile } = useAppStore();
-  
-  const [origin, setOrigin] = useState<string>('Campus Gate');
-  const [destination, setDestination] = useState<string>('Patia');
-  const [useProfile, setUseProfile] = useState<boolean>(true);
-  const [isSearching, setIsSearching] = useState<boolean>(false);
 
-  const handleSwap = () => {
-    setOrigin(destination);
-    setDestination(origin);
+  // Location inputs state
+  const [originInput, setOriginInput] = useState<string>('Campus Gate');
+  const [originLocation, setOriginLocation] = useState<LocationState>({
+    name: 'Campus Gate',
+    lat: 20.3555,
+    lng: 85.8145,
+  });
+
+  const [destinationInput, setDestinationInput] = useState<string>('Patia Transit Station');
+  const [destinationLocation, setDestinationLocation] = useState<LocationState>({
+    name: 'Patia Transit Station',
+    lat: 20.3450,
+    lng: 85.8180,
+  });
+
+  // Autocomplete Suggestions State
+  const [originSuggestions, setOriginSuggestions] = useState<GeocodedPlace[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<GeocodedPlace[]>([]);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState<boolean>(false);
+  const [isSearchingDest, setIsSearchingDest] = useState<boolean>(false);
+  const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
+
+  // Mobility Mode (Simple 3 options like Uber/Google Maps)
+  const [selectedMobility, setSelectedMobility] = useState<string>('wheelchair');
+
+  // Loading & GPS state
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isPlanning, setIsPlanning] = useState<boolean>(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Debounced search for Origin
+  useEffect(() => {
+    if (!originInput || originInput.trim().length < 2) {
+      setOriginSuggestions([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setIsSearchingOrigin(true);
+      try {
+        const places = await stopsApi.searchPlaces(originInput);
+        setOriginSuggestions(places);
+      } catch (err) {
+        console.error('Origin search error:', err);
+      } finally {
+        setIsSearchingOrigin(false);
+      }
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [originInput]);
+
+  // Debounced search for Destination
+  useEffect(() => {
+    if (!destinationInput || destinationInput.trim().length < 2) {
+      setDestinationSuggestions([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setIsSearchingDest(true);
+      try {
+        const places = await stopsApi.searchPlaces(destinationInput);
+        setDestinationSuggestions(places);
+      } catch (err) {
+        console.error('Destination search error:', err);
+      } finally {
+        setIsSearchingDest(false);
+      }
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [destinationInput]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectOrigin = (place: GeocodedPlace) => {
+    setOriginInput(place.name);
+    setOriginLocation({ name: place.name, lat: place.lat, lng: place.lng });
+    setActiveDropdown(null);
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!origin || !destination) return;
-    setIsSearching(true);
+  const handleSelectDest = (place: GeocodedPlace) => {
+    setDestinationInput(place.name);
+    setDestinationLocation({ name: place.name, lat: place.lat, lng: place.lng });
+    setActiveDropdown(null);
+  };
 
-    try {
-      // Find stop coords if available
-      const originStop = DEMO_STOPS.find(s => s.name.toLowerCase().includes(origin.toLowerCase())) || DEMO_STOPS[0];
-      const destStop = DEMO_STOPS.find(s => s.name.toLowerCase().includes(destination.toLowerCase())) || DEMO_STOPS[DEMO_STOPS.length - 1];
-
-      // Try backend journey planner
-      const backendRes = await journeysApi.plan({
-        origin: { lat: originStop.lat, lng: originStop.lng, name: origin },
-        destination: { lat: destStop.lat, lng: destStop.lng, name: destination },
-        profileType: state.accessibilityProfile.mobility === 'wheelchair' ? 'WHEELCHAIR' : 'GENERAL',
-      });
-
-      if (backendRes && backendRes.options && backendRes.options.length > 0) {
-        // Map backend options to frontend RouteSearchResult format
-        const mapped: RouteSearchResult[] = backendRes.options.map((opt) => ({
-          route: {
-            id: opt.routeId,
-            name: opt.routeLongName || `Route ${opt.routeShortName}`,
-            shortName: opt.routeShortName,
-            vehicleType: opt.vehicleType as any,
-            stops: [],
-            color: '#000000',
-            description: `${opt.boardStop?.name || 'Origin'} to ${opt.alightStop?.name || 'Destination'}`,
-            active: true,
-          },
-          eta: opt.durationMinutes,
-          duration: opt.durationMinutes,
-          walkingDistance: opt.walkingDistanceM,
-          transfers: 0,
-          stairs: opt.accessibility.wheelchairCompatible ? 0 : 2,
-          crowding: (opt.crowding.level || 'LOW') as any,
-          delay: 0,
-          vehicleAccessible: opt.accessibility.wheelchairCompatible,
-          scores: {
-            accessibility: opt.scores?.accessibility || 85,
-            safety: opt.scores?.safety || 90,
-            reliability: opt.scores?.reliability || 88,
-            comfort: opt.scores?.crowding || 80,
-            overall: opt.scores?.overall || 88,
-          },
-          recommendation: {
-            recommended: opt.rank === 1,
-            rank: opt.rank || 1,
-            reasons: opt.explanation || ['Optimized for step-free access'],
-            tradeoff: opt.recommendation || '',
-          },
-          segments: [
-            {
-              type: 'walk',
-              from: origin,
-              to: opt.boardStop?.name || 'Boarding Station',
-              duration: opt.walkingTimeMinutes || 3,
-              accessible: true,
-              stairs: 0,
-            },
-            {
-              type: 'ride',
-              from: opt.boardStop?.name || 'Boarding Station',
-              to: opt.alightStop?.name || 'Alighting Station',
-              duration: opt.durationMinutes - (opt.walkingTimeMinutes || 3),
-              accessible: opt.accessibility.wheelchairCompatible,
-              stairs: opt.accessibility.wheelchairCompatible ? 0 : 2,
-            },
-          ],
-          condition: {
-            routeId: opt.routeId,
-            delay: 0,
-            crowding: (opt.crowding.level || 'LOW') as any,
-            accessibility: opt.accessibility.wheelchairCompatible ? 'AVAILABLE' : 'LIMITED',
-            vehicleStatus: 'active',
-            updatedAt: new Date().toISOString(),
-          },
-        }));
-        setSearchResults(mapped);
-        setIsSearching(false);
-        navigate('/routes');
-        return;
-      }
-    } catch {
-      // Fallback to offline generator if backend not active
+  // HTML5 GPS Geolocation
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGpsError('Geolocation is not supported by your browser.');
+      return;
     }
 
-    const fallbackResults = generateDemoSearchResults(origin, destination);
-    setSearchResults(fallbackResults);
-    setIsSearching(false);
-    navigate('/routes');
+    setIsLocating(true);
+    setGpsError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        try {
+          const rev = await stopsApi.reverseGeocode(lat, lng);
+          const locName = typeof rev === 'string' && rev ? rev : ((rev as any)?.name || (rev as any)?.displayName || `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+          setOriginInput(locName);
+          setOriginLocation({ name: locName, lat, lng });
+          setActiveDropdown(null);
+        } catch {
+          const locName = `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+          setOriginInput(locName);
+          setOriginLocation({ name: locName, lat, lng });
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (err) => {
+        setIsLocating(false);
+        const fallbackName = 'Campus Gate (Current GPS)';
+        setOriginInput(fallbackName);
+        setOriginLocation({ name: fallbackName, lat: 20.3555, lng: 85.8145 });
+        setGpsError('GPS permission denied. Using current campus location.');
+        setTimeout(() => setGpsError(null), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  // Swap Locations
+  const handleSwap = () => {
+    const tempInput = originInput;
+    const tempLoc = originLocation;
+    setOriginInput(destinationInput);
+    setOriginLocation(destinationLocation);
+    setDestinationInput(tempInput);
+    setDestinationLocation(tempLoc);
+  };
+
+  // Quick Preset Selection
+  const handleSelectPreset = (from: LocationState, to: LocationState) => {
+    setOriginInput(from.name);
+    setOriginLocation(from);
+    setDestinationInput(to.name);
+    setDestinationLocation(to);
+    setActiveDropdown(null);
+  };
+
+  // Search & Plan Submit
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsPlanning(true);
+
+    try {
+      let finalOrigin = { ...originLocation };
+      let finalDest = { ...destinationLocation };
+
+      if (originInput && originInput !== originLocation.name) {
+        const matches = await stopsApi.searchPlaces(originInput);
+        if (matches && matches.length > 0) {
+          finalOrigin = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
+        }
+      }
+
+      if (destinationInput && destinationInput !== destinationLocation.name) {
+        const matches = await stopsApi.searchPlaces(destinationInput);
+        if (matches && matches.length > 0) {
+          finalDest = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
+        }
+      }
+
+      const planRes = await journeysApi.plan({
+        origin: {
+          lat: finalOrigin.lat,
+          lng: finalOrigin.lng,
+          name: originInput || finalOrigin.name,
+        },
+        destination: {
+          lat: finalDest.lat,
+          lng: finalDest.lng,
+          name: destinationInput || finalDest.name,
+        },
+        profileType: selectedMobility === 'wheelchair' ? 'WHEELCHAIR' : selectedMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+      });
+
+      if (planRes && planRes.options && planRes.options.length > 0) {
+        setSearchResults(planRes.options);
+      }
+    } catch (err) {
+      console.error('Journey planning failed', err);
+    } finally {
+      setIsPlanning(false);
+      navigate('/routes');
+    }
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+    <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6" ref={dropdownRef}>
+      {/* Clean Header */}
       <div>
-        <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 tracking-tight">
-          Where can we take you?
+        <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
+          Where to?
         </h1>
-        <p className="text-sm text-neutral-600 mt-1">
-          Every route evaluated for step-free access, ramps, lifts, and vehicle crowding.
+        <p className="text-xs text-neutral-500 mt-1">
+          Accessible transit routes, live bus stops & closest shared taxi stands.
         </p>
       </div>
 
-      <div className="bg-white border border-neutral-200 p-6 sm:p-8 rounded-3xl shadow-uber-elevated space-y-6">
+      {gpsError && (
+        <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+          <span>{gpsError}</span>
+        </div>
+      )}
+
+      {/* Main Search Form Card (Uber / Google Maps style) */}
+      <div className="bg-white border border-neutral-200 p-5 sm:p-6 rounded-3xl shadow-uber-elevated space-y-5">
         <form onSubmit={handleSearch} className="space-y-4">
-          {/* Origin Picker */}
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Pickup Location</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-black pointer-events-none" />
-              <select
-                value={origin}
-                onChange={(e) => setOrigin(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
+          {/* Pickup & Destination Box */}
+          <div className="bg-neutral-50 p-2 rounded-2xl border border-neutral-200 relative space-y-1">
+            {/* Origin Input */}
+            <div className="relative flex items-center bg-white rounded-xl border border-neutral-200/80 px-3 py-2.5 shadow-2xs">
+              <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0 mr-3 ring-4 ring-emerald-100" />
+              <input
+                type="text"
+                value={originInput}
+                onChange={(e) => setOriginInput(e.target.value)}
+                onFocus={() => setActiveDropdown('origin')}
+                placeholder="Enter pickup location..."
+                className="w-full bg-transparent text-sm font-bold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleUseCurrentLocation}
+                disabled={isLocating}
+                title="Use current location"
+                className="p-1.5 rounded-lg text-neutral-500 hover:text-black hover:bg-neutral-100 transition-colors ml-1 shrink-0"
               >
-                {DEMO_STOPS.map(stop => (
-                  <option key={stop.id} value={stop.name}>
-                    {stop.name} {stop.accessible ? '♿ Accessible' : ''}
-                  </option>
-                ))}
-              </select>
+                {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crosshair className="w-4 h-4 text-emerald-700" />}
+              </button>
             </div>
-          </div>
 
-          {/* Swap Button */}
-          <div className="flex justify-center -my-2 relative z-10">
-            <button
-              type="button"
-              onClick={handleSwap}
-              className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-neutral-800 transition-all"
-              aria-label="Swap"
-            >
-              <ArrowDownUp className="w-4 h-4" />
-            </button>
-          </div>
+            {/* Origin Suggestions Dropdown */}
+            {activeDropdown === 'origin' && originSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-14 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {originSuggestions.map((place, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectOrigin(place)}
+                    className="p-3 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 transition-colors"
+                  >
+                    <MapPin className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-xs font-bold text-neutral-900 block truncate">{place.name}</span>
+                      <span className="text-[10px] text-neutral-500 block truncate">{place.displayName}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {/* Destination Picker */}
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Destination</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none" />
-              <select
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
+            {/* Swap Floating Button */}
+            <div className="flex justify-end pr-3 -my-2 relative z-10">
+              <button
+                type="button"
+                onClick={handleSwap}
+                className="w-7 h-7 rounded-full bg-white border border-neutral-300 shadow-sm flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition-all"
+                title="Swap pickup & destination"
               >
-                {DEMO_STOPS.map(stop => (
-                  <option key={stop.id} value={stop.name}>
-                    {stop.name} {stop.accessible ? '♿ Accessible' : ''}
-                  </option>
-                ))}
-              </select>
+                <ArrowDownUp className="w-3.5 h-3.5" />
+              </button>
             </div>
+
+            {/* Destination Input */}
+            <div className="relative flex items-center bg-white rounded-xl border border-neutral-200/80 px-3 py-2.5 shadow-2xs">
+              <span className="w-3 h-3 rounded-xs bg-red-600 shrink-0 mr-3 ring-4 ring-red-100" />
+              <input
+                type="text"
+                value={destinationInput}
+                onChange={(e) => setDestinationInput(e.target.value)}
+                onFocus={() => setActiveDropdown('dest')}
+                placeholder="Where to? (Enter destination)"
+                className="w-full bg-transparent text-sm font-bold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+              />
+            </div>
+
+            {/* Destination Suggestions Dropdown */}
+            {activeDropdown === 'dest' && destinationSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-28 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {destinationSuggestions.map((place, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectDest(place)}
+                    className="p-3 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 transition-colors"
+                  >
+                    <MapPin className="w-4 h-4 text-red-600 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-xs font-bold text-neutral-900 block truncate">{place.name}</span>
+                      <span className="text-[10px] text-neutral-500 block truncate">{place.displayName}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Quick Presets */}
-          <div className="pt-2 space-y-2">
-            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider block">Popular Destinations:</span>
-            <div className="flex flex-wrap gap-2">
+          {/* Quick 1-Tap Popular Locations */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+              Quick Shortcuts:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
               {[
-                { from: 'Campus Gate', to: 'Patia' },
-                { from: 'Hospital', to: 'Jaydev Vihar' },
-                { from: 'Infocity', to: 'Campus 25' },
+                { label: 'Campus Gate → Patia', from: { name: 'Campus Gate', lat: 20.3555, lng: 85.8145 }, to: { name: 'Patia Station', lat: 20.3450, lng: 85.8180 } },
+                { label: 'Hospital → Jaydev Vihar', from: { name: 'Hospital', lat: 20.3570, lng: 85.8170 }, to: { name: 'Jaydev Vihar', lat: 20.3050, lng: 85.8200 } },
+                { label: 'Infocity → Railway Station', from: { name: 'Infocity', lat: 20.3600, lng: 85.8120 }, to: { name: 'Railway Station', lat: 20.2666, lng: 85.8436 } },
               ].map((p, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => { setOrigin(p.from); setDestination(p.to); }}
-                  className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-colors"
+                  onClick={() => handleSelectPreset(p.from, p.to)}
+                  className="px-3 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-all"
                 >
-                  {p.from} → {p.to}
+                  {p.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Mobility Profile Switch */}
-          <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Accessibility className="w-4 h-4 text-neutral-800" />
-                <span className="text-xs font-bold text-neutral-900">Filter by My Accessibility Profile</span>
-              </div>
-              <Toggle label="" checked={useProfile} onChange={setUseProfile} />
+          {/* Simple Mobility Choice (Uber Style 3 Pills) */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+              Accessibility Mode:
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'wheelchair', label: '♿ Wheelchair', sub: 'Ramps & 0 Stairs' },
+                { id: 'elderly', label: '🧓 Senior Citizen', sub: 'Minimal Walk' },
+                { id: 'none', label: '🚶 Standard', sub: 'Fastest Transit' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMobility(m.id);
+                    updateProfile({ mobility: m.id as any });
+                  }}
+                  className={`p-2.5 rounded-2xl text-center border transition-all ${
+                    selectedMobility === m.id
+                      ? 'bg-black text-white border-black shadow-sm'
+                      : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                  }`}
+                >
+                  <span className="text-xs font-bold block">{m.label}</span>
+                  <span className={`text-[10px] block ${selectedMobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    {m.sub}
+                  </span>
+                </button>
+              ))}
             </div>
-
-            {useProfile && state.accessibilityProfile && (
-              <div className="pt-2 border-t border-neutral-200">
-                <ProfileBadges profile={state.accessibilityProfile} />
-              </div>
-            )}
           </div>
 
-          <Button type="submit" size="lg" className="w-full text-base py-4" loading={isSearching}>
-            <Search className="w-4 h-4 mr-2" /> Find Step-Free Routes
+          {/* Minimal 1-Line Stand & Price Preview */}
+          {originInput && (
+            <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-neutral-900">🚏 Public Bus: ~₹15-20</span>
+                <span className="text-neutral-300">•</span>
+                <span className="font-bold text-neutral-700">🚖 Shared Auto: ~₹25-40</span>
+              </div>
+              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                Live Estimates
+              </span>
+            </div>
+          )}
+
+          {/* Big Clean Black Search Button (Like Uber/Ola) */}
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full text-base py-4 font-black shadow-md rounded-2xl bg-black hover:bg-neutral-800 text-white"
+            loading={isPlanning}
+          >
+            <Search className="w-4 h-4 mr-2" /> See Routes & Fares
           </Button>
         </form>
       </div>

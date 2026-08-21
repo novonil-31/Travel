@@ -68,10 +68,6 @@ export function PassengerLayout() {
             <span>{state.isOffline ? 'Offline' : 'Live Network'}</span>
           </div>
 
-          <Link to="/operator" className="text-xs font-bold text-neutral-300 hover:text-white transition-colors">
-            Operator Dispatch
-          </Link>
-
           {state.currentUser ? (
             <Link to="/profile" className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-full text-xs font-bold transition-all">
               <User className="w-3.5 h-3.5" />
@@ -79,11 +75,12 @@ export function PassengerLayout() {
             </Link>
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="text-xs font-bold text-neutral-300 hover:text-white px-3 py-2">
-                Log in
+              <Link to="/login" className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all">
+                <User className="w-3.5 h-3.5" />
+                <span>Guest Mode</span>
               </Link>
-              <Link to="/signup" className="bg-white text-black hover:bg-neutral-200 px-4 py-2 rounded-full text-xs font-bold transition-all">
-                Sign up
+              <Link to="/login" className="bg-white text-black hover:bg-neutral-200 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all">
+                Sign In
               </Link>
             </div>
           )}
@@ -142,9 +139,6 @@ export function PassengerLayout() {
                 <Link to="/journeys" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                   <History className="w-5 h-5 text-neutral-600" /> Past Trips
                 </Link>
-                <Link to="/operator" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
-                  <Shield className="w-5 h-5 text-neutral-600" /> Operator Dispatch
-                </Link>
               </div>
             </div>
 
@@ -156,7 +150,7 @@ export function PassengerLayout() {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="py-2.5 bg-neutral-100 text-center rounded-xl font-bold text-xs">
-                    Log in
+                    Sign In
                   </Link>
                   <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="py-2.5 bg-black text-white text-center rounded-xl font-bold text-xs">
                     Sign up

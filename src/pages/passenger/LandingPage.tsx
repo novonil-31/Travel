@@ -54,18 +54,17 @@ export default function LandingPage() {
             ACCESS
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
-            <Link to="/app" className="text-white hover:text-neutral-300">Ride</Link>
-            <Link to="/plan" className="text-neutral-300 hover:text-white">Plan Trip</Link>
-            <Link to="/operator" className="text-neutral-300 hover:text-white">Operator</Link>
+            <Link to="/plan" className="text-white hover:text-neutral-300">Plan Trip</Link>
+            <Link to="/routes" className="text-neutral-300 hover:text-white">Routes</Link>
           </nav>
         </div>
 
         <div className="flex items-center gap-3">
-          <Link to="/login" className="text-sm font-bold text-white hover:text-neutral-300 px-3 py-2">
-            Log in
+          <Link to="/login" className="text-xs font-bold text-neutral-300 hover:text-white px-3 py-2">
+            Guest Mode
           </Link>
-          <Link to="/signup" className="bg-white text-black hover:bg-neutral-200 px-4 py-2 rounded-full text-xs font-bold transition-all">
-            Sign up
+          <Link to="/login" className="bg-white text-black hover:bg-neutral-200 px-4 py-2 rounded-full text-xs font-bold transition-all">
+            Sign In
           </Link>
         </div>
       </header>
@@ -89,18 +88,14 @@ export default function LandingPage() {
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Pickup Location</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-black pointer-events-none" />
-                  <select
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-600 pointer-events-none ring-2 ring-emerald-200" />
+                  <input
+                    type="text"
                     value={pickup}
                     onChange={(e) => setPickup(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
-                  >
-                    {DEMO_STOPS.map(stop => (
-                      <option key={stop.id} value={stop.name}>
-                        {stop.name} {stop.accessible ? '♿' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Enter pickup address, campus, or station..."
+                    className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  />
                 </div>
               </div>
 
@@ -108,18 +103,14 @@ export default function LandingPage() {
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Drop-off Destination</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none" />
-                  <select
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none rounded-sm" />
+                  <input
+                    type="text"
                     value={dropoff}
                     onChange={(e) => setDropoff(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all cursor-pointer"
-                  >
-                    {DEMO_STOPS.map(stop => (
-                      <option key={stop.id} value={stop.name}>
-                        {stop.name} {stop.accessible ? '♿' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Enter destination or transit hub..."
+                    className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  />
                 </div>
               </div>
 

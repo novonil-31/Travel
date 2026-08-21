@@ -5,6 +5,7 @@ import { useToast } from '../../store/ToastContext';
 import { Button, Input } from '../../components/ui';
 import { Lock, Mail, User, Phone, ArrowRight } from 'lucide-react';
 import { DEMO_USER } from '../../data/mock';
+import { authApi } from '../../api';
 
 export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
   const navigate = useNavigate();
@@ -19,26 +20,63 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
   const [mobility, setMobility] = useState<'wheelchair' | 'walking-difficulty' | 'elderly' | 'none'>('wheelchair');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      if (mode === 'signup') {
+        const res = await authApi.register({
+          name: name || 'Aarav Sharma',
+          email: email || 'aarav@transit.access',
+          phoneNumber: phone || '+919876543210',
+          password: password || 'SecureTransitPass123!',
+        });
+        if (res?.token) {
+          localStorage.setItem('access_token', res.token);
+        }
+        setUser({
+          ...DEMO_USER,
+          id: res?.user?.id || DEMO_USER.id,
+          name: res?.user?.name || name || 'Aarav Sharma',
+          email: res?.user?.email || email || 'aarav@transit.access',
+          phoneNumber: phone || DEMO_USER.phoneNumber,
+        });
+        addToast('success', `Account created! Welcome, ${res?.user?.name || name || 'Aarav'}`);
+      } else {
+        const res = await authApi.login({
+          email: email || 'aarav@transit.access',
+          phoneNumber: phone || undefined,
+          password: password || 'SecureTransitPass123!',
+        });
+        if (res?.token) {
+          localStorage.setItem('access_token', res.token);
+        }
+        setUser({
+          ...DEMO_USER,
+          id: res?.user?.id || DEMO_USER.id,
+          name: res?.user?.name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Aarav'),
+          email: res?.user?.email || email || 'aarav@transit.access',
+        });
+        addToast('success', `Signed in as ${res?.user?.name || name || 'Aarav'}`);
+      }
+      navigate('/plan');
+    } catch (err: any) {
+      console.warn('API auth fallback:', err);
+      // Fallback for offline/demo mode
       setUser({
         ...DEMO_USER,
         name: name || (email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Aarav'),
         email: email || 'aarav@transit.access',
       });
-      setIsLoading(false);
       addToast('success', `Signed in as ${name || 'Aarav'}`);
-      navigate('/app');
-    }, 400);
+      navigate('/plan');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleQuickPersona = (persona: 'wheelchair' | 'senior' | 'operator') => {
-    if (persona === 'operator') {
-      navigate('/operator');
-      return;
-    }
+  const handleQuickPersona = (persona: 'wheelchair' | 'senior') => {
     setUser({
       ...DEMO_USER,
       name: persona === 'wheelchair' ? 'Aarav (Wheelchair)' : 'Meera (Senior)',
@@ -46,15 +84,15 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
     });
     updateProfile({
       mobility: persona === 'wheelchair' ? 'wheelchair' : 'elderly',
-      stairs: persona === 'wheelchair' ? 'avoid' : 'avoid',
-      walkingTolerance: persona === 'wheelchair' ? 'low' : 'low',
+      stairs: 'avoid',
+      walkingTolerance: 'low',
       crowding: 'avoid',
       vision: 'normal',
       hearing: 'normal',
       safetyPreferences: ['late-night', 'prefer-safer'],
     });
     addToast('success', `Loaded ${persona === 'wheelchair' ? 'Wheelchair Profile' : 'Senior Profile'}`);
-    navigate('/app');
+    navigate('/plan');
   };
 
   return (
@@ -181,37 +219,44 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           </Button>
         </form>
 
-        {/* 1-Click Quick Demo Login */}
-        <div className="pt-6 border-t border-neutral-200 space-y-2.5">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block text-center">
-            Instant 1-Click Persona Logins
+        {/* 1-Click Guest & Demo Access */}
+        <div className="pt-6 border-t border-neutral-200 space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              setUser({
+                ...DEMO_USER,
+                name: 'Guest Passenger',
+                email: 'guest@access.org',
+              });
+              addToast('info', 'Continuing in Guest Mode (No login required)');
+              navigate('/plan');
+            }}
+            className="w-full py-3.5 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+          >
+            <span>⚡ Continue as Guest (One-Time / No Login)</span>
+          </button>
+
+          <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block text-center pt-1">
+            Quick Persona Shortcuts:
           </span>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleQuickPersona('wheelchair')}
-              className="p-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-center transition-all"
+              className="p-3 rounded-2xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-center transition-all"
             >
               <span className="text-base block mb-0.5">♿</span>
-              <span className="text-[11px] font-bold text-neutral-900 block">Wheelchair</span>
+              <span className="text-xs font-bold text-neutral-900 block">Wheelchair User</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleQuickPersona('senior')}
-              className="p-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-center transition-all"
+              className="p-3 rounded-2xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-center transition-all"
             >
               <span className="text-base block mb-0.5">👵</span>
-              <span className="text-[11px] font-bold text-neutral-900 block">Senior</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickPersona('operator')}
-              className="p-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-center transition-all"
-            >
-              <span className="text-base block mb-0.5">🛡️</span>
-              <span className="text-[11px] font-bold text-neutral-900 block">Operator</span>
+              <span className="text-xs font-bold text-neutral-900 block">Senior Citizen</span>
             </button>
           </div>
         </div>
