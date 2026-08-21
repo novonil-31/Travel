@@ -63,7 +63,7 @@ export default function LandingPage() {
         <div className="text-center max-w-3xl mx-auto space-y-6">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold backdrop-blur-md shadow-glow-green animate-float">
             <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>Problem Statement PS-05 • HACQUIRE 2026 Winner</span>
+            <span>AI-Powered Accessible Transit Assistant</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.1]">
@@ -198,7 +198,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 bg-dark-950/80 py-8 px-6 text-center text-xs text-slate-500">
-        ACCESS • Accessible Public Transport Assistant • Built for HACQUIRE 2026
+        ACCESS • Accessible Public Transport Assistant • Universal Mobility Platform
       </footer>
     </div>
   );
