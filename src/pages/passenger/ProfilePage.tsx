@@ -1,149 +1,220 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
-import { Card, Button, Input, Select, Toggle } from '../../components/ui';
+import { Card, Button, Input } from '../../components/ui';
+import { Accessibility, Shield, Save, User, Sparkles, Check, Footprints, Users, Eye, Volume2, Moon } from 'lucide-react';
 import type { AccessibilityProfile, EmergencyContact, SafetyPreference } from '../../types';
-import { Save, User, Phone, Shield } from 'lucide-react';
 
-const ProfilePage: React.FC = () => {
+export default function ProfilePage() {
   const { state, updateProfile } = useAppStore();
   const { addToast } = useToast();
-  
-  const [profile, setProfile] = useState<AccessibilityProfile | null>(null);
-  const [emergencyContact, setEmergencyContact] = useState<EmergencyContact>({ name: '', phone: '', relationship: '' });
 
-  useEffect(() => {
-    if (state.accessibilityProfile) setProfile(state.accessibilityProfile);
-    if (state.currentUser?.emergencyContact) setEmergencyContact(state.currentUser.emergencyContact);
-  }, [state.accessibilityProfile, state.currentUser]);
+  const [profile, setProfile] = useState<AccessibilityProfile>(
+    state.accessibilityProfile || {
+      mobility: 'wheelchair',
+      stairs: 'avoid',
+      walkingTolerance: 'low',
+      crowding: 'avoid',
+      vision: 'normal',
+      hearing: 'normal',
+      safetyPreferences: ['late-night', 'prefer-safer'],
+    }
+  );
+
+  const [emergencyContact, setEmergencyContact] = useState<EmergencyContact>(
+    state.currentUser?.emergencyContact || {
+      name: 'Priya',
+      phone: '+91 98765 43210',
+      relationship: 'Sister',
+    }
+  );
 
   const handleSave = () => {
-    if (profile) {
-      updateProfile(profile);
-      addToast('success', 'Profile saved successfully!');
-    }
+    updateProfile(profile);
+    addToast('success', 'Accessibility profile & safety preferences saved.');
   };
 
-  const toggleSafety = (pref: SafetyPreference) => {
-    if (!profile) return;
-    const current = profile.safetyPreferences || [];
-    const updated = current.includes(pref) ? current.filter(p => p !== pref) : [...current, pref];
-    setProfile({ ...profile, safetyPreferences: updated });
+  const toggleSafetyPref = (pref: SafetyPreference) => {
+    setProfile(prev => {
+      const exists = prev.safetyPreferences.includes(pref);
+      return {
+        ...prev,
+        safetyPreferences: exists
+          ? prev.safetyPreferences.filter(p => p !== pref)
+          : [...prev.safetyPreferences, pref],
+      };
+    });
   };
-
-  if (!profile) return null;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Accessibility Profile</h1>
-        <p className="text-gray-500">Customize your routing preferences</p>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-dark-900/80 backdrop-blur-2xl border border-white/10 p-6 rounded-3xl shadow-xl">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold shadow-glow-green">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Personal Transit DNA</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Accessibility Profile</h1>
+          <p className="text-xs sm:text-sm text-slate-400">Routes are evaluated and customized against these parameters.</p>
+        </div>
+        <Button onClick={handleSave} size="lg" className="shadow-glow-green">
+          <Save className="w-4 h-4 mr-2" /> Save Profile
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-2 mb-4 border-b pb-2">
-            <User className="w-5 h-5 text-primary-600" />
-            <h2 className="text-lg font-semibold">Mobility & Navigation</h2>
+      <div className="space-y-6">
+        {/* Mobility Category */}
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+            <div className="w-9 h-9 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
+              <Accessibility className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white">Physical Mobility Needs</h2>
+              <span className="text-xs text-slate-400">Filters vehicle ramps and station lift accessibility</span>
+            </div>
           </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mobility Device</label>
-              <Select value={profile.mobility} onChange={(e) => setProfile({...profile, mobility: e.target.value as any})}
-                options={[
-                  { value: 'none', label: 'None' },
-                  { value: 'walking-difficulty', label: 'Walking Difficulty' },
-                  { value: 'elderly', label: 'Elderly / Slow Pace' },
-                  { value: 'wheelchair', label: 'Wheelchair' }
-                ]} />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stair Preference</label>
-              <Select value={profile.stairs} onChange={(e) => setProfile({...profile, stairs: e.target.value as any})}
-                options={[
-                  { value: 'acceptable', label: 'Can use stairs' },
-                  { value: 'avoid', label: 'Avoid stairs completely' }
-                ]} />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Walking Tolerance</label>
-              <Select value={profile.walkingTolerance} onChange={(e) => setProfile({...profile, walkingTolerance: e.target.value as any})}
-                options={[
-                  { value: 'minimal', label: 'Minimal (< 5 mins)' },
-                  { value: 'low', label: 'Low (< 10 mins)' },
-                  { value: 'moderate', label: 'Moderate (< 20 mins)' },
-                  { value: 'high', label: 'High (No preference)' }
-                ]} />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Crowding Preference</label>
-              <Select value={profile.crowding} onChange={(e) => setProfile({...profile, crowding: e.target.value as any})}
-                options={[
-                  { value: 'acceptable', label: 'Acceptable' },
-                  { value: 'low-preference', label: 'Prefer less crowded' },
-                  { value: 'avoid', label: 'Avoid crowded vehicles' }
-                ]} />
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { id: 'wheelchair', label: 'Wheelchair', desc: 'Ramps & flat terrain only' },
+              { id: 'walking-difficulty', label: 'Walking Support', desc: 'Stairs limited' },
+              { id: 'elderly', label: 'Senior Support', desc: 'Seats & short walks' },
+              { id: 'none', label: 'Standard', desc: 'No restrictions' },
+            ].map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setProfile({ ...profile, mobility: m.id as any })}
+                className={`p-4 rounded-2xl border text-left transition-all ${
+                  profile.mobility === m.id
+                    ? 'bg-emerald-500/15 border-emerald-400/80 shadow-glow-green ring-1 ring-emerald-400 text-white'
+                    : 'bg-dark-950/60 border-white/10 hover:border-white/20 text-slate-300'
+                }`}
+              >
+                <div className="font-bold text-sm">{m.label}</div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-snug">{m.desc}</div>
+              </button>
+            ))}
           </div>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="p-6 space-y-6">
-            <div className="flex items-center gap-2 mb-4 border-b pb-2">
-              <Shield className="w-5 h-5 text-primary-600" />
-              <h2 className="text-lg font-semibold">Safety & Sensory</h2>
+        {/* Stairs & Walking Tolerance */}
+        <div className="grid sm:grid-cols-2 gap-6">
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-white/10">
+              <Footprints className="w-4 h-4 text-cyan-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Stair Tolerance</h3>
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vision</label>
-                <Select value={profile.vision} onChange={(e) => setProfile({...profile, vision: e.target.value as any})}
-                  options={[{ value: 'normal', label: 'Normal' }, { value: 'low-vision', label: 'Low Vision / Blind' }]} />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hearing</label>
-                <Select value={profile.hearing} onChange={(e) => setProfile({...profile, hearing: e.target.value as any})}
-                  options={[{ value: 'normal', label: 'Normal' }, { value: 'hearing-assistance', label: 'Require Hearing Assistance' }]} />
-              </div>
-
-              <div className="pt-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Safety Preferences</label>
-                <div className="space-y-2">
-                  {(['late-night', 'prefer-safer', 'safety-sensitive'] as SafetyPreference[]).map(pref => (
-                    <Toggle 
-                      key={pref} 
-                      label={pref.replace('-', ' ')} 
-                      checked={profile.safetyPreferences?.includes(pref) || false}
-                      onChange={() => toggleSafety(pref)} 
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { id: 'avoid', label: 'Avoid All Stairs', desc: 'Ramps/Elevators' },
+                { id: 'acceptable', label: 'Stairs OK', desc: 'Normal steps' },
+              ].map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, stairs: s.id as any })}
+                  className={`p-3.5 rounded-2xl border text-left transition-all ${
+                    profile.stairs === s.id
+                      ? 'bg-cyan-500/15 border-cyan-400 ring-1 ring-cyan-400 text-white shadow-glow-cyan'
+                      : 'bg-dark-950/60 border-white/10 text-slate-300'
+                  }`}
+                >
+                  <span className="font-bold text-xs block">{s.label}</span>
+                  <span className="text-[10px] text-slate-400">{s.desc}</span>
+                </button>
+              ))}
             </div>
           </Card>
 
           <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2 mb-2 border-b pb-2">
-              <Phone className="w-5 h-5 text-primary-600" />
-              <h2 className="text-lg font-semibold">Emergency Contact</h2>
+            <div className="flex items-center gap-2.5 pb-2 border-b border-white/10">
+              <Users className="w-4 h-4 text-amber-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Crowd Sensitivity</h3>
             </div>
-            <Input label="Name" value={emergencyContact.name} onChange={e => setEmergencyContact({...emergencyContact, name: e.target.value})} />
-            <Input label="Phone" value={emergencyContact.phone} onChange={e => setEmergencyContact({...emergencyContact, phone: e.target.value})} />
-            <Input label="Relationship" value={emergencyContact.relationship} onChange={e => setEmergencyContact({...emergencyContact, relationship: e.target.value})} />
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { id: 'avoid', label: 'Avoid Crowds', desc: 'Low density routes' },
+                { id: 'acceptable', label: 'Any Density', desc: 'Fastest transit' },
+              ].map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, crowding: c.id as any })}
+                  className={`p-3.5 rounded-2xl border text-left transition-all ${
+                    profile.crowding === c.id
+                      ? 'bg-amber-500/15 border-amber-400 ring-1 ring-amber-400 text-white shadow-glow-amber'
+                      : 'bg-dark-950/60 border-white/10 text-slate-300'
+                  }`}
+                >
+                  <span className="font-bold text-xs block">{c.label}</span>
+                  <span className="text-[10px] text-slate-400">{c.desc}</span>
+                </button>
+              ))}
+            </div>
           </Card>
         </div>
-      </div>
 
-      <div className="flex justify-end">
-        <Button onClick={handleSave} size="lg"><Save className="w-4 h-4 mr-2" /> Save Preferences</Button>
+        {/* Safety Preferences & Emergency Contact */}
+        <Card className="p-6 space-y-6">
+          <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+            <div className="w-9 h-9 rounded-2xl bg-rose-500/15 flex items-center justify-center text-rose-400">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white">Emergency Contact & Safety Protocols</h2>
+              <span className="text-xs text-slate-400">Contact notified automatically if safety heartbeat is overdue</span>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4">
+            <Input
+              label="Contact Full Name"
+              value={emergencyContact.name}
+              onChange={(e) => setEmergencyContact({ ...emergencyContact, name: e.target.value })}
+            />
+            <Input
+              label="Phone Number"
+              value={emergencyContact.phone}
+              onChange={(e) => setEmergencyContact({ ...emergencyContact, phone: e.target.value })}
+            />
+            <Input
+              label="Relationship"
+              value={emergencyContact.relationship}
+              onChange={(e) => setEmergencyContact({ ...emergencyContact, relationship: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-white/10">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Safety Features:</span>
+            <div className="flex flex-wrap gap-2.5">
+              {[
+                { id: 'late-night', label: '🌙 Late-Night Security Corridors' },
+                { id: 'prefer-safer', label: '🛡️ CCTV Monitored Routes' },
+                { id: 'safety-sensitive', label: '⚡ Fast SOS Escalation' },
+              ].map(sp => {
+                const active = profile.safetyPreferences.includes(sp.id as SafetyPreference);
+                return (
+                  <button
+                    key={sp.id}
+                    type="button"
+                    onClick={() => toggleSafetyPref(sp.id as SafetyPreference)}
+                    className={`px-4 py-2 rounded-2xl border text-xs font-bold transition-all ${
+                      active
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-glow-red'
+                        : 'bg-dark-950/60 text-slate-400 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {sp.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
-};
-
-export default ProfilePage;
+}

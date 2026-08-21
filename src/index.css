@@ -4,44 +4,94 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-navy-900 font-sans;
+    @apply bg-slate-900 text-slate-100 font-sans antialiased selection:bg-access-green selection:text-dark-950;
+    -webkit-tap-highlight-color: transparent;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-navy-500;
+    @apply outline-2 outline-offset-2 outline-access-green;
   }
 
   /* Custom scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    background: rgba(15, 23, 42, 0.6);
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-navy-200 rounded-full;
+    background: rgba(100, 116, 139, 0.4);
+    border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-navy-300;
+    background: rgba(16, 185, 129, 0.6);
   }
 
-  /* High contrast mode */
-  .contrast-more * {
-    border-color: currentColor !important;
-  }
-  .contrast-more .text-navy-500,
-  .contrast-more .text-navy-400,
-  .contrast-more .text-gray-400,
-  .contrast-more .text-gray-500 {
-    @apply text-navy-800;
+  /* Mobile viewport & safe-area padding */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    .safe-bottom {
+      padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+    }
   }
 }
 
 @layer components {
+  /* Ultra-modern Glassmorphism cards */
+  .glass-panel {
+    @apply bg-dark-900/80 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  
+  .glass-card {
+    @apply bg-dark-850/70 backdrop-blur-lg border border-white/10 rounded-2xl shadow-xl transition-all duration-300;
+  }
+
+  .glass-card-hover {
+    @apply hover:border-access-green/40 hover:bg-dark-800/80 hover:shadow-glow-green hover:-translate-y-0.5;
+  }
+
+  .glass-input {
+    @apply bg-dark-950/60 border border-white/15 rounded-xl text-white placeholder-slate-400 focus:border-access-green focus:ring-2 focus:ring-access-green/20 focus:outline-none transition-all;
+  }
+
+  .glass-button-primary {
+    @apply bg-gradient-to-r from-emerald-500 to-teal-600 text-dark-950 font-bold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-400 hover:to-teal-500 active:scale-[0.98] transition-all;
+  }
+
+  .glass-pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md border;
+  }
+
+  /* Futuristic gradient text */
+  .gradient-text-emerald {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400;
+  }
+
+  .gradient-text-cyan {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400;
+  }
+
+  .gradient-text-amber {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-300 via-orange-400 to-red-400;
+  }
+
+  /* Leaflet Map Dark Styling */
   .leaflet-container {
-    @apply rounded-2xl;
-    z-index: 1;
+    @apply rounded-2xl w-full h-full;
+    background-color: #070f1e !important;
+    z-index: 10;
+  }
+
+  .leaflet-tile {
+    filter: brightness(0.75) invert(1) contrast(2.2) hue-rotate(200deg) saturate(0.5) !important;
+  }
+
+  .leaflet-popup-content-wrapper {
+    @apply bg-dark-900/95 text-white backdrop-blur-xl border border-white/20 rounded-2xl shadow-modal;
+  }
+
+  .leaflet-popup-tip {
+    @apply bg-dark-900;
   }
 }
 
@@ -53,9 +103,4 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-}
-
-/* Leaflet fixes */
-.leaflet-default-icon-path {
-  background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png);
 }
