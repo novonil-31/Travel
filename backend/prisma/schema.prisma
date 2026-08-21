@@ -1,9 +1,9 @@
 // ACCESS — Prisma Schema
-// Database: SQLite for development, PostgreSQL for production
+// Database: SQLite for development, Neon PostgreSQL for production
 // All dynamic records carry provenance: source, confidence, observed_at, retrieved_at, expires_at
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
