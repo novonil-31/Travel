@@ -80,7 +80,7 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 1 (Southbound)',
-    servingRoutes: ['10', '11', '13', 'C3'],
+    servingRoutes: ['10', '11', '13', '24'],
   },
   {
     id: 's_kiit_sq',
@@ -93,7 +93,20 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 2 (Interchange)',
-    servingRoutes: ['10', '12', '13', 'C3', 'Auto-Stand'],
+    servingRoutes: ['10', '12', '24', 'Auto-Stand'],
+  },
+  {
+    id: 's_campus_25',
+    name: 'Campus 25 Tech Complex',
+    shortName: 'Campus 25',
+    lat: 20.3510,
+    lng: 85.8130,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: false,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['13', '24'],
   },
   {
     id: 's_kims_hosp',
@@ -106,7 +119,7 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 1 (Hospital Bay)',
-    servingRoutes: ['12', 'C3'],
+    servingRoutes: ['12'],
   },
   {
     id: 's_patia_stn',
@@ -119,7 +132,7 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 3 (Express Platform)',
-    servingRoutes: ['10', '11', '12', 'C3', 'Auto-Stand'],
+    servingRoutes: ['10', '11', '12', '13', '24', 'Auto-Stand'],
   },
   {
     id: 's_damana',
@@ -130,9 +143,9 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasRamp: true,
     hasShelter: true,
     hasLighting: true,
-    hasDigitalBoard: false,
+    hasDigitalBoard: true,
     bayNumber: 'Bay 1',
-    servingRoutes: ['10', '11'],
+    servingRoutes: ['10', '11', '12', '13', '24'],
   },
   {
     id: 's_infocity',
@@ -145,7 +158,7 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Platform A',
-    servingRoutes: ['11', '10'],
+    servingRoutes: ['11', '13'],
   },
   {
     id: 's_jaydev_vihar',
@@ -158,7 +171,20 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 4 (Flyover Link)',
-    servingRoutes: ['10', '12', '11'],
+    servingRoutes: ['10', '12', '13', 'Auto-Stand'],
+  },
+  {
+    id: 's_acharya_vihar',
+    name: 'Acharya Vihar Square',
+    shortName: 'Acharya Vihar',
+    lat: 20.3000,
+    lng: 85.8270,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['11'],
   },
   {
     id: 's_vani_vihar',
@@ -171,7 +197,20 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Bay 2',
-    servingRoutes: ['10', '11'],
+    servingRoutes: ['10', '20', '50'],
+  },
+  {
+    id: 's_saheed_nagar',
+    name: 'Saheed Nagar Commercial Hub',
+    shortName: 'Saheed Nagar',
+    lat: 20.2850,
+    lng: 85.8450,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['11', '20', '23'],
   },
   {
     id: 's_master_canteen',
@@ -184,7 +223,7 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Main Terminal Bay 1',
-    servingRoutes: ['10', '11', '12'],
+    servingRoutes: ['10', '11', '12', '16', '20', '23', '33', '50'],
   },
   {
     id: 's_airport',
@@ -197,17 +236,160 @@ export const OFFICIAL_STOPS: TransitStopInfo[] = [
     hasLighting: true,
     hasDigitalBoard: true,
     bayNumber: 'Airport Terminal Bay',
-    servingRoutes: ['11', '12'],
+    servingRoutes: ['11', '12', '23'],
+  },
+  {
+    id: 's_baramunda_isbt',
+    name: 'Baramunda ISBT Bus Terminal',
+    shortName: 'Baramunda ISBT',
+    lat: 20.2780,
+    lng: 85.7950,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Platform 1 (Interstate)',
+    servingRoutes: ['13', '18'],
+  },
+  {
+    id: 's_khandagiri',
+    name: 'Khandagiri Chowk & Caves',
+    shortName: 'Khandagiri',
+    lat: 20.2600,
+    lng: 85.7850,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: false,
+    bayNumber: 'Bay 2',
+    servingRoutes: ['16', '18'],
+  },
+  {
+    id: 's_aiims_hosp',
+    name: 'AIIMS Medical Hospital Main Gate',
+    shortName: 'AIIMS Hospital',
+    lat: 20.2310,
+    lng: 85.7720,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'AIIMS Terminal Bay',
+    servingRoutes: ['16'],
+  },
+  {
+    id: 's_sum_hosp',
+    name: 'SUM Hospital & Medical College',
+    shortName: 'SUM Hospital',
+    lat: 20.2750,
+    lng: 85.7650,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['18'],
+  },
+  {
+    id: 's_iter_soa',
+    name: 'ITER Campus / SOA University',
+    shortName: 'ITER Campus',
+    lat: 20.2510,
+    lng: 85.7980,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['18'],
+  },
+  {
+    id: 's_esplanade_mall',
+    name: 'Esplanade One Mall Terminal',
+    shortName: 'Esplanade Mall',
+    lat: 20.2980,
+    lng: 85.8650,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Mall Entrance Bay',
+    servingRoutes: ['20', '23'],
+  },
+  {
+    id: 's_rasulgarh',
+    name: 'Rasulgarh Square Interchange',
+    shortName: 'Rasulgarh',
+    lat: 20.2950,
+    lng: 85.8620,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Bay 3',
+    servingRoutes: ['20', '23', '50'],
+  },
+  {
+    id: 's_kalpana_sq',
+    name: 'Kalpana Square (Old Town Link)',
+    shortName: 'Kalpana Sq',
+    lat: 20.2550,
+    lng: 85.8390,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: false,
+    bayNumber: 'Bay 1',
+    servingRoutes: ['16', '33'],
+  },
+  {
+    id: 's_lingaraj_temple',
+    name: 'Lingaraj Temple Complex (Old Town)',
+    shortName: 'Lingaraj Temple',
+    lat: 20.2380,
+    lng: 85.8330,
+    hasRamp: false,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: false,
+    bayNumber: 'Temple Terminal',
+    servingRoutes: ['33'],
+  },
+  {
+    id: 's_nandan_kanan',
+    name: 'Nandankanan Zoological Park Terminal',
+    shortName: 'Nandankanan',
+    lat: 20.3980,
+    lng: 85.8250,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Zoo Gate Bay 1',
+    servingRoutes: ['10'],
+  },
+  {
+    id: 's_cuttack_badambadi',
+    name: 'Cuttack Badambadi Bus Stand / CNBT',
+    shortName: 'Cuttack Badambadi',
+    lat: 20.4580,
+    lng: 85.8820,
+    hasRamp: true,
+    hasShelter: true,
+    hasLighting: true,
+    hasDigitalBoard: true,
+    bayNumber: 'Intercity Platform 1',
+    servingRoutes: ['50'],
   },
 ];
 
-// ============ OFFICIAL BUS ROUTES & ACTUAL VEHICLE FLEET ============
+// ============ OFFICIAL CRUT MO BUS ROUTES & FLEET ============
 export const OFFICIAL_ROUTES: Record<string, OfficialBusLine> = {
   '10': {
     id: '10',
     routeNumber: 'Route 10',
     routeName: 'City Bus (Low-Floor Ramp)',
-    originTerminus: 'Nandan Kanan Terminal',
+    originTerminus: 'Nandankanan Zoological Park',
     destTerminus: 'Master Canteen Central Railway Station',
     vehicleType: 'bus',
     color: '#059669',
@@ -216,17 +398,17 @@ export const OFFICIAL_ROUTES: Record<string, OfficialBusLine> = {
     frequencyMinutes: 8,
     operatingHours: '06:00 AM - 11:00 PM',
     operatingDays: 'Runs Daily (Mon - Sun)',
-    stops: ['s_campus_gate', 's_kiit_sq', 's_patia_stn', 's_damana', 's_jaydev_vihar', 's_vani_vihar', 's_master_canteen'],
-    fareMin: 15,
-    fareMax: 25,
+    stops: ['s_nandan_kanan', 's_campus_gate', 's_kiit_sq', 's_patia_stn', 's_damana', 's_jaydev_vihar', 's_vani_vihar', 's_master_canteen'],
+    fareMin: 10,
+    fareMax: 30,
     vehicleFleet: ['OD-02-BA-1011', 'OD-02-BA-1018', 'OD-02-BA-1025', 'OD-02-BA-1032', 'OD-02-BA-1049'],
     busModel: 'Tata Starbus EV (100% Low-Floor Hydraulic Ramp)',
   },
   '11': {
     id: '11',
     routeNumber: 'Route 11',
-    routeName: 'Fast City Bus (Express)',
-    originTerminus: 'Infocity IT Park',
+    routeName: 'Fast City Bus (Express AC)',
+    originTerminus: 'Infocity IT Park Terminal',
     destTerminus: 'Biju Patnaik International Airport',
     vehicleType: 'bus',
     color: '#2563eb',
@@ -235,18 +417,18 @@ export const OFFICIAL_ROUTES: Record<string, OfficialBusLine> = {
     frequencyMinutes: 10,
     operatingHours: '05:30 AM - 11:30 PM',
     operatingDays: 'Runs Daily (Mon - Sun)',
-    stops: ['s_infocity', 's_campus_gate', 's_patia_stn', 's_damana', 's_vani_vihar', 's_master_canteen', 's_airport'],
-    fareMin: 20,
-    fareMax: 30,
+    stops: ['s_infocity', 's_campus_gate', 's_patia_stn', 's_damana', 's_acharya_vihar', 's_saheed_nagar', 's_master_canteen', 's_airport'],
+    fareMin: 10,
+    fareMax: 35,
     vehicleFleet: ['OD-02-BB-2104', 'OD-02-BB-2119', 'OD-02-BB-2135', 'OD-02-BB-2148'],
     busModel: 'Ashok Leyland JanBus Low-Floor AC Express',
   },
   '12': {
     id: '12',
     routeNumber: 'Route 12',
-    routeName: 'Medical & Hospital Line',
+    routeName: 'Medical & Airport Line',
     originTerminus: 'KIMS Medical Hospital Gate',
-    destTerminus: 'Master Canteen / Central Station',
+    destTerminus: 'Biju Patnaik International Airport',
     vehicleType: 'bus',
     color: '#d97706',
     hasRamp: true,
@@ -254,30 +436,163 @@ export const OFFICIAL_ROUTES: Record<string, OfficialBusLine> = {
     frequencyMinutes: 12,
     operatingHours: '06:00 AM - 10:00 PM',
     operatingDays: 'Runs Daily (Mon - Sun)',
-    stops: ['s_kims_hosp', 's_kiit_sq', 's_patia_stn', 's_jaydev_vihar', 's_master_canteen', 's_airport'],
-    fareMin: 15,
-    fareMax: 20,
+    stops: ['s_kims_hosp', 's_kiit_sq', 's_patia_stn', 's_damana', 's_jaydev_vihar', 's_master_canteen', 's_airport'],
+    fareMin: 5,
+    fareMax: 26,
     vehicleFleet: ['OD-02-BC-3202', 'OD-02-BC-3215', 'OD-02-BC-3228'],
     busModel: 'Eicher Skyline Pro Low-Floor Certified Ramp',
   },
   '13': {
     id: '13',
     routeNumber: 'Route 13',
-    routeName: 'Campus Shuttle Buggy',
-    originTerminus: 'Campus 25 Complex',
-    destTerminus: 'Patia Transit Station',
-    vehicleType: 'campus-vehicle',
+    routeName: 'Baramunda - Infocity - KIIT Corridor',
+    originTerminus: 'Baramunda ISBT Bus Terminal',
+    destTerminus: 'Campus 25 Tech Complex',
+    vehicleType: 'bus',
     color: '#0891b2',
     hasRamp: true,
+    hasAirConditioning: true,
+    frequencyMinutes: 10,
+    operatingHours: '06:00 AM - 10:30 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_baramunda_isbt', 's_jaydev_vihar', 's_damana', 's_patia_stn', 's_infocity', 's_campus_gate', 's_campus_25'],
+    fareMin: 10,
+    fareMax: 30,
+    vehicleFleet: ['OD-02-BD-1301', 'OD-02-BD-1308', 'OD-02-BD-1322'],
+    busModel: 'Tata Ultra Electric AC Low-Floor Bus',
+  },
+  '16': {
+    id: '16',
+    routeNumber: 'Route 16',
+    routeName: 'Master Canteen - Khandagiri - AIIMS Hospital Line',
+    originTerminus: 'Master Canteen Central Station',
+    destTerminus: 'AIIMS Medical Hospital Gate',
+    vehicleType: 'bus',
+    color: '#dc2626',
+    hasRamp: true,
+    hasAirConditioning: true,
+    frequencyMinutes: 10,
+    operatingHours: '05:45 AM - 10:45 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_master_canteen', 's_kalpana_sq', 's_khandagiri', 's_aiims_hosp'],
+    fareMin: 10,
+    fareMax: 26,
+    vehicleFleet: ['OD-02-BE-1603', 'OD-02-BE-1614', 'OD-02-BE-1629'],
+    busModel: 'JBM ECO-LIFE Electric Low-Floor Wheelchair Ramp Bus',
+  },
+  '18': {
+    id: '18',
+    routeNumber: 'Route 18',
+    routeName: 'Baramunda - SUM Hospital - ITER Corridor',
+    originTerminus: 'Baramunda ISBT Bus Terminal',
+    destTerminus: 'ITER Campus SOA University',
+    vehicleType: 'bus',
+    color: '#9333ea',
+    hasRamp: true,
     hasAirConditioning: false,
-    frequencyMinutes: 5,
-    operatingHours: '07:00 AM - 10:00 PM',
-    operatingDays: 'Runs All Working Days',
-    stops: ['s_campus_gate', 's_kiit_sq', 's_patia_stn'],
-    fareMin: 0,
-    fareMax: 0,
-    vehicleFleet: ['OD-02-EV-0401', 'OD-02-EV-0402', 'OD-02-EV-0403'],
-    busModel: 'Club Car Transporter Electric 8-Seater Buggy',
+    frequencyMinutes: 12,
+    operatingHours: '06:15 AM - 09:45 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_baramunda_isbt', 's_khandagiri', 's_sum_hosp', 's_iter_soa'],
+    fareMin: 5,
+    fareMax: 20,
+    vehicleFleet: ['OD-02-BF-1802', 'OD-02-BF-1811'],
+    busModel: 'Tata Starbus Low-Floor City Transit',
+  },
+  '20': {
+    id: '20',
+    routeNumber: 'Route 20',
+    routeName: 'Master Canteen - Rasulgarh - Esplanade Mall Line',
+    originTerminus: 'Master Canteen Central Station',
+    destTerminus: 'Esplanade One Mall (Rasulgarh)',
+    vehicleType: 'bus',
+    color: '#ea580c',
+    hasRamp: true,
+    hasAirConditioning: true,
+    frequencyMinutes: 8,
+    operatingHours: '06:00 AM - 11:15 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_master_canteen', 's_saheed_nagar', 's_vani_vihar', 's_rasulgarh', 's_esplanade_mall'],
+    fareMin: 10,
+    fareMax: 22,
+    vehicleFleet: ['OD-02-BG-2005', 'OD-02-BG-2019', 'OD-02-BG-2033'],
+    busModel: 'Tata Ultra Electric AC Low-Floor Bus',
+  },
+  '23': {
+    id: '23',
+    routeNumber: 'Route 23',
+    routeName: 'Airport - Master Canteen - Esplanade Mall Express',
+    originTerminus: 'Biju Patnaik Airport',
+    destTerminus: 'Esplanade One Mall (Rasulgarh)',
+    vehicleType: 'bus',
+    color: '#0284c7',
+    hasRamp: true,
+    hasAirConditioning: true,
+    frequencyMinutes: 12,
+    operatingHours: '06:30 AM - 10:30 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_airport', 's_master_canteen', 's_saheed_nagar', 's_rasulgarh', 's_esplanade_mall'],
+    fareMin: 10,
+    fareMax: 26,
+    vehicleFleet: ['OD-02-BH-2301', 'OD-02-BH-2315'],
+    busModel: 'Ashok Leyland JanBus Low-Floor AC',
+  },
+  '24': {
+    id: '24',
+    routeNumber: 'Route 24',
+    routeName: 'Damana - Patia - KIIT Campus 25 Feeder',
+    originTerminus: 'Damana Square Bus Stop',
+    destTerminus: 'Campus 25 Tech Complex',
+    vehicleType: 'bus',
+    color: '#16a34a',
+    hasRamp: true,
+    hasAirConditioning: false,
+    frequencyMinutes: 10,
+    operatingHours: '07:00 AM - 09:30 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_damana', 's_patia_stn', 's_kiit_sq', 's_campus_gate', 's_campus_25'],
+    fareMin: 5,
+    fareMax: 15,
+    vehicleFleet: ['OD-02-BJ-2404', 'OD-02-BJ-2412'],
+    busModel: 'Eicher Starline Low-Floor Certified Ramp',
+  },
+  '33': {
+    id: '33',
+    routeNumber: 'Route 33',
+    routeName: 'Master Canteen - Lingaraj Temple Old Town Line',
+    originTerminus: 'Master Canteen Central Station',
+    destTerminus: 'Lingaraj Temple Complex (Old Town)',
+    vehicleType: 'bus',
+    color: '#ca8a04',
+    hasRamp: false,
+    hasAirConditioning: false,
+    frequencyMinutes: 15,
+    operatingHours: '06:00 AM - 09:00 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_master_canteen', 's_kalpana_sq', 's_lingaraj_temple'],
+    fareMin: 5,
+    fareMax: 15,
+    vehicleFleet: ['OD-02-BK-3301', 'OD-02-BK-3309'],
+    busModel: 'Tata Starbus Standard Midi Bus',
+  },
+  '50': {
+    id: '50',
+    routeNumber: 'Route 50',
+    routeName: 'Bhubaneswar - Cuttack Badambadi AC Express',
+    originTerminus: 'Master Canteen Central Station',
+    destTerminus: 'Cuttack Badambadi Bus Stand / CNBT',
+    vehicleType: 'bus',
+    color: '#4f46e5',
+    hasRamp: true,
+    hasAirConditioning: true,
+    frequencyMinutes: 10,
+    operatingHours: '05:30 AM - 11:30 PM',
+    operatingDays: 'Runs Daily (Mon - Sun)',
+    stops: ['s_master_canteen', 's_vani_vihar', 's_rasulgarh', 's_cuttack_badambadi'],
+    fareMin: 30,
+    fareMax: 60,
+    vehicleFleet: ['OD-02-BL-5002', 'OD-02-BL-5014', 'OD-02-BL-5028'],
+    busModel: 'Volvo 8400 AC Low-Floor Intercity Bus',
   },
   'Auto-Stand': {
     id: 'Auto-Stand',
@@ -299,6 +614,79 @@ export const OFFICIAL_ROUTES: Record<string, OfficialBusLine> = {
     busModel: 'Bajaj Maxima Z 6-Seater Accessible Shared Auto',
   },
 };
+
+/**
+ * CRUT Mo Bus Official Gazette Fare Slabs
+ * Verified against Government of Odisha CRUT Distance Fare Schedule
+ */
+export function calculateOfficialBusFare(distanceKm: number, isAcLowFloor: boolean = true): {
+  fare: number;
+  slabName: string;
+  nonAcFare: number;
+  acFare: number;
+  concessionFare: number;
+  ruleDescription: string;
+} {
+  const d = Math.max(0.2, distanceKm);
+  let nonAc = 5;
+  let ac = 10;
+  let slab = 'Slab 1 (0 – 2 km)';
+
+  if (d <= 2) {
+    nonAc = 5;
+    ac = 10;
+    slab = 'Slab 1 (0 – 2 km)';
+  } else if (d <= 4) {
+    nonAc = 8;
+    ac = 15;
+    slab = 'Slab 2 (2.1 – 4 km)';
+  } else if (d <= 6) {
+    nonAc = 10;
+    ac = 18;
+    slab = 'Slab 3 (4.1 – 6 km)';
+  } else if (d <= 9) {
+    nonAc = 15;
+    ac = 22;
+    slab = 'Slab 4 (6.1 – 9 km)';
+  } else if (d <= 12) {
+    nonAc = 18;
+    ac = 26;
+    slab = 'Slab 5 (9.1 – 12 km)';
+  } else if (d <= 16) {
+    nonAc = 22;
+    ac = 30;
+    slab = 'Slab 6 (12.1 – 16 km)';
+  } else if (d <= 20) {
+    nonAc = 26;
+    ac = 35;
+    slab = 'Slab 7 (16.1 – 20 km)';
+  } else if (d <= 25) {
+    nonAc = 30;
+    ac = 40;
+    slab = 'Slab 8 (20.1 – 25 km)';
+  } else if (d <= 30) {
+    nonAc = 35;
+    ac = 50;
+    slab = 'Slab 9 (25.1 – 30 km)';
+  } else {
+    const extraKm = Math.ceil(d - 30);
+    nonAc = 35 + Math.ceil(extraKm * 1.2);
+    ac = 50 + Math.ceil(extraKm * 1.5);
+    slab = `Inter-City Slab (> 30 km / ${d.toFixed(1)} km)`;
+  }
+
+  const fare = isAcLowFloor ? ac : nonAc;
+  const concessionFare = Math.ceil(fare * 0.5);
+
+  return {
+    fare,
+    slabName: slab,
+    nonAcFare: nonAc,
+    acFare: ac,
+    concessionFare,
+    ruleDescription: `CRUT Mo Bus Official Gazette Rate • ${slab}: ₹${nonAc} (Non-AC) / ₹${ac} (AC Low-Floor Ramp)`,
+  };
+}
 
 /**
  * Given a stop ID and the current clock, generate the live upcoming bus schedule with actual vehicle plate IDs.

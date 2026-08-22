@@ -187,34 +187,45 @@ export default function RouteDiscoveryPage() {
     !isAutoDirect && !isBikeTaxi && !isSharedAuto &&
     (routeId === 'C2' || routeId.includes('11') || routeName.includes('express') || selectedIndex === 1);
 
-  // Dynamic Stop Matching for Route 10 vs Route 11 vs Other modes
-  const servingRouteId = isExpressBus ? '11' : '10';
-  const matchedOfficialRoute = OFFICIAL_ROUTES[servingRouteId] || OFFICIAL_ROUTES['10'];
+  // Dynamic Bus Line & Stop Matching for ANY official route (10, 11, 12, 13, 16, 18, 20, 23, 24, 33, 50)
+  const matchedOfficialRoute = OFFICIAL_ROUTES[routeId] || (isExpressBus ? OFFICIAL_ROUTES['11'] : OFFICIAL_ROUTES['10']);
+  const servingRouteId = matchedOfficialRoute.id;
 
   const candidateStops = OFFICIAL_STOPS.filter(s => s.servingRoutes.includes(servingRouteId));
   const fallbackStops = candidateStops.length > 0 ? candidateStops : OFFICIAL_STOPS;
 
-  // Find the closest boarding stop on this specific line
-  let activeBoardingStop = fallbackStops[0];
-  let minBoardDist = Infinity;
-  fallbackStops.forEach(st => {
-    const dist = haversineDistanceClient(originCoords[0], originCoords[1], st.lat, st.lng);
-    if (dist < minBoardDist) {
-      minBoardDist = dist;
-      activeBoardingStop = st;
-    }
-  });
+  // Use the pre-computed intermediate stops if available, or dynamically match closest
+  const intermediateStops = selectedRoute?.intermediateStops || [];
+  let activeBoardingStop = intermediateStops.length > 0
+    ? OFFICIAL_STOPS.find(s => s.id === intermediateStops[0].id) || fallbackStops[0]
+    : fallbackStops[0];
 
-  // Find the closest alighting stop on this specific line
-  let activeAlightingStop = fallbackStops[fallbackStops.length - 1];
-  let minAlightDist = Infinity;
-  fallbackStops.forEach(st => {
-    const dist = haversineDistanceClient(destCoords[0], destCoords[1], st.lat, st.lng);
-    if (dist < minAlightDist) {
-      minAlightDist = dist;
-      activeAlightingStop = st;
-    }
-  });
+  let activeAlightingStop = intermediateStops.length > 1
+    ? OFFICIAL_STOPS.find(s => s.id === intermediateStops[1].id) || fallbackStops[fallbackStops.length - 1]
+    : fallbackStops[fallbackStops.length - 1];
+
+  let minBoardDist = haversineDistanceClient(originCoords[0], originCoords[1], activeBoardingStop.lat, activeBoardingStop.lng);
+  let minAlightDist = haversineDistanceClient(destCoords[0], destCoords[1], activeAlightingStop.lat, activeAlightingStop.lng);
+
+  if (intermediateStops.length < 2) {
+    minBoardDist = Infinity;
+    fallbackStops.forEach(st => {
+      const dist = haversineDistanceClient(originCoords[0], originCoords[1], st.lat, st.lng);
+      if (dist < minBoardDist) {
+        minBoardDist = dist;
+        activeBoardingStop = st;
+      }
+    });
+
+    minAlightDist = Infinity;
+    fallbackStops.forEach(st => {
+      const dist = haversineDistanceClient(destCoords[0], destCoords[1], st.lat, st.lng);
+      if (dist < minAlightDist) {
+        minAlightDist = dist;
+        activeAlightingStop = st;
+      }
+    });
+  }
 
   // Multimodal available ways to reach this specific bus stop
   const waysToReachList = getWaysToReachStop(originCoords[0], originCoords[1], activeBoardingStop);
@@ -476,25 +487,16 @@ export default function RouteDiscoveryPage() {
                 ? result.fare.type === 'exact'
                   ? `₹${result.fare.exact}`
                   : `₹${result.fare.min} - ₹${result.fare.max}`
-                : '₹20';
+                : '₹15';
 
-              const displayName =
-                result.route.id === 'C3'
-                  ? 'Mo Bus (Route 10 City Line)'
-                  : result.route.id === 'C2'
-                  ? 'Mo Bus (Route 11 Fast Express)'
-                  : result.route.id === 'AUTO_DIRECT'
-                  ? 'Direct Auto (Rapido/Uber)'
-                  : result.route.id === 'BIKE_TAXI'
-                  ? 'Bike Taxi (Rapido Solo)'
-                  : result.route.name;
+              const displayName = result.route.name;
 
               return (
                 <div
                   key={idx}
                   onClick={() => {
                     setSelectedIndex(idx);
-                    if (result.route.id !== 'S1') setSelectedCarpool(null);
+                    if (result.route.id !== 'S1' && result.route.id !== 'Auto-Stand') setSelectedCarpool(null);
                   }}
                   className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
                     isSelected
@@ -517,7 +519,7 @@ export default function RouteDiscoveryPage() {
                         : '🚌'}
                     </div>
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm leading-tight block">{displayName}</span>
                         {result.recommendation.recommended && (
                           <span
@@ -549,7 +551,7 @@ export default function RouteDiscoveryPage() {
                         isSelected ? 'text-neutral-400' : 'text-neutral-500'
                       }`}
                     >
-                      Estimated
+                      {result.fare?.status === 'confirmed' ? 'Govt Gazette' : 'Estimated'}
                     </span>
                   </div>
                 </div>
@@ -913,6 +915,23 @@ export default function RouteDiscoveryPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Official CRUT Mo Bus Fare Gazette Note */}
+                  {selectedRoute?.fare && (
+                    <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 space-y-0.5">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="flex items-center gap-1">
+                          🏛️ Official CRUT Gazette Fare:
+                        </span>
+                        <span className="text-emerald-900 font-black text-xs">
+                          ₹{selectedRoute.fare.exact}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-emerald-800 leading-tight">
+                        {selectedRoute.fare.notes || selectedRoute.fare.source}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Actions Bar */}
                   <div className="flex items-center justify-between pt-2 border-t border-neutral-100 text-[11px]">
