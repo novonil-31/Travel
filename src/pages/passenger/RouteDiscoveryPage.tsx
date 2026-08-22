@@ -9,7 +9,7 @@ import {
   Navigation, ArrowRight, Clock, ShieldCheck, ChevronRight,
   Car, Sparkles, Check, ChevronDown, Bus, Footprints,
   MapPin, AlertCircle, Phone, Info, Radio, Users, Calendar,
-  Compass, Zap, CornerDownRight
+  Compass, Zap, CornerDownRight, ExternalLink, Star, Shield
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import {
@@ -18,6 +18,8 @@ import {
   getLiveStopArrivals,
   getNearestOfficialStop,
   getWaysToReachStop,
+  calculateSharedAutoProbability,
+  getOnDemandTaxiLive,
   type LiveUpcomingBus,
   type TransitStopInfo,
   type FirstMileOption,
@@ -86,7 +88,7 @@ export default function RouteDiscoveryPage() {
   const [showWaysToReach, setShowWaysToReach] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
-  // Update clock every minute for accurate relative arrival times
+  // Update clock every 30s for accurate relative arrival times
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(timer);
@@ -145,32 +147,42 @@ export default function RouteDiscoveryPage() {
   const liveArrivalsForBoarding = getLiveStopArrivals(activeBoardingStop.id, currentTime);
 
   // Match the selected route to the specific official line
-  const matchedOfficialRoute =
-    selectedRoute?.route.id === 'C2'
-      ? OFFICIAL_ROUTES['11']
-      : selectedRoute?.route.id === 'S1'
-      ? OFFICIAL_ROUTES['Auto-Stand']
-      : selectedRoute?.route.id === 'CV1'
-      ? OFFICIAL_ROUTES['13']
-      : OFFICIAL_ROUTES['10'];
+  const isAutoDirect = selectedRoute?.route.id === 'AUTO_DIRECT';
+  const isBikeTaxi = selectedRoute?.route.id === 'BIKE_TAXI';
+  const isSharedAuto = selectedRoute?.route.id === 'S1' || selectedRoute?.route.vehicleType === 'shared-transport' && !isAutoDirect && !isBikeTaxi;
+  const isExpressBus = selectedRoute?.route.id === 'C2';
 
-  const matchedUpcomingBus =
-    liveArrivalsForBoarding.find(b => b.routeId === matchedOfficialRoute?.id) ||
-    liveArrivalsForBoarding[0];
+  const matchedOfficialRoute = isExpressBus
+    ? OFFICIAL_ROUTES['11']
+    : OFFICIAL_ROUTES['10'];
+
+  const matchedUpcomingBus = isExpressBus
+    ? liveArrivalsForBoarding.find(b => b.routeId === '11') || liveArrivalsForBoarding[0]
+    : liveArrivalsForBoarding.find(b => b.routeId === '10') || liveArrivalsForBoarding[0];
 
   const busWaitMinutes = matchedUpcomingBus ? matchedUpcomingBus.minutesAway : 6;
   const formattedBusArrivalTime = matchedUpcomingBus ? matchedUpcomingBus.scheduledTime : '09:35 AM';
-  const actualVehiclePlate = matchedUpcomingBus?.vehicleNumber || 'OD-02-BA-1025';
-  const actualBusModel = matchedUpcomingBus?.busModel || 'Tata Starbus EV (100% Low-Floor Hydraulic Ramp)';
+  const actualVehiclePlate = matchedUpcomingBus?.vehicleNumber || (isExpressBus ? 'OD-02-BB-2104' : 'OD-02-BA-1025');
+  const actualBusModel = isExpressBus
+    ? 'Ashok Leyland JanBus AC Express'
+    : 'Tata Starbus EV (100% Low-Floor Hydraulic Ramp)';
+
+  // Shared Auto Probability Engine Data
+  const sharedStandProbability = calculateSharedAutoProbability(originCoords[0], originCoords[1], currentTime);
+
+  // On-Demand Taxi Data
+  const directDistanceKm = Math.max(1, (selectedRoute?.duration || 15) * 0.4);
+  const onDemandAutoData = getOnDemandTaxiLive('auto', directDistanceKm, currentTime);
+  const onDemandBikeData = getOnDemandTaxiLive('bike', directDistanceKm, currentTime);
 
   const boardingStopName = activeBoardingStop.name;
   const alightingStopName = selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.from || `${selectedRoute?.destinationName} Transit Station`;
 
-  const walkToPickupMinutes = nearestOfficial.walkingMinutes;
-  const walkToPickupDistanceMeters = nearestOfficial.distanceMeters;
+  const walkToPickupMinutes = isAutoDirect || isBikeTaxi ? 0 : nearestOfficial.walkingMinutes;
+  const walkToPickupDistanceMeters = isAutoDirect || isBikeTaxi ? 0 : nearestOfficial.distanceMeters;
 
-  const finalWalkMinutes = Math.max(1, selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.duration || 1);
-  const finalWalkDistanceMeters = Math.round(finalWalkMinutes * 60);
+  const finalWalkMinutes = isAutoDirect || isBikeTaxi ? 0 : Math.max(1, selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.duration || 1);
+  const finalWalkDistanceMeters = isAutoDirect || isBikeTaxi ? 0 : Math.round(finalWalkMinutes * 60);
   const totalWalkDistanceMeters = walkToPickupDistanceMeters + finalWalkDistanceMeters;
 
   const handleOpenTimetable = (stop: TransitStopInfo) => {
@@ -316,6 +328,17 @@ export default function RouteDiscoveryPage() {
                   : `₹${result.fare.min} - ₹${result.fare.max}`
                 : '₹20';
 
+              const displayName =
+                result.route.id === 'C3'
+                  ? 'Mo Bus (Route 10 City Line)'
+                  : result.route.id === 'C2'
+                  ? 'Mo Bus (Route 11 Fast Express)'
+                  : result.route.id === 'AUTO_DIRECT'
+                  ? 'Direct Auto (Rapido/Uber)'
+                  : result.route.id === 'BIKE_TAXI'
+                  ? 'Bike Taxi (Rapido Solo)'
+                  : result.route.name;
+
               return (
                 <div
                   key={idx}
@@ -346,7 +369,7 @@ export default function RouteDiscoveryPage() {
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-sm leading-tight block">
-                          {result.route.name}
+                          {displayName}
                         </span>
                         {result.recommendation.recommended && (
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-900'}`}>
@@ -374,137 +397,271 @@ export default function RouteDiscoveryPage() {
             })}
           </div>
 
-          {/* Detailed Transit Pickup, Stop Location & Actual Bus Running Breakdown Card */}
+          {/* Detailed Transit Telemetry & Probability Breakdown Card */}
           {selectedRoute && (
             <div className="bg-white border border-neutral-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-900 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  Actual Bus Running & Pickup Breakdown
+                  {isAutoDirect
+                    ? 'Direct Doorstep Auto Telemetry'
+                    : isBikeTaxi
+                    ? 'Rapido Bike Taxi Telemetry'
+                    : isSharedAuto
+                    ? 'Shared Auto Stand & Finding Probability'
+                    : 'Actual Bus Running & Corridor Telemetry'}
                 </span>
                 <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                   Total Walk: {totalWalkDistanceMeters}m
                 </span>
               </div>
 
-              {/* Step 1: Exact Boarding Stop & Actual Running Vehicle Details */}
-              <div className="flex items-start gap-3 text-xs">
-                <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
-                  1
-                </div>
-                <div className="flex-1 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <strong className="text-neutral-900 font-bold">Catch Vehicle At: {boardingStopName}</strong>
-                    <span className="text-emerald-700 font-bold">{walkToPickupDistanceMeters}m walk</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Board at <strong>{activeBoardingStop.bayNumber}</strong>. Located ~{walkToPickupMinutes} mins from your origin point.
-                  </p>
-
-                  {/* Actual Bus Live Telemetry Card */}
-                  <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
+              {/* 1. Direct Auto Rickshaw Case (Doorstep) */}
+              {isAutoDirect ? (
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-md bg-black text-white font-black text-xs">
-                          {matchedOfficialRoute?.routeNumber || 'Route 10'}
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-black text-xs">
+                          🛺 Rapido / Uber Auto
                         </span>
                         <span className="font-bold text-neutral-900 text-xs">
-                          Vehicle #{actualVehiclePlate}
+                          {onDemandAutoData.vehicleModel}
                         </span>
                       </div>
-                      <span className="text-blue-800 bg-blue-50 font-bold px-2 py-0.5 rounded-md text-[10px] border border-blue-100">
-                        {formattedBusArrivalTime} ({busWaitMinutes}m away)
+                      <span className="text-amber-800 bg-white font-bold px-2 py-0.5 rounded-md text-[10px] border border-amber-200">
+                        ⚡ Arriving in {onDemandAutoData.driverEtaMinutes} mins
                       </span>
                     </div>
 
-                    <div className="text-[11px] text-neutral-600 space-y-1">
-                      <div>
-                        <strong>Full Corridor:</strong> {matchedOfficialRoute?.originTerminus} ➡️ {matchedOfficialRoute?.destTerminus}
-                      </div>
-                      <div>
-                        <strong>Model:</strong> {actualBusModel}
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-neutral-500 pt-0.5">
-                        <span>📅 {matchedOfficialRoute?.operatingDays}</span>
-                        <span>•</span>
-                        <span>⏰ {matchedOfficialRoute?.operatingHours}</span>
-                      </div>
+                    <div className="flex items-center gap-3 text-[11px] text-neutral-600">
+                      <span className="flex items-center gap-1">
+                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                        <strong>{onDemandAutoData.driverRating}</strong> ({onDemandAutoData.tripCount}+ trips)
+                      </span>
+                      <span>•</span>
+                      <span>🚪 Doorstep Direct Pickup (0m walk)</span>
                     </div>
 
-                    <div className="pt-1 flex items-center justify-between border-t border-neutral-200/80 text-[10px]">
-                      <span className="text-emerald-700 font-bold flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                        {matchedOfficialRoute?.hasRamp ? '♿ Low-Floor Ramp Certified' : 'Standard Transit'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenTimetable(activeBoardingStop)}
-                        className="font-bold underline text-blue-900 hover:text-black"
-                      >
-                        View Full Stop Timetable →
-                      </button>
+                    <div className="text-[10px] text-neutral-500 pt-1 border-t border-amber-200/60">
+                      Fare: ₹{selectedRoute.fare?.type === 'exact' ? selectedRoute.fare.exact : 45} (Official Base ₹30 + ₹12/km meter rate).
                     </div>
                   </div>
 
-                  {/* Available Ways to Reach This Bus Stop Button & Selector */}
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowWaysToReach(!showWaysToReach)}
-                      className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 underline"
-                    >
-                      <span>{showWaysToReach ? 'Hide' : 'Show'} Available Ways to Reach This Bus Stop ({waysToReachList.length} Options)</span>
-                      <ChevronDown className={`w-3 h-3 transition-transform ${showWaysToReach ? 'rotate-180' : ''}`} />
-                    </button>
+                  <a
+                    href="https://rapido.onelink.me/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <span>Book on Rapido Auto (1-Tap Direct Bridge)</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              ) : isBikeTaxi ? (
+                /* 2. Bike Taxi Case (Rapido/Uber Moto) */
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 bg-cyan-50/70 border border-cyan-200 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-cyan-600 text-white font-black text-xs">
+                          🛵 Rapido Bike Taxi
+                        </span>
+                        <span className="font-bold text-neutral-900 text-xs">
+                          {onDemandBikeData.vehicleModel}
+                        </span>
+                      </div>
+                      <span className="text-cyan-900 bg-white font-bold px-2 py-0.5 rounded-md text-[10px] border border-cyan-200">
+                        ⚡ Arriving in {onDemandBikeData.driverEtaMinutes} mins
+                      </span>
+                    </div>
 
-                    {showWaysToReach && (
-                      <div className="mt-2 space-y-1.5 p-2.5 bg-blue-50/50 border border-blue-100 rounded-xl text-[11px]">
-                        {waysToReachList.map((way, wIdx) => (
-                          <div key={wIdx} className="p-2 bg-white rounded-lg border border-blue-100 flex items-start justify-between gap-2">
-                            <div>
-                              <strong className="text-neutral-900 block font-bold">{way.title}</strong>
-                              <span className="text-[10px] text-neutral-500 block leading-tight mt-0.5">{way.description}</span>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-bold text-neutral-800 text-[10px] block">{way.durationMinutes} min</span>
-                              <span className="text-[9px] text-emerald-700 font-semibold">{way.fareEstimate}</span>
-                            </div>
+                    <div className="flex items-center gap-3 text-[11px] text-neutral-600">
+                      <span className="flex items-center gap-1">
+                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                        <strong>{onDemandBikeData.driverRating}</strong> ({onDemandBikeData.tripCount}+ trips)
+                      </span>
+                      <span>•</span>
+                      <span>🪖 Clean Helmet & Safety Shield</span>
+                    </div>
+
+                    <div className="text-[10px] text-neutral-500 pt-1 border-t border-cyan-200/60">
+                      Fastest single-rider commute. Beats traffic by ~15 mins.
+                    </div>
+                  </div>
+
+                  <a
+                    href="https://rapido.onelink.me/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <span>Book on Rapido Bike Taxi</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              ) : isSharedAuto ? (
+                /* 3. Shared Auto Stand with LIVE PROBABILITY ENGINE */
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-2xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-ping" />
+                        <strong className="text-purple-900 text-xs uppercase tracking-wider">
+                          Auto Finding Probability:
+                        </strong>
+                      </div>
+                      <span className="px-2.5 py-1 bg-purple-600 text-white font-black text-xs rounded-full shadow-xs">
+                        {sharedStandProbability.probabilityPercent}% High Probability
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="p-2 bg-white rounded-xl border border-purple-100">
+                        <span className="text-[10px] text-neutral-500 block">Vehicles at Stand:</span>
+                        <strong className="text-neutral-900 text-xs">~{sharedStandProbability.availableVehiclesCount} Shared Autos Waiting</strong>
+                      </div>
+                      <div className="p-2 bg-white rounded-xl border border-purple-100">
+                        <span className="text-[10px] text-neutral-500 block">Average Headway:</span>
+                        <strong className="text-neutral-900 text-xs">Departs every {sharedStandProbability.averageHeadwayMinutes} mins</strong>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-purple-950 space-y-1">
+                      <div>
+                        <strong>Catch At Stand:</strong> {sharedStandProbability.standName} (~{sharedStandProbability.distanceMeters}m walk)
+                      </div>
+                      <div>
+                        <strong>Corridor Flow:</strong> {sharedStandProbability.operatingRoute}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 pt-0.5">
+                        Fixed Fare: {sharedStandProbability.fixedFareText} • Pay cash or UPI to driver on boarding.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* 4. Official City Bus Corridor (Mo Bus Route 10 / 11) */
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                      1
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <strong className="text-neutral-900 font-bold">Catch Vehicle At: {boardingStopName}</strong>
+                        <span className="text-emerald-700 font-bold">{walkToPickupDistanceMeters}m walk</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-500">
+                        Board at <strong>{activeBoardingStop.bayNumber}</strong>. Located ~{walkToPickupMinutes} mins from your origin point.
+                      </p>
+
+                      {/* Actual Bus Live Telemetry Card */}
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-black text-white font-black text-xs">
+                              {matchedOfficialRoute?.routeNumber || 'Route 10'}
+                            </span>
+                            <span className="font-bold text-neutral-900 text-xs">
+                              Vehicle #{actualVehiclePlate}
+                            </span>
                           </div>
-                        ))}
+                          <span className="text-blue-800 bg-blue-50 font-bold px-2 py-0.5 rounded-md text-[10px] border border-blue-100">
+                            {formattedBusArrivalTime} ({busWaitMinutes}m away)
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-neutral-600 space-y-1">
+                          <div>
+                            <strong>Full Corridor:</strong> {matchedOfficialRoute?.originTerminus} ➡️ {matchedOfficialRoute?.destTerminus}
+                          </div>
+                          <div>
+                            <strong>Model:</strong> {actualBusModel}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-neutral-500 pt-0.5">
+                            <span>📅 {matchedOfficialRoute?.operatingDays}</span>
+                            <span>•</span>
+                            <span>⏰ {matchedOfficialRoute?.operatingHours}</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-1 flex items-center justify-between border-t border-neutral-200/80 text-[10px]">
+                          <span className="text-emerald-700 font-bold flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            {matchedOfficialRoute?.hasRamp ? '♿ Low-Floor Ramp Certified' : 'Standard Transit'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTimetable(activeBoardingStop)}
+                            className="font-bold underline text-blue-900 hover:text-black"
+                          >
+                            View Full Stop Timetable →
+                          </button>
+                        </div>
                       </div>
-                    )}
+
+                      {/* Available Ways to Reach This Bus Stop Button & Selector */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowWaysToReach(!showWaysToReach)}
+                          className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 underline"
+                        >
+                          <span>{showWaysToReach ? 'Hide' : 'Show'} Available Ways to Reach This Bus Stop ({waysToReachList.length} Options)</span>
+                          <ChevronDown className={`w-3 h-3 transition-transform ${showWaysToReach ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showWaysToReach && (
+                          <div className="mt-2 space-y-1.5 p-2.5 bg-blue-50/50 border border-blue-100 rounded-xl text-[11px]">
+                            {waysToReachList.map((way, wIdx) => (
+                              <div key={wIdx} className="p-2 bg-white rounded-lg border border-blue-100 flex items-start justify-between gap-2">
+                                <div>
+                                  <strong className="text-neutral-900 block font-bold">{way.title}</strong>
+                                  <span className="text-[10px] text-neutral-500 block leading-tight mt-0.5">{way.description}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="font-bold text-neutral-800 text-[10px] block">{way.durationMinutes} min</span>
+                                  <span className="text-[9px] text-emerald-700 font-semibold">{way.fareEstimate}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2: In-Vehicle Ride */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                      2
+                    </div>
+                    <div className="flex-1">
+                      <strong className="text-neutral-900 font-bold">Ride {selectedRoute.route.name}</strong>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        Ride for approx. <strong>{Math.max(5, selectedRoute.duration - walkToPickupMinutes - finalWalkMinutes)} mins</strong>. Priority seating and ramp assistance available.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3: Alighting & Final Walk */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-xl bg-red-100 text-red-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                      3
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <strong className="text-neutral-900 font-bold">Get Down At: {alightingStopName}</strong>
+                        <span className="text-neutral-600 font-bold">{finalWalkDistanceMeters}m walk</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        Walk remaining <strong>{finalWalkDistanceMeters}m (~{finalWalkMinutes} min)</strong> to your exact final destination.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Step 2: In-Vehicle Ride */}
-              <div className="flex items-start gap-3 text-xs">
-                <div className="w-7 h-7 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
-                  2
-                </div>
-                <div className="flex-1">
-                  <strong className="text-neutral-900 font-bold">Ride {selectedRoute.route.name}</strong>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Ride for approx. <strong>{Math.max(5, selectedRoute.duration - walkToPickupMinutes - finalWalkMinutes)} mins</strong>. Priority seating and ramp assistance available.
-                  </p>
-                </div>
-              </div>
-
-              {/* Step 3: Alighting & Final Walk */}
-              <div className="flex items-start gap-3 text-xs">
-                <div className="w-7 h-7 rounded-xl bg-red-100 text-red-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
-                  3
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <strong className="text-neutral-900 font-bold">Get Down At: {alightingStopName}</strong>
-                    <span className="text-neutral-600 font-bold">{finalWalkDistanceMeters}m walk</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Walk remaining <strong>{finalWalkDistanceMeters}m (~{finalWalkMinutes} min)</strong> to your exact final destination.
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
