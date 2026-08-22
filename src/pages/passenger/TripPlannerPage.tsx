@@ -24,20 +24,24 @@ export default function TripPlannerPage() {
   const urlOrigin = searchParams.get('origin');
   const urlDest = searchParams.get('destination');
   const urlMobility = searchParams.get('mobility');
+  const urlOriginLat = searchParams.get('originLat') ? parseFloat(searchParams.get('originLat')!) : null;
+  const urlOriginLng = searchParams.get('originLng') ? parseFloat(searchParams.get('originLng')!) : null;
+  const urlDestLat = searchParams.get('destLat') ? parseFloat(searchParams.get('destLat')!) : null;
+  const urlDestLng = searchParams.get('destLng') ? parseFloat(searchParams.get('destLng')!) : null;
 
   // Location inputs state
   const [originInput, setOriginInput] = useState<string>(urlOrigin || 'Campus Gate');
   const [originLocation, setOriginLocation] = useState<LocationState>({
     name: urlOrigin || 'Campus Gate',
-    lat: 20.3555,
-    lng: 85.8145,
+    lat: urlOriginLat ?? 20.3555,
+    lng: urlOriginLng ?? 85.8145,
   });
 
   const [destinationInput, setDestinationInput] = useState<string>(urlDest || 'Patia Transit Station');
   const [destinationLocation, setDestinationLocation] = useState<LocationState>({
     name: urlDest || 'Patia Transit Station',
-    lat: 20.3450,
-    lng: 85.8180,
+    lat: urlDestLat ?? 20.3450,
+    lng: urlDestLng ?? 85.8180,
   });
 
   // Autocomplete Suggestions State

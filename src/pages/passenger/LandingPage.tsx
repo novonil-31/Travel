@@ -118,7 +118,7 @@ export default function LandingPage() {
       updateProfile({ mobility: 'none', stairs: 'acceptable', walkingTolerance: 'high' });
     }
 
-    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&mobility=${mobilityFilter}&timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`;
+    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&originLat=${pickupLocation.lat}&originLng=${pickupLocation.lng}&destLat=${dropoffLocation.lat}&destLng=${dropoffLocation.lng}&mobility=${mobilityFilter}&timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`;
 
     if (!state.currentUser) {
       navigate(`/login?${query}`);
