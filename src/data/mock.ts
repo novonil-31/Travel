@@ -10,19 +10,21 @@ import {
   interpolateCurvedPoints,
 } from '../utils/onlineRouting';
 
+import { OFFICIAL_STOPS, OFFICIAL_ROUTES } from './liveTimetable';
+
 // ============ STOPS ============
-export const DEMO_STOPS: Stop[] = [
-  { id: 's1', name: 'Campus Gate / Main Entrance', lat: 20.3555, lng: 85.8145, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: true, routes: ['C3', 'C2', 'C5'] },
-  { id: 's2', name: 'KIIT Square / Central Hub', lat: 20.3530, lng: 85.8160, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: true, routes: ['C3', 'C5'] },
-  { id: 's3', name: 'Patia Transit Station', lat: 20.3450, lng: 85.8180, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: false, routes: ['C3', 'C2'] },
-  { id: 's4', name: 'Infocity IT Park', lat: 20.3600, lng: 85.8120, accessible: true, hasRamp: true, hasStairs: true, hasLighting: true, sheltered: true, routes: ['C5'] },
-  { id: 's5', name: 'KIMS Medical Hospital', lat: 20.3570, lng: 85.8170, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: true, routes: ['C3'] },
-  { id: 's6', name: 'Bhubaneswar Central Railway Station', lat: 20.2666, lng: 85.8436, accessible: true, hasRamp: true, hasStairs: true, hasLighting: true, sheltered: true, routes: ['C2'] },
-  { id: 's7', name: 'Campus 25 Tech Complex', lat: 20.3510, lng: 85.8130, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: false, routes: ['C5', 'S1'] },
-  { id: 's8', name: 'Fire Station Overbridge', lat: 20.2850, lng: 85.8100, accessible: false, hasRamp: false, hasStairs: true, hasLighting: false, sheltered: false, routes: ['C2'] },
-  { id: 's9', name: 'Vani Vihar University Gate', lat: 20.3000, lng: 85.8300, accessible: true, hasRamp: true, hasStairs: false, hasLighting: true, sheltered: true, routes: ['C2'] },
-  { id: 's10', name: 'Jaydev Vihar Interchange', lat: 20.3050, lng: 85.8200, accessible: true, hasRamp: true, hasStairs: true, hasLighting: true, sheltered: true, routes: ['C5', 'S1'] },
-];
+export const DEMO_STOPS: Stop[] = OFFICIAL_STOPS.map((s, idx) => ({
+  id: s.id,
+  name: s.name,
+  lat: s.lat,
+  lng: s.lng,
+  accessible: s.hasRamp,
+  hasRamp: s.hasRamp,
+  hasStairs: false,
+  hasLighting: s.hasLighting,
+  sheltered: s.hasShelter,
+  routes: s.servingRoutes,
+}));
 
 // ============ ROUTES ============
 export const DEMO_ROUTES: Route[] = [
@@ -212,65 +214,79 @@ export async function generateDynamicSearchResults(
   const directDistanceM = Math.round(haversineDistanceClient(origin.lat, origin.lng, destination.lat, destination.lng));
   const directDistanceKm = Math.max(0.5, directDistanceM / 1000);
 
-  // Find closest local stops to origin and destination
-  const stopsWithDistOrigin = DEMO_STOPS.map((s) => ({
-    ...s,
-    distFromOrigin: haversineDistanceClient(origin.lat, origin.lng, s.lat, s.lng),
-  })).sort((a, b) => a.distFromOrigin - b.distFromOrigin);
+  // 1. Route 10 Specific Stops Matching (City Bus)
+  const route10Stops = OFFICIAL_STOPS.filter((s) => s.servingRoutes.includes('10'));
+  const boardStop10 = [...route10Stops].sort(
+    (a, b) => haversineDistanceClient(origin.lat, origin.lng, a.lat, a.lng) - haversineDistanceClient(origin.lat, origin.lng, b.lat, b.lng)
+  )[0] || OFFICIAL_STOPS[0];
+  let alightStop10 = [...route10Stops].sort(
+    (a, b) => haversineDistanceClient(destination.lat, destination.lng, a.lat, a.lng) - haversineDistanceClient(destination.lat, destination.lng, b.lat, b.lng)
+  )[0] || OFFICIAL_STOPS[OFFICIAL_STOPS.length - 1];
 
-  const stopsWithDistDest = DEMO_STOPS.map((s) => ({
-    ...s,
-    distFromDest: haversineDistanceClient(destination.lat, destination.lng, s.lat, s.lng),
-  })).sort((a, b) => a.distFromDest - b.distFromDest);
-
-  const boardStop = stopsWithDistOrigin[0] || DEMO_STOPS[0];
-  let alightStop = stopsWithDistDest[0] || DEMO_STOPS[DEMO_STOPS.length - 1];
-
-  if (boardStop.id === alightStop.id) {
-    alightStop = stopsWithDistDest[1] || DEMO_STOPS[2];
+  if (boardStop10.id === alightStop10.id) {
+    alightStop10 = route10Stops.find(s => s.id !== boardStop10.id) || OFFICIAL_STOPS[OFFICIAL_STOPS.length - 1];
   }
 
-  // 1. Compute real-road walking geometry: Origin -> Board Stop
-  const originToBoardRes = await fetchRoadGeometryLive(
-    origin.lat,
-    origin.lng,
-    boardStop.lat,
-    boardStop.lng,
-    'walking',
-  );
-  const originToBoardWalk = originToBoardRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, boardStop.lat, boardStop.lng, 6);
-  const originWalkDist = originToBoardRes?.distanceM || Math.round(haversineDistanceClient(origin.lat, origin.lng, boardStop.lat, boardStop.lng));
-  const originWalkTime = originToBoardRes?.durationMin || Math.max(1, Math.ceil(originWalkDist / 70));
+  // 2. Route 11 Specific Stops Matching (Fast Express)
+  const route11Stops = OFFICIAL_STOPS.filter((s) => s.servingRoutes.includes('11'));
+  const boardStop11 = [...route11Stops].sort(
+    (a, b) => haversineDistanceClient(origin.lat, origin.lng, a.lat, a.lng) - haversineDistanceClient(origin.lat, origin.lng, b.lat, b.lng)
+  )[0] || OFFICIAL_STOPS[0];
+  let alightStop11 = [...route11Stops].sort(
+    (a, b) => haversineDistanceClient(destination.lat, destination.lng, a.lat, a.lng) - haversineDistanceClient(destination.lat, destination.lng, b.lat, b.lng)
+  )[0] || OFFICIAL_STOPS[OFFICIAL_STOPS.length - 1];
 
-  // 2. Compute real-road transit geometry: Board Stop -> Alight Stop
-  const transitRes = await fetchRoadGeometryLive(
-    boardStop.lat,
-    boardStop.lng,
-    alightStop.lat,
-    alightStop.lng,
-    'driving',
-  );
-  const transitPath = transitRes?.coordinates || interpolateCurvedPoints(boardStop.lat, boardStop.lng, alightStop.lat, alightStop.lng, 12);
-  const transitDist = transitRes?.distanceM || Math.round(haversineDistanceClient(boardStop.lat, boardStop.lng, alightStop.lat, alightStop.lng));
-  const transitTime = transitRes?.durationMin || Math.max(4, Math.ceil(transitDist / 400));
+  if (boardStop11.id === alightStop11.id) {
+    alightStop11 = route11Stops.find(s => s.id !== boardStop11.id) || OFFICIAL_STOPS[OFFICIAL_STOPS.length - 1];
+  }
 
-  // 3. Compute real-road walking geometry: Alight Stop -> Destination
-  const alightToDestRes = await fetchRoadGeometryLive(
-    alightStop.lat,
-    alightStop.lng,
-    destination.lat,
-    destination.lng,
-    'walking',
-  );
-  const alightToDestWalk = alightToDestRes?.coordinates || interpolateCurvedPoints(alightStop.lat, alightStop.lng, destination.lat, destination.lng, 6);
-  const destWalkDist = alightToDestRes?.distanceM || Math.round(haversineDistanceClient(alightStop.lat, alightStop.lng, destination.lat, destination.lng));
-  const destWalkTime = alightToDestRes?.durationMin || Math.max(1, Math.ceil(destWalkDist / 70));
+  // Option 1 Road Geometries: Origin -> Board10 -> Alight10 -> Destination
+  const [originToBoard10Res, transit10Res, alightToDest10Res] = await Promise.all([
+    fetchRoadGeometryLive(origin.lat, origin.lng, boardStop10.lat, boardStop10.lng, 'walking'),
+    fetchRoadGeometryLive(boardStop10.lat, boardStop10.lng, alightStop10.lat, alightStop10.lng, 'driving'),
+    fetchRoadGeometryLive(alightStop10.lat, alightStop10.lng, destination.lat, destination.lng, 'walking'),
+  ]);
 
-  const totalWalkingDist = originWalkDist + destWalkDist;
-  const totalDuration = originWalkTime + transitTime + destWalkTime;
-  const fullRoute = [...originToBoardWalk, ...transitPath, ...alightToDestWalk];
+  const originToBoardWalk10 = originToBoard10Res?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, boardStop10.lat, boardStop10.lng, 8);
+  const originWalkDist10 = originToBoard10Res?.distanceM || Math.round(haversineDistanceClient(origin.lat, origin.lng, boardStop10.lat, boardStop10.lng));
+  const originWalkTime10 = originToBoard10Res?.durationMin || Math.max(1, Math.ceil(originWalkDist10 / 70));
 
-  // 4. Compute direct door-to-door driving geometry for Direct Auto & Bike Taxi (No bus stops)
+  const transitPath10 = transit10Res?.coordinates || interpolateCurvedPoints(boardStop10.lat, boardStop10.lng, alightStop10.lat, alightStop10.lng, 16);
+  const transitDist10 = transit10Res?.distanceM || Math.round(haversineDistanceClient(boardStop10.lat, boardStop10.lng, alightStop10.lat, alightStop10.lng));
+  const transitTime10 = transit10Res?.durationMin || Math.max(4, Math.ceil(transitDist10 / 400));
+
+  const alightToDestWalk10 = alightToDest10Res?.coordinates || interpolateCurvedPoints(alightStop10.lat, alightStop10.lng, destination.lat, destination.lng, 8);
+  const destWalkDist10 = alightToDest10Res?.distanceM || Math.round(haversineDistanceClient(alightStop10.lat, alightStop10.lng, destination.lat, destination.lng));
+  const destWalkTime10 = alightToDest10Res?.durationMin || Math.max(1, Math.ceil(destWalkDist10 / 70));
+
+  const totalWalkingDist10 = originWalkDist10 + destWalkDist10;
+  const totalDuration10 = originWalkTime10 + transitTime10 + destWalkTime10;
+  const fullRoute10 = [...originToBoardWalk10, ...transitPath10, ...alightToDestWalk10];
+
+  // Option 2 Road Geometries: Origin -> Board11 -> Alight11 -> Destination
+  const [originToBoard11Res, transit11Res, alightToDest11Res] = await Promise.all([
+    fetchRoadGeometryLive(origin.lat, origin.lng, boardStop11.lat, boardStop11.lng, 'walking'),
+    fetchRoadGeometryLive(boardStop11.lat, boardStop11.lng, alightStop11.lat, alightStop11.lng, 'driving'),
+    fetchRoadGeometryLive(alightStop11.lat, alightStop11.lng, destination.lat, destination.lng, 'walking'),
+  ]);
+
+  const originToBoardWalk11 = originToBoard11Res?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, boardStop11.lat, boardStop11.lng, 8);
+  const originWalkDist11 = originToBoard11Res?.distanceM || Math.round(haversineDistanceClient(origin.lat, origin.lng, boardStop11.lat, boardStop11.lng));
+  const originWalkTime11 = originToBoard11Res?.durationMin || Math.max(1, Math.ceil(originWalkDist11 / 70));
+
+  const transitPath11 = transit11Res?.coordinates || interpolateCurvedPoints(boardStop11.lat, boardStop11.lng, alightStop11.lat, alightStop11.lng, 16);
+  const transitDist11 = transit11Res?.distanceM || Math.round(haversineDistanceClient(boardStop11.lat, boardStop11.lng, alightStop11.lat, alightStop11.lng));
+  const transitTime11 = transit11Res?.durationMin || Math.max(4, Math.ceil(transitDist11 / 450));
+
+  const alightToDestWalk11 = alightToDest11Res?.coordinates || interpolateCurvedPoints(alightStop11.lat, alightStop11.lng, destination.lat, destination.lng, 8);
+  const destWalkDist11 = alightToDest11Res?.distanceM || Math.round(haversineDistanceClient(alightStop11.lat, alightStop11.lng, destination.lat, destination.lng));
+  const destWalkTime11 = alightToDest11Res?.durationMin || Math.max(1, Math.ceil(destWalkDist11 / 70));
+
+  const totalWalkingDist11 = originWalkDist11 + destWalkDist11;
+  const totalDuration11 = originWalkTime11 + transitTime11 + destWalkTime11;
+  const fullRoute11 = [...originToBoardWalk11, ...transitPath11, ...alightToDestWalk11];
+
+  // Direct Door-to-Door Driving (For Direct Auto & Bike Taxi)
   const directDrivingRes = await fetchRoadGeometryLive(
     origin.lat,
     origin.lng,
@@ -278,15 +294,9 @@ export async function generateDynamicSearchResults(
     destination.lng,
     'driving',
   );
-  const directDrivingPath = directDrivingRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 12);
+  const directDrivingPath = directDrivingRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 16);
   const directDrivingDistM = directDrivingRes?.distanceM || directDistanceM;
   const directDrivingDurationMin = directDrivingRes?.durationMin || Math.max(3, Math.ceil(directDrivingDistM / 500));
-
-  const intermediateStopsList = [
-    { id: boardStop.id, name: boardStop.name, latitude: boardStop.lat, longitude: boardStop.lng, sequence: 1, hasRamp: boardStop.hasRamp },
-    { id: 's-mid-1', name: 'Corridor Midway Transfer', latitude: (boardStop.lat + alightStop.lat) / 2 + 0.001, longitude: (boardStop.lng + alightStop.lng) / 2 + 0.001, sequence: 2, hasRamp: true },
-    { id: alightStop.id, name: alightStop.name, latitude: alightStop.lat, longitude: alightStop.lng, sequence: 3, hasRamp: alightStop.hasRamp },
-  ];
 
   // Compute closest shared taxi & auto stands to Origin
   const nearbyStandsList = DEMO_TRANSPORT_STANDS.map((s) => ({
@@ -314,9 +324,9 @@ export async function generateDynamicSearchResults(
   // Option 1: Step-Free Low-Floor City Bus (Best for Wheelchair / Elderly)
   const option1: RouteSearchResult = {
     route: DEMO_ROUTES[0], // C3 - City Bus
-    eta: totalDuration,
-    duration: totalDuration,
-    walkingDistance: totalWalkingDist,
+    eta: totalDuration10,
+    duration: totalDuration10,
+    walkingDistance: totalWalkingDist10,
     transfers: 0,
     stairs: 0,
     crowding: 'LOW' as CrowdingLevel,
@@ -350,41 +360,43 @@ export async function generateDynamicSearchResults(
         '100% Step-free flat path with zero stairs',
         'Bus equipped with low-floor automatic ramp and dedicated wheelchair bay',
         'Low crowding expected on this time corridor',
-        `Direct road path (${Math.round((originWalkDist + transitDist + destWalkDist) / 1000 * 10) / 10} km total)`,
+        `Direct road path (${Math.round((originWalkDist10 + transitDist10 + destWalkDist10) / 1000 * 10) / 10} km total)`,
       ],
       tradeoff: 'Optimized for step-free access, gentle curb cuts, and certified audio-visual announcements.',
     },
     geometry: {
-      originToBoardWalk,
-      transitPath,
-      alightToDestWalk,
-      fullRoute,
+      originToBoardWalk: originToBoardWalk10,
+      transitPath: transitPath10,
+      alightToDestWalk: alightToDestWalk10,
+      fullRoute: fullRoute10,
     },
-    intermediateStops: intermediateStopsList,
+    intermediateStops: [
+      { id: boardStop10.id, name: boardStop10.name, latitude: boardStop10.lat, longitude: boardStop10.lng, sequence: 1, hasRamp: boardStop10.hasRamp },
+      { id: alightStop10.id, name: alightStop10.name, latitude: alightStop10.lat, longitude: alightStop10.lng, sequence: 2, hasRamp: alightStop10.hasRamp },
+    ],
     turnByTurn: [
-      `Walk ${originWalkDist}m along sidewalk from ${origin.name} to ${boardStop.name} (~${originWalkTime} min)`,
-      `Board ${DEMO_ROUTES[0].shortName} (${DEMO_ROUTES[0].name}) at ${boardStop.name} (Ramp operational)`,
-      `Ride ${transitTime} min (${Math.round(transitDist / 1000 * 10) / 10} km) passing intermediate stops`,
-      `Alight smoothly at ${alightStop.name}`,
-      `Walk ${destWalkDist}m along step-free pathway to ${destination.name} (~${destWalkTime} min)`,
+      `Walk ${originWalkDist10}m along sidewalk from ${origin.name} to ${boardStop10.name} (~${originWalkTime10} min)`,
+      `Board ${DEMO_ROUTES[0].shortName} (${DEMO_ROUTES[0].name}) at ${boardStop10.name} (Ramp operational)`,
+      `Ride ${transitTime10} min (${Math.round(transitDist10 / 1000 * 10) / 10} km) along Route 10 corridor`,
+      `Alight smoothly at ${alightStop10.name}`,
+      `Walk ${destWalkDist10}m along step-free pathway to ${destination.name} (~${destWalkTime10} min)`,
     ],
     segments: [
-      { type: 'walk', from: origin.name, to: boardStop.name, fromId: 'orig', toId: boardStop.id, distance: originWalkDist, duration: originWalkTime, accessible: true, stairs: 0, notes: 'Paved sidewalk, tactile paving' },
-      { type: 'board', from: boardStop.name, to: DEMO_ROUTES[0].name, fromId: boardStop.id, toId: DEMO_ROUTES[0].id, duration: 2, accessible: true, stairs: 0, routeId: DEMO_ROUTES[0].id, routeName: DEMO_ROUTES[0].name, vehicleType: 'bus', notes: 'Deployable wheelchair ramp' },
-      { type: 'ride', from: boardStop.name, to: alightStop.name, fromId: boardStop.id, toId: alightStop.id, duration: transitTime, accessible: true, stairs: 0, routeId: DEMO_ROUTES[0].id, routeName: DEMO_ROUTES[0].name, crowding: 'LOW' },
-      { type: 'alight', from: DEMO_ROUTES[0].name, to: alightStop.name, fromId: DEMO_ROUTES[0].id, toId: alightStop.id, duration: 1, accessible: true, stairs: 0 },
-      { type: 'walk', from: alightStop.name, to: destination.name, fromId: alightStop.id, toId: 'dest', distance: destWalkDist, duration: destWalkTime, accessible: true, stairs: 0, notes: 'Level sidewalk to entrance' },
+      { type: 'walk', from: origin.name, to: boardStop10.name, fromId: 'orig', toId: boardStop10.id, distance: originWalkDist10, duration: originWalkTime10, accessible: true, stairs: 0, notes: 'Paved sidewalk, tactile paving' },
+      { type: 'board', from: boardStop10.name, to: DEMO_ROUTES[0].name, fromId: boardStop10.id, toId: DEMO_ROUTES[0].id, duration: 2, accessible: true, stairs: 0, routeId: DEMO_ROUTES[0].id, routeName: DEMO_ROUTES[0].name, vehicleType: 'bus', notes: 'Deployable wheelchair ramp' },
+      { type: 'ride', from: boardStop10.name, to: alightStop10.name, fromId: boardStop10.id, toId: alightStop10.id, duration: transitTime10, accessible: true, stairs: 0, routeId: DEMO_ROUTES[0].id, routeName: DEMO_ROUTES[0].name, crowding: 'LOW' },
+      { type: 'alight', from: DEMO_ROUTES[0].name, to: alightStop10.name, fromId: DEMO_ROUTES[0].id, toId: alightStop10.id, duration: 1, accessible: true, stairs: 0 },
+      { type: 'walk', from: alightStop10.name, to: destination.name, fromId: alightStop10.id, toId: 'dest', distance: destWalkDist10, duration: destWalkTime10, accessible: true, stairs: 0, notes: 'Level sidewalk to entrance' },
     ],
     condition: DEMO_CONDITIONS.C3,
   };
 
   // Option 2: Express Corridor Bus (Faster limited stops)
-  const option2Duration = Math.max(8, Math.round(totalDuration * 0.85));
   const option2: RouteSearchResult = {
     route: DEMO_ROUTES[1], // C2 - Fast Express
-    eta: option2Duration,
-    duration: option2Duration,
-    walkingDistance: totalWalkingDist - 30,
+    eta: totalDuration11,
+    duration: totalDuration11,
+    walkingDistance: totalWalkingDist11,
     transfers: 0,
     stairs: 1,
     crowding: 'LOW' as CrowdingLevel,
@@ -422,22 +434,25 @@ export async function generateDynamicSearchResults(
       tradeoff: 'Standard curb entry; not certified for non-folding wheelchairs.',
     },
     geometry: {
-      originToBoardWalk,
-      transitPath,
-      alightToDestWalk,
-      fullRoute,
+      originToBoardWalk: originToBoardWalk11,
+      transitPath: transitPath11,
+      alightToDestWalk: alightToDestWalk11,
+      fullRoute: fullRoute11,
     },
-    intermediateStops: intermediateStopsList,
+    intermediateStops: [
+      { id: boardStop11.id, name: boardStop11.name, latitude: boardStop11.lat, longitude: boardStop11.lng, sequence: 1, hasRamp: boardStop11.hasRamp },
+      { id: alightStop11.id, name: alightStop11.name, latitude: alightStop11.lat, longitude: alightStop11.lng, sequence: 2, hasRamp: alightStop11.hasRamp },
+    ],
     turnByTurn: [
-      `Walk ${originWalkDist}m to ${boardStop.name}`,
-      `Board ${DEMO_ROUTES[1].name} at ${boardStop.name}`,
-      `Ride ${option2Duration - 5} min directly to ${alightStop.name}`,
-      `Alight and walk ${destWalkDist}m to ${destination.name}`,
+      `Walk ${originWalkDist11}m to ${boardStop11.name}`,
+      `Board ${DEMO_ROUTES[1].name} at ${boardStop11.name}`,
+      `Ride ${transitTime11} min directly to ${alightStop11.name}`,
+      `Alight and walk ${destWalkDist11}m to ${destination.name}`,
     ],
     segments: [
-      { type: 'walk', from: origin.name, to: boardStop.name, distance: originWalkDist, duration: originWalkTime, accessible: true, stairs: 0 },
-      { type: 'ride', from: boardStop.name, to: alightStop.name, duration: option2Duration - 5, accessible: false, stairs: 1, routeId: DEMO_ROUTES[1].id, routeName: DEMO_ROUTES[1].name, crowding: 'LOW' },
-      { type: 'walk', from: alightStop.name, to: destination.name, distance: destWalkDist, duration: destWalkTime, accessible: false, stairs: 1 },
+      { type: 'walk', from: origin.name, to: boardStop11.name, distance: originWalkDist11, duration: originWalkTime11, accessible: true, stairs: 0 },
+      { type: 'ride', from: boardStop11.name, to: alightStop11.name, duration: transitTime11, accessible: false, stairs: 1, routeId: DEMO_ROUTES[1].id, routeName: DEMO_ROUTES[1].name, crowding: 'LOW' },
+      { type: 'walk', from: alightStop11.name, to: destination.name, distance: destWalkDist11, duration: destWalkTime11, accessible: false, stairs: 1 },
     ],
     condition: DEMO_CONDITIONS.C2,
   };
@@ -513,11 +528,27 @@ export async function generateDynamicSearchResults(
   };
 
   // Option 4: Shared Taxi / Stand Auto Corridor
+  const nearestStand = nearbyStandsList[0] || {
+    id: 'stand_patia',
+    name: 'Patia Transit Chowk Stand',
+    latitude: 20.3450,
+    longitude: 85.8180,
+  };
+  const [walkToStandRes, standToDestRes] = await Promise.all([
+    fetchRoadGeometryLive(origin.lat, origin.lng, nearestStand.latitude, nearestStand.longitude, 'walking'),
+    fetchRoadGeometryLive(nearestStand.latitude, nearestStand.longitude, destination.lat, destination.lng, 'driving'),
+  ]);
+  const walkToStand = walkToStandRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, nearestStand.latitude, nearestStand.longitude, 6);
+  const standToDest = standToDestRes?.coordinates || interpolateCurvedPoints(nearestStand.latitude, nearestStand.longitude, destination.lat, destination.lng, 14);
+  const fullSharedRoute = [...walkToStand, ...standToDest];
+  const sharedWalkM = walkToStandRes?.distanceM || 80;
+  const sharedDuration = (walkToStandRes?.durationMin || 2) + (standToDestRes?.durationMin || directDrivingDurationMin);
+
   const option4: RouteSearchResult = {
     route: DEMO_ROUTES[2], // S1 - Sharing Taxi
-    eta: totalDuration + 2,
-    duration: totalDuration + 2,
-    walkingDistance: Math.round(totalWalkingDist * 0.4),
+    eta: sharedDuration,
+    duration: sharedDuration,
+    walkingDistance: sharedWalkM,
     transfers: 0,
     stairs: 0,
     crowding: 'LOW' as CrowdingLevel,
@@ -528,11 +559,11 @@ export async function generateDynamicSearchResults(
     originName: origin.name,
     destinationName: destination.name,
     scores: {
-      accessibility: 90,
-      safety: 92,
+      accessibility: 88,
+      safety: 85,
       reliability: 88,
-      comfort: 86,
-      overall: 89,
+      comfort: 80,
+      overall: 86,
     },
     fare: {
       type: 'range',
@@ -540,38 +571,36 @@ export async function generateDynamicSearchResults(
       max: sharedAutoMax,
       currency: 'INR',
       confidence: 0.88,
-      source: 'Fixed Shared Stand Agreement',
+      source: 'Designated Stand Regulated Shared Rate',
       status: 'estimated',
-      notes: `Shared commuter auto fare along corridor (${directDistanceKm.toFixed(1)} km)`,
+      notes: `Regulated ₹${sharedAutoMin}-₹${sharedAutoMax} shared seat rate for ${directDistanceKm.toFixed(1)} km`,
     },
     nearbyStands: nearbyStandsList,
     recommendation: {
       recommended: false,
       rank: 4,
       reasons: [
-        'Minimal walking to nearest designated stand',
-        'Frequent shared departures every 3 mins',
-        'Fixed budget shared fare',
+        `Catch from ${nearestStand.name} (${sharedWalkM}m walk)`,
+        'Fixed budget-friendly shared fare',
+        'Frequent departure (departs every 2-3 mins)',
       ],
-      tradeoff: 'Shared vehicle service with fellow passengers.',
+      tradeoff: 'Walk to designated stand; shared with other passengers.',
     },
     geometry: {
-      originToBoardWalk,
-      transitPath,
-      alightToDestWalk,
-      fullRoute,
+      originToBoardWalk: walkToStand,
+      transitPath: standToDest,
+      alightToDestWalk: [],
+      fullRoute: fullSharedRoute,
     },
-    intermediateStops: intermediateStopsList,
+    intermediateStops: [],
     turnByTurn: [
-      `Walk ${Math.round(originWalkDist * 0.4)}m to designated stand`,
-      `Board shared auto towards destination corridor`,
-      `Direct shared ride to drop-off point`,
-      `Arrive at ${destination.name}`,
+      `Walk ${sharedWalkM}m to ${nearestStand.name}`,
+      `Board sharing auto/taxi heading along the corridor`,
+      `Arrive at destination (${destination.name})`,
     ],
     segments: [
-      { type: 'walk', from: origin.name, to: 'Designated Stand', distance: Math.round(originWalkDist * 0.4), duration: 2, accessible: true, stairs: 0 },
-      { type: 'ride', from: 'Designated Stand', to: destination.name, duration: totalDuration, accessible: true, stairs: 0, routeId: DEMO_ROUTES[2].id, routeName: DEMO_ROUTES[2].name, crowding: 'LOW' },
-      { type: 'walk', from: 'Dropoff', to: destination.name, distance: 50, duration: 1, accessible: true, stairs: 0 },
+      { type: 'walk', from: origin.name, to: nearestStand.name, distance: sharedWalkM, duration: Math.max(1, Math.round(sharedWalkM / 65)), accessible: true, stairs: 0 },
+      { type: 'ride', from: nearestStand.name, to: destination.name, duration: standToDestRes?.durationMin || 10, accessible: true, stairs: 0, routeId: DEMO_ROUTES[2].id, routeName: DEMO_ROUTES[2].name, crowding: 'LOW' },
     ],
     condition: DEMO_CONDITIONS.S1,
   };
