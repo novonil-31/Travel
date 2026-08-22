@@ -261,7 +261,7 @@ export default function TripPlannerPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6" ref={dropdownRef}>
+    <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6">
       {/* Clean Header */}
       <div>
         <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
@@ -273,7 +273,7 @@ export default function TripPlannerPage() {
       </div>
 
       {/* Main Search Card (Uber / Ola Style) */}
-      <div className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">
+      <div ref={dropdownRef} className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">
         <form onSubmit={handleSearch} className="space-y-3">
           {/* Pickup Input Row */}
           <div className="relative">

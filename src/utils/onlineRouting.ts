@@ -143,53 +143,53 @@ export async function searchPlacesLive(
     }
   }
 
-  // 2. Concurrently Query OpenStreetMap Nominatim with Bhubaneswar region bias
+  // 2. Two-Pass Geocoding — Regional bias first, then global unconstrained fallback
   const onlineResults: GeocodedPlace[] = [];
+
+  const parseNominatimItem = (item: {
+    display_name: string; name?: string; lat: string; lon: string; type: string; address?: Record<string, string>;
+  }): GeocodedPlace => {
+    const primaryName = item.name || item.display_name.split(',')[0] || query;
+    const subAddress = item.display_name.split(',').slice(1, 3).join(',').trim();
+    const cleanDisplayName = subAddress ? `📍 ${primaryName}, ${subAddress}` : `📍 ${primaryName}`;
+    return {
+      displayName: cleanDisplayName,
+      name: primaryName,
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      type: item.type || 'place',
+    };
+  };
+
   try {
     const encodedQ = encodeURIComponent(query);
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&viewbox=85.60,20.48,86.05,20.10&bounded=0&limit=8&addressdetails=1`;
-    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=20.32&lon=85.82&limit=6`;
 
-    const [nomRes, photonRes] = await Promise.allSettled([
-      fetch(nominatimUrl, { headers: { 'Accept-Language': 'en' } }),
+    // Pass 1: Region-biased (Bhubaneswar area) Nominatim + Photon
+    const nominatimRegionalUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&viewbox=85.60,20.48,86.05,20.10&bounded=0&limit=6&addressdetails=1`;
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=20.32&lon=85.82&limit=5`;
+
+    const [nomRegRes, photonRes] = await Promise.allSettled([
+      fetch(nominatimRegionalUrl, { headers: { 'Accept-Language': 'en' } }),
       fetch(photonUrl),
     ]);
 
-    if (nomRes.status === 'fulfilled' && nomRes.value.ok) {
-      const data = (await nomRes.value.json()) as Array<{
-        display_name: string;
-        name?: string;
-        lat: string;
-        lon: string;
-        type: string;
-        address?: Record<string, string>;
+    if (nomRegRes.status === 'fulfilled' && nomRegRes.value.ok) {
+      const data = (await nomRegRes.value.json()) as Array<{
+        display_name: string; name?: string; lat: string; lon: string; type: string; address?: Record<string, string>;
       }>;
-
-      data.forEach((item) => {
-        const primaryName = item.name || item.display_name.split(',')[0] || query;
-        const subAddress = item.display_name.split(',').slice(1, 3).join(',').trim();
-        const cleanDisplayName = subAddress ? `📍 ${primaryName}, ${subAddress}` : `📍 ${primaryName}`;
-
-        onlineResults.push({
-          displayName: cleanDisplayName,
-          name: primaryName,
-          lat: parseFloat(item.lat),
-          lng: parseFloat(item.lon),
-          type: item.type || 'place',
-        });
-      });
+      data.forEach((item) => onlineResults.push(parseNominatimItem(item)));
     }
 
     if (photonRes.status === 'fulfilled' && photonRes.value.ok) {
       const pData = (await photonRes.value.json()) as {
         features: Array<{
-          geometry: { coordinates: [number, number] }; // [lon, lat]
+          geometry: { coordinates: [number, number] };
           properties: { name?: string; street?: string; city?: string; state?: string; country?: string };
         }>;
       };
       pData.features?.forEach((f) => {
         const name = f.properties.name || f.properties.street || query;
-        const locParts = [f.properties.city, f.properties.state].filter(Boolean).join(', ');
+        const locParts = [f.properties.city, f.properties.state, f.properties.country].filter(Boolean).join(', ');
         onlineResults.push({
           displayName: locParts ? `📍 ${name}, ${locParts}` : `📍 ${name}`,
           name,
@@ -198,6 +198,30 @@ export async function searchPlacesLive(
           type: 'place',
         });
       });
+    }
+
+    // Pass 2: If fewer than 3 results so far, do unconstrained global Nominatim search
+    const uniqueSoFar = new Set<string>();
+    const passOneCount = [...localMatches, ...onlineResults].filter((item) => {
+      const key = `${item.lat.toFixed(3)}-${item.lng.toFixed(3)}`;
+      if (uniqueSoFar.has(key)) return false;
+      uniqueSoFar.add(key);
+      return true;
+    }).length;
+
+    if (passOneCount < 3) {
+      const nominatimGlobalUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&limit=8&addressdetails=1&accept-language=en`;
+      try {
+        const globalRes = await fetch(nominatimGlobalUrl, { headers: { 'Accept-Language': 'en' } });
+        if (globalRes.ok) {
+          const globalData = (await globalRes.json()) as Array<{
+            display_name: string; name?: string; lat: string; lon: string; type: string; address?: Record<string, string>;
+          }>;
+          globalData.forEach((item) => onlineResults.push(parseNominatimItem(item)));
+        }
+      } catch (e) {
+        console.warn('Global search fallback:', e);
+      }
     }
   } catch (err) {
     console.warn('Live search fallback:', err);
@@ -212,7 +236,7 @@ export async function searchPlacesLive(
     return true;
   });
 
-  return combined.slice(0, 8);
+  return combined.slice(0, 10);
 }
 
 /**

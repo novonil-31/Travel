@@ -159,6 +159,78 @@ export default function RouteDiscoveryPage() {
     }
   };
 
+  // Smart ride booking launcher — uses best available deep-link for each provider
+  const handleBookRide = (
+    service: 'uber' | 'uber-moto' | 'ola' | 'rapido' | 'rapido-bike',
+  ) => {
+    // These are derived later, but we can safely use a closure after render-time extraction
+    const oLat = selectedRoute?.originCoords?.lat ?? 20.3555;
+    const oLng = selectedRoute?.originCoords?.lng ?? 85.8145;
+    const dLat = selectedRoute?.destinationCoords?.lat ?? 20.3450;
+    const dLng = selectedRoute?.destinationCoords?.lng ?? 85.8180;
+    const oName = encodeURIComponent(selectedRoute?.originName || 'Pickup');
+    const dName = encodeURIComponent(selectedRoute?.destinationName || 'Destination');
+    const rawOName = selectedRoute?.originName || 'Pickup';
+    const rawDName = selectedRoute?.destinationName || 'Destination';
+
+    let url = '';
+
+    if (service === 'uber' || service === 'uber-moto') {
+      // Uber official m.uber.com deep link — fully supported with coords + address
+      const productId = service === 'uber-moto'
+        ? '2d1d002b-d4d0-4411-98e1-673b244878b2' // UberMOTO product ID
+        : ''; // Empty = Uber picks best available auto/cab
+      url = `https://m.uber.com/ul/?action=setPickup`
+        + `&pickup[latitude]=${oLat}&pickup[longitude]=${oLng}`
+        + `&pickup[formatted_address]=${oName}`
+        + `&dropoff[latitude]=${dLat}&dropoff[longitude]=${dLng}`
+        + `&dropoff[formatted_address]=${dName}`
+        + (productId ? `&product_id=${productId}` : '');
+
+    } else if (service === 'ola') {
+      // Best Ola approach: Google Maps → Ride → Ola (only reliable coord-prefill path for Ola)
+      // Falls back to Ola website with address text for web browsers
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1`
+        + `&origin=${oLat},${oLng}`
+        + `&destination=${dLat},${dLng}`
+        + `&travelmode=driving`;
+      // Try native Ola deep link first (works on Android/iOS with app installed)
+      const olaApp = `olacabs://app/launch?lat=${oLat}&lng=${oLng}&drop_lat=${dLat}&drop_lng=${dLng}`;
+      // Attempt native scheme, fallback to Ola web with address
+      const olaWeb = `https://book.olacabs.com/?pickup_name=${oName}&drop_name=${dName}&lat=${oLat}&lng=${oLng}&drop_lat=${dLat}&drop_lng=${dLng}&source=web`;
+
+      // Try app scheme via hidden iframe trick
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = olaApp;
+      document.body.appendChild(iframe);
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 2000);
+
+      // Open web fallback in new tab simultaneously
+      window.open(olaWeb, '_blank');
+      addToast('info', `Opening Ola: From ${rawOName} → ${rawDName}. Confirm location in the Ola app.`, 4000);
+      return;
+
+    } else if (service === 'rapido' || service === 'rapido-bike') {
+      // Rapido: use their search URL with encoded pickup/drop text — app intercepts this on mobile
+      const vehicleParam = service === 'rapido-bike' ? '&vehicle_type=bike' : '';
+      // Try Rapido app via intent-style URL (Android Universal Link)
+      url = `https://rapido.bike/ride`
+        + `?pickup=${oName}&drop=${dName}`
+        + `&pickup_lat=${oLat}&pickup_lng=${oLng}`
+        + `&drop_lat=${dLat}&drop_lng=${dLng}`
+        + vehicleParam;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      const appName = service.includes('rapido') ? 'Rapido' : service === 'uber-moto' ? 'Uber Moto' : 'Uber';
+      addToast('info', `Opening ${appName}: ${rawOName} → ${rawDName}`, 3500);
+    }
+  };
+
   // Extract precise coordinates for origin and destination
   const fullRouteArr: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
   const originCoords: [number, number] = [
@@ -627,35 +699,32 @@ export default function RouteDiscoveryPage() {
                   </p>
 
                   <div className="grid grid-cols-3 gap-2 pt-1">
-                    <a
-                      href={`https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${originCoords[0]}&pickup[longitude]=${originCoords[1]}&pickup[formatted_address]=${encodeURIComponent(selectedRoute?.originName || 'Pickup')}&dropoff[latitude]=${destCoords[0]}&dropoff[longitude]=${destCoords[1]}&dropoff[formatted_address]=${encodeURIComponent(selectedRoute?.destinationName || 'Destination')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => handleBookRide('uber')}
                       className="py-2 px-2 rounded-xl bg-black text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs hover:bg-neutral-800 transition-colors"
                     >
                       <span>Uber Auto</span>
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
 
-                    <a
-                      href={`https://book.olacabs.com/?pickup_name=${encodeURIComponent(selectedRoute?.originName || 'Pickup')}&drop_name=${encodeURIComponent(selectedRoute?.destinationName || 'Destination')}&lat=${originCoords[0]}&lng=${originCoords[1]}&drop_lat=${destCoords[0]}&drop_lng=${destCoords[1]}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => handleBookRide('ola')}
                       className="py-2 px-2 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
                     >
                       <span>Ola Auto</span>
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
 
-                    <a
-                      href="https://rapido.onelink.me/"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => handleBookRide('rapido')}
                       className="py-2 px-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
                     >
                       <span>Rapido</span>
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
                   </div>
                 </div>
               ) : isBikeTaxi ? (
@@ -700,25 +769,23 @@ export default function RouteDiscoveryPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-100">
-                    <a
-                      href="https://rapido.onelink.me/"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => handleBookRide('rapido-bike')}
                       className="py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
                     >
                       <span>Rapido Bike</span>
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
 
-                    <a
-                      href={`https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${originCoords[0]}&pickup[longitude]=${originCoords[1]}&dropoff[latitude]=${destCoords[0]}&dropoff[longitude]=${destCoords[1]}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => handleBookRide('uber-moto')}
                       className="py-2 px-3 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
                     >
                       <span>Uber Moto</span>
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   </div>
                 </div>
               ) : isSharedAuto ? (

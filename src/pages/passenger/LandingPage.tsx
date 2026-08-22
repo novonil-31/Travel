@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, Navigation, Clock, Shield, Accessibility, Users, ArrowRight, CheckCircle2, ChevronDown, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store';
@@ -62,12 +62,24 @@ export default function LandingPage() {
   });
 
   const [activeDropdown, setActiveDropdown] = useState<'pickup' | 'dropoff' | null>(null);
+  const searchFormRef = useRef<HTMLDivElement>(null);
   const [pickupSuggestions, setPickupSuggestions] = useState<GeocodedPlace[]>([]);
   const [dropoffSuggestions, setDropoffSuggestions] = useState<GeocodedPlace[]>([]);
 
   const [timeMode, setTimeMode] = useState('now');
   const [departTime, setDepartTime] = useState('09:30');
   const [mobilityFilter, setMobilityFilter] = useState<'wheelchair' | 'walking' | 'senior' | 'all'>('all');
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchFormRef.current && !searchFormRef.current.contains(e.target as Node)) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Debounced search for Pickup
   React.useEffect(() => {
@@ -180,92 +192,93 @@ export default function LandingPage() {
             </div>
 
             <form onSubmit={handleSearch} className="space-y-3.5">
-              {/* Pickup Input */}
-              <div className="space-y-1 relative">
-                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Pickup Location</label>
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-600 pointer-events-none ring-2 ring-emerald-200" />
-                  <input
-                    type="text"
-                    value={pickup}
-                    onFocus={() => setActiveDropdown('pickup')}
-                    onChange={(e) => {
-                      setPickup(e.target.value);
-                      setActiveDropdown('pickup');
-                    }}
-                    placeholder="Enter pickup address, campus, or station..."
-                    className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
-                  />
+              <div ref={searchFormRef} className="space-y-3.5">
+                {/* Pickup Input */}
+                <div className="space-y-1 relative">
+                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Pickup Location</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-600 pointer-events-none ring-2 ring-emerald-200" />
+                    <input
+                      type="text"
+                      value={pickup}
+                      onFocus={() => setActiveDropdown('pickup')}
+                      onChange={(e) => {
+                        setPickup(e.target.value);
+                        setActiveDropdown('pickup');
+                      }}
+                      placeholder="Enter pickup address, campus, or station..."
+                      className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Pickup Dropdown */}
+                  {activeDropdown === 'pickup' && pickupSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                      {pickupSuggestions.map((place, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setPickup(place.name);
+                            setPickupLocation({ name: place.name, lat: place.lat, lng: place.lng });
+                            setActiveDropdown(null);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                        >
+                          <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-neutral-900 font-bold">{place.name}</div>
+                            <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Pickup Dropdown */}
-                {activeDropdown === 'pickup' && pickupSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
-                    {pickupSuggestions.map((place, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setPickup(place.name);
-                          setPickupLocation({ name: place.name, lat: place.lat, lng: place.lng });
-                          setActiveDropdown(null);
-                        }}
-                        className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
-                      >
-                        <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-neutral-900 font-bold">{place.name}</div>
-                          <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
-                        </div>
-                      </button>
-                    ))}
+                {/* Drop-off Input */}
+                <div className="space-y-1 relative">
+                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Drop-off Destination</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none rounded-sm" />
+                    <input
+                      type="text"
+                      value={dropoff}
+                      onFocus={() => setActiveDropdown('dropoff')}
+                      onChange={(e) => {
+                        setDropoff(e.target.value);
+                        setActiveDropdown('dropoff');
+                      }}
+                      placeholder="Enter destination or transit hub..."
+                      className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                    />
                   </div>
-                )}
-              </div>
 
-              {/* Drop-off Input */}
-              <div className="space-y-1 relative">
-                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">Drop-off Destination</label>
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black pointer-events-none rounded-sm" />
-                  <input
-                    type="text"
-                    value={dropoff}
-                    onFocus={() => setActiveDropdown('dropoff')}
-                    onChange={(e) => {
-                      setDropoff(e.target.value);
-                      setActiveDropdown('dropoff');
-                    }}
-                    placeholder="Enter destination or transit hub..."
-                    className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200/70 focus:bg-white border border-transparent focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
-                  />
+                  {/* Dropoff Dropdown */}
+                  {activeDropdown === 'dropoff' && dropoffSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                      {dropoffSuggestions.map((place, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setDropoff(place.name);
+                            setDropoffLocation({ name: place.name, lat: place.lat, lng: place.lng });
+                            setActiveDropdown(null);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                        >
+                          <MapPin className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-neutral-900 font-bold">{place.name}</div>
+                            <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                {/* Dropoff Dropdown */}
-                {activeDropdown === 'dropoff' && dropoffSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
-                    {dropoffSuggestions.map((place, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setDropoff(place.name);
-                          setDropoffLocation({ name: place.name, lat: place.lat, lng: place.lng });
-                          setActiveDropdown(null);
-                        }}
-                        className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
-                      >
-                        <MapPin className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-neutral-900 font-bold">{place.name}</div>
-                          <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
-
               {/* Mobility Profile & Schedule Row */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
