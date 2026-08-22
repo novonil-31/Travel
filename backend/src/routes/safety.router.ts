@@ -177,16 +177,30 @@ router.post('/emergency-sms', async (req, res, next) => {
       }
     }
 
-    console.log(`[REAL-TIME SMS DISPATCH] ID: ${dispatchId} -> To: ${recipientName || 'Emergency Contact'} (${cleanPhone}) Content: "${message}"`);
+    const carrierSmsUri = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
+    const whatsAppUri = `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(message)}`;
+
+    const isFast2SmsSuccess = fast2SmsResult?.return === true;
+    const isWalletInactive = fast2SmsResult?.status_code === 999;
+
+    console.log(`[EMERGENCY SMS DISPATCH] ID: ${dispatchId} -> To: ${recipientName || 'Emergency Contact'} (${cleanPhone}) Status: ${isFast2SmsSuccess ? 'FAST2SMS_SENT' : isWalletInactive ? 'WALLET_INACTIVE_CARRIER_FALLBACK' : 'DISPATCHED'}`);
 
     sendSuccess(res, {
       dispatchId,
-      status: fast2SmsResult?.return ? 'DELIVERED_VIA_FAST2SMS' : 'DELIVERED',
+      status: isFast2SmsSuccess
+        ? 'DELIVERED_VIA_FAST2SMS'
+        : isWalletInactive
+        ? 'FAST2SMS_WALLET_INACTIVE'
+        : 'DELIVERED',
+      fast2SmsSuccess: isFast2SmsSuccess,
+      isWalletInactive,
       fast2SmsResult,
       recipientPhone: cleanPhone,
       recipientName: recipientName || 'Emergency Contact',
       message,
       mapLink,
+      carrierSmsUri,
+      whatsAppUri,
       coordinates: [parseFloat(latStr), parseFloat(lngStr)],
       timestamp,
     });

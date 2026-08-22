@@ -10,10 +10,10 @@ import {
   Navigation, Clock, Bus, MapPin, CheckCircle, ShieldAlert,
   ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle,
   MessageSquarePlus, Phone, Share2, AlertOctagon, X, Star,
-  ThumbsUp, Award, Volume2, Footprints
+  ThumbsUp, Award, Volume2, Footprints, Play, Pause, RefreshCw
 } from 'lucide-react';
 import { haversineDistanceClient } from '../../utils/onlineRouting';
-import { safetyApi, authApi, reportsApi } from '../../api';
+import { safetyApi, reportsApi } from '../../api';
 
 // Custom Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -87,8 +87,9 @@ export default function ActiveJourneyPage() {
   const [contactPhone, setContactPhone] = useState<string>(state.currentUser?.emergencyContact?.phone || '');
   const [contactRelation, setContactRelation] = useState<string>(state.currentUser?.emergencyContact?.relationship || 'Family');
 
-  // Live Location & Progress State
-  const [progressIndex, setProgressIndex] = useState<number>(0);
+  // Real GPS & Live Movement State
+  const [isSimulatingDemo, setIsSimulatingDemo] = useState<boolean>(false);
+  const [simProgressIndex, setSimProgressIndex] = useState<number>(0);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [remainingDistMeters, setRemainingDistMeters] = useState<number>(1200);
 
@@ -124,36 +125,71 @@ export default function ActiveJourneyPage() {
     (activeJourney?.routeName || '').toLowerCase().includes('auto') ||
     (activeJourney?.routeName || '').toLowerCase().includes('taxi');
 
-  // Continuous Live GPS Watcher & Automatic Destination Tracking
+  // =========================================================================
+  // STRICT REAL-WORLD GPS TRACKING (NO JUMPING / NO AUTO MOVING WHEN STATIONARY)
+  // =========================================================================
   useEffect(() => {
     if (!activeJourney || hasArrivedSafely) return;
 
-    let watchId: number | null = null;
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUserLocation([lat, lng]);
+    if (!isSimulatingDemo) {
+      // 1. Fetch initial real GPS location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            setUserLocation([lat, lng]);
 
-          const dist = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
-          setRemainingDistMeters(dist);
+            const dist = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
+            setRemainingDistMeters(dist);
 
-          // Auto-complete ride if within 25 meters of destination
-          if (dist <= 25 && !hasArrivedSafely) {
-            triggerSafeArrival();
-          }
-        },
-        (err) => {
-          console.warn('Live GPS watch fallback to waypoint tracking:', err);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-      );
+            if (dist <= 30 && !hasArrivedSafely) {
+              triggerSafeArrival();
+            }
+          },
+          (err) => {
+            console.warn('Initial GPS check:', err);
+            if (!userLocation) setUserLocation(originCoords);
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+
+        // 2. Watch real GPS movement strictly (does NOT move if user is stationary)
+        const watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            setUserLocation([lat, lng]);
+
+            const dist = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
+            setRemainingDistMeters(dist);
+
+            // Auto-complete ride if within 30 meters of destination
+            if (dist <= 30 && !hasArrivedSafely) {
+              triggerSafeArrival();
+            }
+          },
+          (err) => {
+            console.warn('Live GPS watcher:', err);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+      } else {
+        if (!userLocation) setUserLocation(originCoords);
+      }
     }
+  }, [activeJourney, destCoords, hasArrivedSafely, isSimulatingDemo, originCoords, userLocation]);
 
-    // Waypoint progression animation simulation
-    const routeProgression = setInterval(() => {
-      setProgressIndex((prev) => {
+  // =========================================================================
+  // OPTIONAL DEMO SIMULATION (Runs ONLY when user explicitly toggles Demo Drive)
+  // =========================================================================
+  useEffect(() => {
+    if (!isSimulatingDemo || hasArrivedSafely) return;
+
+    const demoInterval = setInterval(() => {
+      setSimProgressIndex((prev) => {
         const next = Math.min(prev + 1, continuousRoute.length - 1);
         const nextPoint = continuousRoute[next];
         if (nextPoint) {
@@ -161,24 +197,21 @@ export default function ActiveJourneyPage() {
           const dist = Math.round(haversineDistanceClient(nextPoint[0], nextPoint[1], destCoords[0], destCoords[1]));
           setRemainingDistMeters(dist);
 
-          // Auto-complete ride on reaching destination waypoint
-          if ((dist <= 25 || next >= continuousRoute.length - 1) && !hasArrivedSafely) {
+          if ((dist <= 30 || next >= continuousRoute.length - 1) && !hasArrivedSafely) {
             triggerSafeArrival();
           }
         }
         return next;
       });
-    }, 3500);
+    }, 2500);
 
-    return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      clearInterval(routeProgression);
-    };
-  }, [activeJourney, continuousRoute, destCoords, hasArrivedSafely]);
+    return () => clearInterval(demoInterval);
+  }, [isSimulatingDemo, continuousRoute, destCoords, hasArrivedSafely]);
 
   // Trigger Automatic Destination Arrival
   const triggerSafeArrival = () => {
     setHasArrivedSafely(true);
+    setIsSimulatingDemo(false);
 
     try {
       if ('vibrate' in navigator) {
@@ -251,7 +284,7 @@ export default function ActiveJourneyPage() {
   };
 
   const livePos: [number, number] =
-    userLocation || continuousRoute[progressIndex] || originCoords;
+    userLocation || continuousRoute[simProgressIndex] || originCoords;
 
   // Handle SOS Click - Strictly check for valid user-provided phone number
   const handleSosClick = () => {
@@ -300,7 +333,11 @@ export default function ActiveJourneyPage() {
 
     const rawDigitsPhone = activeContact.phone.replace(/[^0-9]/g, '').slice(-10);
     const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
+    const physicalSmsText = `🚨 EMERGENCY ALERT: ${state.currentUser?.name || 'I'} triggered SOS near ${activeJourney?.originName || 'Bhubaneswar'}. Live Google Maps: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`;
+    const nativeSmsUri = `sms:${rawDigitsPhone}?body=${encodeURIComponent(physicalSmsText)}`;
+    const whatsAppUri = `https://api.whatsapp.com/send?phone=91${rawDigitsPhone}&text=${encodeURIComponent(physicalSmsText)}`;
 
+    // 1. Send to backend & Fast2SMS API gateway
     try {
       await safetyApi.sendEmergencySms({
         recipientPhone: rawDigitsPhone,
@@ -311,19 +348,17 @@ export default function ActiveJourneyPage() {
         locationName: activeJourney?.originName || 'Bhubaneswar Transit Route',
       });
     } catch (err) {
-      console.warn('Carrier API fallback triggered:', err);
+      console.warn('API Gateway error:', err);
     }
 
-    const physicalSmsText = `🚨 EMERGENCY ALERT: ${state.currentUser?.name || 'I'} triggered SOS near ${activeJourney?.originName || 'Bhubaneswar'}. Live Google Maps: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`;
-    const nativeSmsUri = `sms:${rawDigitsPhone}?body=${encodeURIComponent(physicalSmsText)}`;
-
+    // 2. Automatically launch native device SMS app / carrier composer
     try {
-      if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
-        window.open(nativeSmsUri, '_self');
-      }
-    } catch {}
+      window.location.href = nativeSmsUri;
+    } catch (e) {
+      console.warn('Native SMS launcher:', e);
+    }
 
-    const sosMessage = `🚨 REAL-TIME EMERGENCY SMS DISPATCHED: Live GPS location (${coordsStr}) sent via carrier SMS to ${activeContact.name} (${activeContact.phone}) and Transit Dispatch.`;
+    const sosMessage = `🚨 REAL-TIME EMERGENCY SOS DISPATCHED: Live GPS location (${coordsStr}) prepared for ${activeContact.name} (${activeContact.phone}) and Transit Dispatch.`;
 
     addNotification({
       id: `sos-${Date.now()}`,
@@ -334,12 +369,12 @@ export default function ActiveJourneyPage() {
       read: false,
     });
 
-    addToast('error', `🚨 EMERGENCY SMS SENT: Live GPS location (${coordsStr}) sent to ${activeContact.phone}!`);
+    addToast('error', `🚨 EMERGENCY SMS PREPARED: Live GPS (${coordsStr}) ready to send to ${activeContact.phone}!`);
   };
 
   if (!activeJourney && !hasArrivedSafely) {
     return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4 font-sans">
         <div className="w-14 h-14 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-800 mx-auto">
           <Navigation className="w-6 h-6" />
         </div>
@@ -355,7 +390,7 @@ export default function ActiveJourneyPage() {
   }
 
   const currentStep =
-    activeJourney?.turnByTurn?.[Math.min(progressIndex, (activeJourney?.turnByTurn?.length || 1) - 1)] ||
+    activeJourney?.turnByTurn?.[Math.min(simProgressIndex, (activeJourney?.turnByTurn?.length || 1) - 1)] ||
     'Proceed along step-free transit corridor to destination.';
 
   // =========================================================================
@@ -580,11 +615,16 @@ export default function ActiveJourneyPage() {
     phone: '+91 98765 43210',
   };
 
+  const rawPhone = activeContact.phone.replace(/[^0-9]/g, '').slice(-10);
+  const physicalSmsText = `🚨 EMERGENCY ALERT: ${state.currentUser?.name || 'I'} triggered SOS near ${activeJourney?.originName || 'Bhubaneswar'}. Live Google Maps: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`;
+  const nativeSmsUri = `sms:${rawPhone}?body=${encodeURIComponent(physicalSmsText)}`;
+  const whatsAppUri = `https://api.whatsapp.com/send?phone=91${rawPhone}&text=${encodeURIComponent(physicalSmsText)}`;
+
   return (
     <div className="max-w-xl mx-auto px-4 py-4 sm:py-6 space-y-4 font-sans">
       {/* Active SOS Red Emergency Bar if Triggered */}
       {sosActive && (
-        <div className="bg-red-600 text-white p-4 rounded-3xl shadow-xl space-y-3 animate-pulse">
+        <div className="bg-red-600 text-white p-4 sm:p-5 rounded-3xl shadow-xl space-y-3 animate-pulse">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertOctagon className="w-5 h-5 text-white animate-spin" />
@@ -601,23 +641,20 @@ export default function ActiveJourneyPage() {
           </div>
 
           <div className="text-xs text-red-100 leading-relaxed">
-            Live GPS ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) dispatched via SMS to <strong>{activeContact.name} ({activeContact.phone})</strong> and Transit Dispatch.
+            Live GPS ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) prepared for <strong>{activeContact.name} ({activeContact.phone})</strong> and Transit Dispatch.
           </div>
 
+          {/* 1-Tap Immediate SIM Carrier Dispatch Actions */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <a
-              href={`sms:${activeContact.phone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(
-                `🚨 EMERGENCY ALERT: I need immediate assistance on transit! My live GPS location: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)} (Travelling on ${activeJourney?.routeName || 'Transit'}).`
-              )}`}
+              href={nativeSmsUri}
               className="py-2.5 px-2 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
             >
-              <Phone className="w-3.5 h-3.5" /> SMS Alert
+              <Phone className="w-3.5 h-3.5" /> Send SMS
             </a>
 
             <a
-              href={`https://api.whatsapp.com/send?phone=${activeContact.phone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(
-                `🚨 EMERGENCY: I need immediate assistance on transit. My live GPS location: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`
-              )}`}
+              href={whatsAppUri}
               target="_blank"
               rel="noopener noreferrer"
               className="py-2.5 px-2 rounded-xl bg-emerald-700 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-emerald-800"
@@ -639,6 +676,10 @@ export default function ActiveJourneyPage() {
               <ShieldAlert className="w-3.5 h-3.5" /> Call 112
             </a>
           </div>
+
+          <p className="text-[10px] text-red-200/90 pt-1 border-t border-red-500/50 leading-normal">
+            💡 Tap <strong>Send SMS</strong> or <strong>WhatsApp Pin</strong> to dispatch directly from your device SIM free of charge.
+          </p>
         </div>
       )}
 
@@ -647,7 +688,7 @@ export default function ActiveJourneyPage() {
         <div className="flex items-center justify-between text-xs text-neutral-400">
           <span className="flex items-center gap-1.5 font-bold text-white">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            Live Tracking • {activeJourney?.routeName}
+            {isSimulatingDemo ? 'Demo Drive Simulation' : 'Live GPS Tracking'} • {activeJourney?.routeName}
           </span>
           <div className="flex items-center gap-2">
             <span className="bg-neutral-800 text-emerald-400 font-bold px-2.5 py-0.5 rounded-full text-[11px]">
@@ -679,7 +720,7 @@ export default function ActiveJourneyPage() {
             style={{
               width: `${Math.min(
                 100,
-                Math.round(((progressIndex + 1) / Math.max(1, continuousRoute.length)) * 100)
+                Math.round(((simProgressIndex + 1) / Math.max(1, continuousRoute.length)) * 100)
               )}%`,
             }}
           />
@@ -717,7 +758,7 @@ export default function ActiveJourneyPage() {
               <div className="p-1 text-xs space-y-1">
                 <strong className="block font-black text-black">📍 Your Current Position</strong>
                 <span className="text-[10px] text-neutral-600 block">
-                  {remainingDistMeters}m to destination
+                  {remainingDistMeters}m to destination ({isSimulatingDemo ? 'Demo Mode' : 'Real GPS Active'})
                 </span>
               </div>
             </Popup>
@@ -731,10 +772,22 @@ export default function ActiveJourneyPage() {
           </Marker>
         </MapContainer>
 
-        {/* Live Floating Tracking Badge */}
-        <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Auto-Tracking Live GPS</span>
+        {/* Live GPS Status & Demo Toggle Controls */}
+        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between z-[1000] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md flex items-center gap-2 pointer-events-auto">
+            <span className={`w-2.5 h-2.5 rounded-full ${isSimulatingDemo ? 'bg-amber-500 animate-spin' : 'bg-emerald-500 animate-pulse'}`} />
+            <span>{isSimulatingDemo ? 'Demo Drive Active' : 'Real GPS Stationary'}</span>
+          </div>
+
+          {/* Optional Simulation Button to test auto-complete without walking */}
+          <button
+            type="button"
+            onClick={() => setIsSimulatingDemo(!isSimulatingDemo)}
+            className="bg-neutral-900/90 hover:bg-black text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md backdrop-blur-md pointer-events-auto flex items-center gap-1.5 transition-all"
+          >
+            {isSimulatingDemo ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-emerald-400" />}
+            <span>{isSimulatingDemo ? 'Pause Demo' : 'Test Drive Demo'}</span>
+          </button>
         </div>
       </div>
 
