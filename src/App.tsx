@@ -97,16 +97,6 @@ export default function App() {
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
-            {/* Operator Routes */}
-            <Route element={<OperatorLayout />}>
-              <Route path="/operator" element={<OperatorDashboard />} />
-              <Route path="/operator/routes" element={<OperatorRoutesPage />} />
-              <Route path="/operator/vehicles" element={<OperatorVehiclesPage />} />
-              <Route path="/operator/reports" element={<OperatorReportsPage />} />
-              <Route path="/operator/conditions" element={<OperatorConditionsPage />} />
-              <Route path="/operator/alerts" element={<OperatorDashboard />} />
-            </Route>
-
             {/* Module Routes */}
             <Route element={<PassengerLayout />}>
               <Route path="/modules" element={<ModuleMarketplacePage />} />

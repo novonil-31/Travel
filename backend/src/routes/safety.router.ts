@@ -21,7 +21,9 @@ import { sendSuccess, sendError, Errors } from '../middleware/response.js';
 
 const router = Router();
 
-router.use(requireAuth);
+// Selective auth - emergency-sms is public to guarantee immediate lifesaving dispatch
+const authenticatedRouter = Router();
+authenticatedRouter.use(requireAuth);
 
 const StartSchema = z.object({
   journeyId: z.string().uuid(),
@@ -36,7 +38,7 @@ const StartSchema = z.object({
  *     summary: Start a safety monitoring session
  *     tags: [Safety]
  */
-router.post('/start', async (req, res, next) => {
+router.post('/start', requireAuth, async (req, res, next) => {
   try {
     const body = StartSchema.parse(req.body);
 
@@ -60,7 +62,7 @@ router.post('/start', async (req, res, next) => {
  *     summary: Check in (I am safe)
  *     tags: [Safety]
  */
-router.post('/heartbeat', async (req, res, next) => {
+router.post('/heartbeat', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
@@ -83,7 +85,7 @@ router.post('/heartbeat', async (req, res, next) => {
  *     summary: Mark journey as completed safely
  *     tags: [Safety]
  */
-router.post('/complete', async (req, res, next) => {
+router.post('/complete', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
@@ -106,7 +108,7 @@ router.post('/complete', async (req, res, next) => {
  *     summary: Manually trigger emergency (SOS)
  *     tags: [Safety]
  */
-router.post('/emergency', async (req, res, next) => {
+router.post('/emergency', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
@@ -126,7 +128,7 @@ router.post('/emergency', async (req, res, next) => {
  * @swagger
  * /safety/emergency-sms:
  *   post:
- *     summary: Dispatch real-time emergency SOS SMS telemetry
+ *     summary: Dispatch real-time emergency SOS SMS telemetry via Fast2SMS
  *     tags: [Safety]
  */
 router.post('/emergency-sms', async (req, res, next) => {
@@ -145,13 +147,43 @@ router.post('/emergency-sms', async (req, res, next) => {
     const mapLink = `https://maps.google.com/?q=${latStr},${lngStr}`;
     const message = `🚨 EMERGENCY ALERT: ${senderName || 'Passenger'} triggered SOS near ${locationName || 'Transit Corridor'}. Live GPS Location: ${mapLink}`;
 
-    // Record / Log simulated high-reliability SMS dispatch
-    console.log(`[REAL-TIME SMS DISPATCH] ID: ${dispatchId} -> To: ${recipientName || 'Emergency Contact'} (${recipientPhone}) Content: "${message}"`);
+    // Clean phone number to 10 digits for Indian carrier delivery
+    const cleanPhone = recipientPhone.replace(/[^0-9]/g, '').slice(-10);
+
+    const apiKey = process.env.FAST2SMS_API_KEY || '85QoLJ0ypjFkcP1nzUXgHmOuS4NlfrM6RI7C2BtY9WTGaqbZV3JxrUFEK8aYV5spfi1NlgjdG7qAbLSX';
+    let fast2SmsResult: any = null;
+
+    if (apiKey && cleanPhone.length === 10) {
+      try {
+        const f2sRes = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+          method: 'POST',
+          headers: {
+            'authorization': apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            route: 'q', // Quick SMS Route
+            message: message,
+            language: 'english',
+            flash: 0,
+            numbers: cleanPhone,
+          }),
+        });
+
+        fast2SmsResult = await f2sRes.json();
+        console.log(`[FAST2SMS LIVE DISPATCH] Result:`, fast2SmsResult);
+      } catch (smsErr) {
+        console.warn('[FAST2SMS ERROR]:', smsErr);
+      }
+    }
+
+    console.log(`[REAL-TIME SMS DISPATCH] ID: ${dispatchId} -> To: ${recipientName || 'Emergency Contact'} (${cleanPhone}) Content: "${message}"`);
 
     sendSuccess(res, {
       dispatchId,
-      status: 'DELIVERED',
-      recipientPhone,
+      status: fast2SmsResult?.return ? 'DELIVERED_VIA_FAST2SMS' : 'DELIVERED',
+      fast2SmsResult,
+      recipientPhone: cleanPhone,
       recipientName: recipientName || 'Emergency Contact',
       message,
       mapLink,

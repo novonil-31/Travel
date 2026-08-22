@@ -203,9 +203,10 @@ export const DEMO_TRANSPORT_STANDS = [
 export async function generateDynamicSearchResults(
   origin: { lat: number; lng: number; name: string },
   destination: { lat: number; lng: number; name: string },
-  profileType = 'wheelchair',
+  profileType = 'none',
+  baseDepartureTime: Date = new Date(),
 ): Promise<RouteSearchResult[]> {
-  const isWheelchair = profileType === 'wheelchair';
+  const isWheelchair = profileType === 'wheelchair' || profileType === 'WHEELCHAIR';
 
   // Total direct road distance
   const directDistanceM = Math.round(haversineDistanceClient(origin.lat, origin.lng, destination.lat, destination.lng));
@@ -268,6 +269,18 @@ export async function generateDynamicSearchResults(
   const totalWalkingDist = originWalkDist + destWalkDist;
   const totalDuration = originWalkTime + transitTime + destWalkTime;
   const fullRoute = [...originToBoardWalk, ...transitPath, ...alightToDestWalk];
+
+  // 4. Compute direct door-to-door driving geometry for Direct Auto & Bike Taxi (No bus stops)
+  const directDrivingRes = await fetchRoadGeometryLive(
+    origin.lat,
+    origin.lng,
+    destination.lat,
+    destination.lng,
+    'driving',
+  );
+  const directDrivingPath = directDrivingRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 12);
+  const directDrivingDistM = directDrivingRes?.distanceM || directDistanceM;
+  const directDrivingDurationMin = directDrivingRes?.durationMin || Math.max(3, Math.ceil(directDrivingDistM / 500));
 
   const intermediateStopsList = [
     { id: boardStop.id, name: boardStop.name, latitude: boardStop.lat, longitude: boardStop.lng, sequence: 1, hasRamp: boardStop.hasRamp },
@@ -430,7 +443,7 @@ export async function generateDynamicSearchResults(
   };
 
   // Option 3: Direct On-Demand Auto / Rickshaw (Doorstep Pickup - 0m Walk)
-  const autoDuration = Math.max(5, Math.round(transitTime * 0.95) + 2);
+  const autoDuration = directDrivingDurationMin;
   const option3: RouteSearchResult = {
     route: {
       id: 'AUTO_DIRECT',
@@ -483,9 +496,9 @@ export async function generateDynamicSearchResults(
     },
     geometry: {
       originToBoardWalk: [],
-      transitPath: fullRoute,
+      transitPath: directDrivingPath,
       alightToDestWalk: [],
-      fullRoute,
+      fullRoute: directDrivingPath,
     },
     intermediateStops: [],
     turnByTurn: [
@@ -564,7 +577,7 @@ export async function generateDynamicSearchResults(
   };
 
   // Option 5: Bike Taxi (Quick Solo Mobility)
-  const bikeDuration = Math.max(4, Math.round(transitTime * 0.75));
+  const bikeDuration = Math.max(3, Math.round(directDrivingDurationMin * 0.75));
   const option5: RouteSearchResult = {
     route: {
       id: 'BIKE_TAXI',
@@ -617,9 +630,9 @@ export async function generateDynamicSearchResults(
     },
     geometry: {
       originToBoardWalk: [],
-      transitPath: fullRoute,
+      transitPath: directDrivingPath,
       alightToDestWalk: [],
-      fullRoute,
+      fullRoute: directDrivingPath,
     },
     intermediateStops: [],
     turnByTurn: [

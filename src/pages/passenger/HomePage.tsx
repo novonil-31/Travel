@@ -195,7 +195,10 @@ export default function HomePage() {
             className="w-full h-full"
             style={{ zIndex: 1 }}
           >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            />
 
             {/* Public Bus Stops */}
             {DEMO_STOPS.slice(0, 6).map((stop) => (

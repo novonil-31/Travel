@@ -47,8 +47,15 @@ export default function TripPlannerPage() {
   const [isSearchingDest, setIsSearchingDest] = useState<boolean>(false);
   const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
 
+  const urlTimeMode = searchParams.get('timeMode') || 'now';
+  const urlDepartTime = searchParams.get('departTime') || '09:30';
+
   // Mobility Mode (Simple 3 options like Uber/Google Maps)
-  const [selectedMobility, setSelectedMobility] = useState<string>(urlMobility || 'wheelchair');
+  const [selectedMobility, setSelectedMobility] = useState<string>(
+    urlMobility && urlMobility !== 'all' ? urlMobility : 'standard'
+  );
+  const [timeMode, setTimeMode] = useState<string>(urlTimeMode);
+  const [departTime, setDepartTime] = useState<string>(urlDepartTime);
 
   // Loading & GPS state
   const [isLocating, setIsLocating] = useState<boolean>(false);
@@ -62,7 +69,7 @@ export default function TripPlannerPage() {
   useEffect(() => {
     if (urlOrigin && urlDest && !autoPlannedRef.current) {
       autoPlannedRef.current = true;
-      executePlanning(urlOrigin, urlDest, urlMobility || 'wheelchair');
+      executePlanning(urlOrigin, urlDest, urlMobility || 'standard');
     }
   }, [urlOrigin, urlDest, urlMobility]);
 
@@ -211,6 +218,12 @@ export default function TripPlannerPage() {
         }
       }
 
+      let finalDepartureTime = new Date();
+      if (timeMode !== 'now' && departTime) {
+        const [hh, mm] = departTime.split(':').map(Number);
+        finalDepartureTime.setHours(hh || 9, mm || 30, 0, 0);
+      }
+
       const planRes = await journeysApi.plan({
         origin: {
           lat: finalOrigin.lat,
@@ -223,7 +236,8 @@ export default function TripPlannerPage() {
           name: destText || finalDest.name,
         },
         profileType: mobility === 'wheelchair' ? 'WHEELCHAIR' : mobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
-      });
+        departureTime: finalDepartureTime.toISOString(),
+      } as any);
 
       if (planRes && planRes.options && planRes.options.length > 0) {
         setSearchResults(planRes.options);
@@ -232,7 +246,7 @@ export default function TripPlannerPage() {
       console.error('Journey planning failed', err);
     } finally {
       setIsPlanning(false);
-      navigate('/routes');
+      navigate(`/routes?timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`);
     }
   };
 
@@ -390,9 +404,9 @@ export default function TripPlannerPage() {
             </span>
             <div className="grid grid-cols-3 gap-2">
               {[
+                { id: 'standard', label: '🚶 Standard', desc: 'Fastest Route' },
                 { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps & 0 Stairs' },
                 { id: 'elderly', label: '🧓 Senior', desc: 'Minimal Walk' },
-                { id: 'standard', label: '🚶 Standard', desc: 'Fastest Route' },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -410,6 +424,37 @@ export default function TripPlannerPage() {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Schedule & Time Selector */}
+          <div className="pt-2 space-y-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">
+              Departure Schedule
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={timeMode}
+                onChange={(e) => setTimeMode(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
+              >
+                <option value="now">⚡ Leave Now</option>
+                <option value="depart">⏰ Depart at...</option>
+                <option value="arrive">🏁 Arrive by...</option>
+              </select>
+
+              {timeMode !== 'now' ? (
+                <input
+                  type="time"
+                  value={departTime}
+                  onChange={(e) => setDepartTime(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-neutral-300 focus:border-black font-bold text-xs text-neutral-900 focus:outline-none"
+                />
+              ) : (
+                <div className="px-3 py-2.5 rounded-xl bg-neutral-50 text-neutral-400 text-xs font-medium text-center">
+                  Live departures
+                </div>
+              )}
             </div>
           </div>
 

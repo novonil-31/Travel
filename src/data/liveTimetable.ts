@@ -569,3 +569,237 @@ export function getOnDemandTaxiLive(
   };
 }
 
+// ============ SMART CARPOOLING & SHARED TAXI MATCHING ENGINE ============
+export interface CarpoolRide {
+  id: string;
+  hostName: string;
+  hostPhone: string;
+  hostRating: number;
+  hostRidesCount: number;
+  hostVerification: 'Govt ID Verified' | 'KIIT University Verified' | 'Corporate IT Verified';
+  vehicleType: 'Car (Sedan/Hatchback)' | 'Electric Auto' | 'Shared Cruiser';
+  vehicleModel: string;
+  vehiclePlate: string;
+  originName: string;
+  originCoords: [number, number];
+  destinationName: string;
+  destinationCoords: [number, number];
+  scheduledDepartureTime: string;
+  departureMinutesAway: number;
+  availableSeats: number;
+  totalSeats: number;
+  routeCorridor: string;
+  corridorMatchPercent: number;
+  optimalMeetingPoint: {
+    name: string;
+    distanceMeters: number;
+    walkingMinutes: number;
+    landmark: string;
+    coordinates: [number, number];
+  };
+  meetingTime: string;
+  farePerSeat: number;
+  originalSoloFare: number;
+  savingsPercent: number;
+  hasRampOrBootSpace: boolean;
+  notes: string;
+}
+
+export interface CarpoolRequestInput {
+  originName: string;
+  originCoords: [number, number];
+  destinationName: string;
+  destinationCoords: [number, number];
+  departTime: string; // e.g. "09:30"
+  seatsNeeded: number;
+  requiresStepFree: boolean;
+}
+
+// In-memory commuter pools registry for live real-time matching
+let LIVE_CARPOOL_REGISTRY: CarpoolRide[] = [
+  {
+    id: 'pool-101',
+    hostName: 'Priyanka Mohapatra',
+    hostPhone: '+91 94371 82910',
+    hostRating: 4.92,
+    hostRidesCount: 148,
+    hostVerification: 'Corporate IT Verified',
+    vehicleType: 'Car (Sedan/Hatchback)',
+    vehicleModel: 'Maruti Suzuki Dzire (AC)',
+    vehiclePlate: 'OD-02-AK-9182',
+    originName: 'Infocity IT Park Gate',
+    originCoords: [20.3600, 85.8120],
+    destinationName: 'Master Canteen Station Hub',
+    destinationCoords: [20.2666, 85.8436],
+    scheduledDepartureTime: '09:30 AM',
+    departureMinutesAway: 6,
+    availableSeats: 2,
+    totalSeats: 4,
+    routeCorridor: 'Infocity ↔ Patia ↔ Jaydev Vihar ↔ Master Canteen',
+    corridorMatchPercent: 96,
+    optimalMeetingPoint: {
+      name: 'Patia Transit Chowk Stop (Bay 1 Shelter)',
+      distanceMeters: 80,
+      walkingMinutes: 1,
+      landmark: 'Near Indian Oil Petrol Pump & Step-Free Curb Cut',
+      coordinates: [20.3450, 85.8180],
+    },
+    meetingTime: '09:35 AM',
+    farePerSeat: 35,
+    originalSoloFare: 160,
+    savingsPercent: 78,
+    hasRampOrBootSpace: true,
+    notes: 'Heading towards Central Station for daily commute. 2 seats open in back row.',
+  },
+  {
+    id: 'pool-102',
+    hostName: 'Subhashish Rout',
+    hostPhone: '+91 98612 34567',
+    hostRating: 4.88,
+    hostRidesCount: 92,
+    hostVerification: 'KIIT University Verified',
+    vehicleType: 'Electric Auto',
+    vehicleModel: 'Mahindra Treo High-Capacity Auto',
+    vehiclePlate: 'OD-02-E-4019',
+    originName: 'Campus Gate / KIIT Square',
+    originCoords: [20.3555, 85.8145],
+    destinationName: 'Jaydev Vihar Interchange',
+    destinationCoords: [20.3050, 85.8200],
+    scheduledDepartureTime: '09:40 AM',
+    departureMinutesAway: 12,
+    availableSeats: 3,
+    totalSeats: 4,
+    routeCorridor: 'Campus Gate ↔ Damana Square ↔ Jaydev Vihar',
+    corridorMatchPercent: 91,
+    optimalMeetingPoint: {
+      name: 'KIIT Square Shelter Bay 2',
+      distanceMeters: 45,
+      walkingMinutes: 1,
+      landmark: 'Directly in front of Main Gate Bus Shelter',
+      coordinates: [20.3530, 85.8160],
+    },
+    meetingTime: '09:42 AM',
+    farePerSeat: 20,
+    originalSoloFare: 85,
+    savingsPercent: 76,
+    hasRampOrBootSpace: true,
+    notes: 'Shared electric eco-auto pooling along the main arterial corridor.',
+  },
+  {
+    id: 'pool-103',
+    hostName: 'Dr. Debabrata Jena',
+    hostPhone: '+91 70081 29384',
+    hostRating: 4.97,
+    hostRidesCount: 215,
+    hostVerification: 'Govt ID Verified',
+    vehicleType: 'Car (Sedan/Hatchback)',
+    vehicleModel: 'Hyundai i20 Asta',
+    vehiclePlate: 'OD-02-CC-5102',
+    originName: 'KIMS Medical Hospital Gate',
+    originCoords: [20.3570, 85.8170],
+    destinationName: 'Biju Patnaik International Airport',
+    destinationCoords: [20.2520, 85.8180],
+    scheduledDepartureTime: '10:00 AM',
+    departureMinutesAway: 25,
+    availableSeats: 2,
+    totalSeats: 3,
+    routeCorridor: 'KIMS ↔ Patia ↔ Vani Vihar ↔ Airport Road',
+    corridorMatchPercent: 88,
+    optimalMeetingPoint: {
+      name: 'KIMS Hospital Main Gate Drop Zone',
+      distanceMeters: 110,
+      walkingMinutes: 2,
+      landmark: 'Near Patient Assistance Entrance & Ramp',
+      coordinates: [20.3570, 85.8170],
+    },
+    meetingTime: '10:05 AM',
+    farePerSeat: 50,
+    originalSoloFare: 220,
+    savingsPercent: 77,
+    hasRampOrBootSpace: true,
+    notes: 'Heading towards airport corridor. Wide trunk space suitable for luggage or folding wheelchair.',
+  },
+];
+
+/**
+ * Intelligent Corridor Matching Algorithm for Carpools & Shared Taxi
+ * Matches commuters travelling in similar corridors even if exact origin/destination differs!
+ */
+export function getMatchingCarpools(
+  userOriginLat: number,
+  userOriginLng: number,
+  userDestLat: number,
+  userDestLng: number,
+  departureTimeText?: string
+): CarpoolRide[] {
+  // Sort and filter matching rides by proximity to origin & destination corridor
+  return LIVE_CARPOOL_REGISTRY.map((pool) => {
+    const originDist = Math.round(haversineDistanceClient(userOriginLat, userOriginLng, pool.originCoords[0], pool.originCoords[1]));
+    const destDist = Math.round(haversineDistanceClient(userDestLat, userDestLng, pool.destinationCoords[0], pool.destinationCoords[1]));
+
+    // Dynamic corridor similarity score (truck/commuter pooling overlap index)
+    const proximityScore = Math.max(65, 100 - Math.round((originDist + destDist) / 180));
+    const matchPercent = Math.min(99, proximityScore);
+
+    // Compute closest meeting point
+    const meetingPoint = {
+      ...pool.optimalMeetingPoint,
+      distanceMeters: Math.max(30, Math.round(originDist * 0.35)),
+      walkingMinutes: Math.max(1, Math.round(originDist * 0.35 / 65)),
+    };
+
+    return {
+      ...pool,
+      corridorMatchPercent: matchPercent,
+      optimalMeetingPoint: meetingPoint,
+    };
+  }).sort((a, b) => b.corridorMatchPercent - a.corridorMatchPercent);
+}
+
+/**
+ * Register a new pooling request broadcast
+ */
+export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide {
+  const newId = `pool-${Date.now()}`;
+  const soloFare = Math.round(80 + Math.random() * 80);
+  const pooledFare = Math.round(soloFare * 0.28);
+
+  const newRide: CarpoolRide = {
+    id: newId,
+    hostName: 'You (Active Pool Request)',
+    hostPhone: '+91 98765 43210',
+    hostRating: 5.0,
+    hostRidesCount: 1,
+    hostVerification: 'Govt ID Verified',
+    vehicleType: 'Car (Sedan/Hatchback)',
+    vehicleModel: 'Community Commuter Pool',
+    vehiclePlate: 'OD-02-POOL',
+    originName: input.originName,
+    originCoords: input.originCoords,
+    destinationName: input.destinationName,
+    destinationCoords: input.destinationCoords,
+    scheduledDepartureTime: input.departTime || '09:30 AM',
+    departureMinutesAway: 5,
+    availableSeats: Math.max(1, 3 - input.seatsNeeded),
+    totalSeats: 4,
+    routeCorridor: `${input.originName} ↔ ${input.destinationName}`,
+    corridorMatchPercent: 100,
+    optimalMeetingPoint: {
+      name: `${input.originName} Step-Free Transit Point`,
+      distanceMeters: 40,
+      walkingMinutes: 1,
+      landmark: 'Designated step-free curb with tactile paving',
+      coordinates: input.originCoords,
+    },
+    meetingTime: input.departTime || '09:35 AM',
+    farePerSeat: pooledFare,
+    originalSoloFare: soloFare,
+    savingsPercent: Math.round(((soloFare - pooledFare) / soloFare) * 100),
+    hasRampOrBootSpace: input.requiresStepFree,
+    notes: 'Broadcasted live pool request. Nearby co-riders along your corridor can now match & split fare.',
+  };
+
+  LIVE_CARPOOL_REGISTRY = [newRide, ...LIVE_CARPOOL_REGISTRY];
+  return newRide;
+}
+

@@ -24,13 +24,13 @@ export interface AppState {
 }
 
 const defaultProfile: AccessibilityProfile = {
-  mobility: 'wheelchair',
-  stairs: 'avoid',
-  walkingTolerance: 'low',
-  crowding: 'avoid',
+  mobility: 'none',
+  stairs: 'acceptable',
+  walkingTolerance: 'moderate',
+  crowding: 'acceptable',
   vision: 'normal',
   hearing: 'normal',
-  safetyPreferences: ['late-night', 'prefer-safer'],
+  safetyPreferences: ['prefer-safer'],
 };
 
 function getInitialState(): AppState {

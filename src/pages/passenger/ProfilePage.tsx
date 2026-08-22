@@ -237,19 +237,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Driver / Operator Dashboard Access */}
-        <div className="p-4 bg-neutral-50 rounded-3xl border border-neutral-200 flex items-center justify-between text-xs">
-          <div>
-            <span className="font-bold text-neutral-900 block">Are you a Transit Operator or Driver?</span>
-            <span className="text-neutral-500">Access vehicle fleet dispatch, crowd management & condition overrides.</span>
-          </div>
-          <Link
-            to="/operator"
-            className="px-3.5 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs shrink-0 transition-colors"
-          >
-            Operator Portal →
-          </Link>
-        </div>
       </div>
     </div>
   );

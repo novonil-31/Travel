@@ -9,10 +9,11 @@ import L from 'leaflet';
 import {
   Navigation, Clock, Bus, MapPin, CheckCircle, ShieldAlert,
   ShieldCheck, ArrowRight, Check, Sparkles, AlertTriangle,
-  MessageSquarePlus, Phone, Share2, AlertOctagon, X
+  MessageSquarePlus, Phone, Share2, AlertOctagon, X, Star,
+  ThumbsUp, Award, Volume2, Footprints
 } from 'lucide-react';
 import { haversineDistanceClient } from '../../utils/onlineRouting';
-import { safetyApi } from '../../api';
+import { safetyApi, authApi, reportsApi } from '../../api';
 
 // Custom Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -70,13 +71,14 @@ function NavBoundsController({
 
 export default function ActiveJourneyPage() {
   const navigate = useNavigate();
-  const { state, completeJourney, addNotification, setUser } = useAppStore();
+  const { state, completeJourney, addNotification, setUser, updateCondition } = useAppStore();
   const { addToast } = useToast();
   const { activeJourney } = state;
 
   const [showEmergencyModal, setShowEmergencyModal] = useState<boolean>(false);
   const [showEmergencySetupModal, setShowEmergencySetupModal] = useState<boolean>(false);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
   const [hasArrivedSafely, setHasArrivedSafely] = useState<boolean>(false);
   const [sosActive, setSosActive] = useState<boolean>(false);
 
@@ -90,6 +92,16 @@ export default function ActiveJourneyPage() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [remainingDistMeters, setRemainingDistMeters] = useState<number>(1200);
 
+  // Dynamic Post-Ride Feedback Form State
+  const [crowdFeedback, setCrowdFeedback] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('LOW');
+  const [roadSurfaceFeedback, setRoadSurfaceFeedback] = useState<'smooth' | 'minor_bumps' | 'rough'>('smooth');
+  const [rampFeedback, setRampFeedback] = useState<'working' | 'issue' | 'not_used'>('working');
+  const [announcementsFeedback, setAnnouncementsFeedback] = useState<'working' | 'not_working'>('working');
+  const [starRating, setStarRating] = useState<number>(5);
+  const [feedbackComment, setFeedbackComment] = useState<string>('');
+  const [fareAccuracyFeedback, setFareAccuracyFeedback] = useState<'exact' | 'overcharged'>('exact');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
+
   // Safe Coordinates Calculation
   const fullRouteArr: Array<[number, number]> = activeJourney?.geometry?.fullRoute || [];
   const originCoords: [number, number] =
@@ -100,9 +112,21 @@ export default function ActiveJourneyPage() {
   const continuousRoute: Array<[number, number]> =
     fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
 
-  // Continuous Live GPS Watcher & Waypoint Advancement
+  // Identify Transit Mode
+  const isBus =
+    activeJourney?.routeId === 'C3' ||
+    activeJourney?.routeId === 'C2' ||
+    (activeJourney?.routeName || '').toLowerCase().includes('bus');
+
+  const isAutoOrCab =
+    activeJourney?.routeId === 'AUTO_DIRECT' ||
+    activeJourney?.routeId === 'S1' ||
+    (activeJourney?.routeName || '').toLowerCase().includes('auto') ||
+    (activeJourney?.routeName || '').toLowerCase().includes('taxi');
+
+  // Continuous Live GPS Watcher & Automatic Destination Tracking
   useEffect(() => {
-    if (!activeJourney) return;
+    if (!activeJourney || hasArrivedSafely) return;
 
     let watchId: number | null = null;
     if (navigator.geolocation) {
@@ -115,17 +139,19 @@ export default function ActiveJourneyPage() {
           const dist = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
           setRemainingDistMeters(dist);
 
-          if (dist <= 60 && !hasArrivedSafely) {
+          // Auto-complete ride if within 25 meters of destination
+          if (dist <= 25 && !hasArrivedSafely) {
             triggerSafeArrival();
           }
         },
         (err) => {
-          console.warn('Live GPS watch not available, using route progression.', err);
+          console.warn('Live GPS watch fallback to waypoint tracking:', err);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       );
     }
 
+    // Waypoint progression animation simulation
     const routeProgression = setInterval(() => {
       setProgressIndex((prev) => {
         const next = Math.min(prev + 1, continuousRoute.length - 1);
@@ -135,13 +161,14 @@ export default function ActiveJourneyPage() {
           const dist = Math.round(haversineDistanceClient(nextPoint[0], nextPoint[1], destCoords[0], destCoords[1]));
           setRemainingDistMeters(dist);
 
-          if (dist <= 60 && !hasArrivedSafely) {
+          // Auto-complete ride on reaching destination waypoint
+          if ((dist <= 25 || next >= continuousRoute.length - 1) && !hasArrivedSafely) {
             triggerSafeArrival();
           }
         }
         return next;
       });
-    }, 4500);
+    }, 3500);
 
     return () => {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -149,102 +176,145 @@ export default function ActiveJourneyPage() {
     };
   }, [activeJourney, continuousRoute, destCoords, hasArrivedSafely]);
 
-  // Trigger Automatic Safe Arrival
+  // Trigger Automatic Destination Arrival
   const triggerSafeArrival = () => {
     setHasArrivedSafely(true);
+
+    try {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200]);
+      }
+    } catch {}
+
     addNotification({
       id: `arr-${Date.now()}`,
-      title: 'Arrived Safely 🎉',
-      message: `You have reached your destination (${activeJourney?.destinationName || 'Destination'}). Emergency contacts notified of safe arrival.`,
+      title: 'Destination Reached 🎉',
+      message: `You have safely arrived at ${activeJourney?.destinationName || 'your destination'}. Please submit quick feedback to update live conditions for other commuters.`,
       type: 'safety',
       timestamp: new Date().toISOString(),
       read: false,
     });
-    addToast('success', `🎉 Safely arrived at ${activeJourney?.destinationName || 'Destination'}!`);
+
+    addToast('success', `🎉 Destination Reached! Arrived safely at ${activeJourney?.destinationName || 'Destination'}.`);
   };
 
-  // Conclude / End Trip smoothly
-  const handleEndTrip = () => {
+  // Cancel Journey Confirmation Handler
+  const handleCancelJourney = () => {
     completeJourney();
-    addToast('success', 'Trip completed successfully! Saved to your past trips.');
+    setShowCancelModal(false);
+    addToast('info', 'Ride navigation cancelled.');
+    navigate('/plan');
+  };
+
+  // Submit Feedback and Update the Live System for New Users
+  const handleSubmitFeedback = async () => {
+    setFeedbackSubmitted(true);
+
+    const routeId = activeJourney?.routeId || 'C3';
+
+    // 1. Update live conditions in store cache so all subsequent searches reflect this real-time
+    updateCondition(routeId, {
+      crowding: crowdFeedback,
+      accessibility: rampFeedback === 'working' ? 'AVAILABLE' : 'LIMITED',
+      delay: 0,
+    });
+
+    // 2. Submit to backend crowding and accessibility triage
+    try {
+      await reportsApi.submitCrowdingFeedback({
+        routeId,
+        level: crowdFeedback,
+        journeyId: activeJourney?.id,
+      });
+
+      if (rampFeedback === 'issue') {
+        await reportsApi.submitAccessibility({
+          routeId,
+          type: 'RAMP',
+          issue: 'Ramp operational difficulty reported by passenger upon destination arrival',
+          comment: feedbackComment,
+        });
+      }
+    } catch (e) {
+      console.warn('Feedback dispatch fallback to local state update', e);
+    }
+
+    // 3. Award Karma Contribution Points
+    addToast(
+      'success',
+      `🌟 Feedback Submitted! You earned +50 Karma Points. Live conditions updated for all commuters in Bhubaneswar.`
+    );
+
+    // 4. Complete Journey & Save to History
+    completeJourney();
     navigate('/plan');
   };
 
   const livePos: [number, number] =
     userLocation || continuousRoute[progressIndex] || originCoords;
 
-  // Handle SOS Click
+  // Handle SOS Click - Strictly check for valid user-provided phone number
   const handleSosClick = () => {
-    // If not logged in, prompt user to log in or configure contact
-    if (!state.currentUser || state.currentUser.id.startsWith('guest-')) {
+    const currentPhone = state.currentUser?.emergencyContact?.phone;
+    if (!currentPhone || currentPhone.replace(/[^0-9]/g, '').length < 10) {
       setShowEmergencySetupModal(true);
       return;
     }
-
-    const currentPhone = state.currentUser?.emergencyContact?.phone;
-    if (!currentPhone || currentPhone.trim() === '') {
-      setShowEmergencySetupModal(true);
-    } else {
-      setShowEmergencyModal(true);
-    }
+    dispatchEmergencyAlert();
   };
 
-  // Save Emergency Contact Setup
-  const handleSaveContactAndTriggerSos = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contactPhone || contactPhone.trim().length < 6) {
-      addToast('error', 'Please provide a valid emergency phone number.');
+  // Save Real User Contact Details
+  const handleSaveContact = async () => {
+    const rawDigits = contactPhone.replace(/[^0-9]/g, '');
+    if (rawDigits.length < 10) {
+      addToast('error', 'Please enter a valid 10-digit mobile number.');
       return;
     }
 
-    const newContact = {
-      name: contactName || 'Emergency Contact',
-      phone: contactPhone,
+    const cleanPhone = `+91 ${rawDigits.slice(-10)}`;
+    const updatedContact = {
+      name: contactName.trim() || 'Primary Contact',
+      phone: cleanPhone,
       relationship: contactRelation || 'Family',
     };
 
     if (state.currentUser) {
       setUser({
         ...state.currentUser,
-        emergencyContact: newContact,
+        emergencyContact: updatedContact,
       });
     }
 
     setShowEmergencySetupModal(false);
-    await triggerSosDispatch(newContact);
+    addToast('success', `Saved ${updatedContact.name} (${cleanPhone}) as your emergency contact.`);
+    dispatchEmergencyAlert();
   };
 
-  // Dispatch SOS Telemetry with Live GPS Coordinates and real SMS API
-  const triggerSosDispatch = async (contact?: { name: string; phone: string; relationship?: string }) => {
-    const activeContact = contact || state.currentUser?.emergencyContact || {
-      name: 'Emergency Contact',
-      phone: '+91 98765 43210',
+  // Dispatch live emergency alert
+  const dispatchEmergencyAlert = async () => {
+    setSosActive(true);
+    const activeContact = state.currentUser?.emergencyContact || {
+      name: contactName || 'Primary Contact',
+      phone: contactPhone || '9876543210',
     };
 
-    setSosActive(true);
-    setShowEmergencyModal(false);
-
+    const rawDigitsPhone = activeContact.phone.replace(/[^0-9]/g, '').slice(-10);
     const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
-    const mapLink = `https://maps.google.com/?q=${coordsStr}`;
-    const sender = state.currentUser?.name || 'Passenger';
-    const rawDigitsPhone = activeContact.phone.replace(/[^0-9+]/g, '');
 
-    // 1. Call Backend Real-Time SMS API Endpoint
     try {
       await safetyApi.sendEmergencySms({
-        recipientPhone: activeContact.phone,
+        recipientPhone: rawDigitsPhone,
         recipientName: activeContact.name,
-        senderName: sender,
+        senderName: state.currentUser?.name || 'Passenger',
         latitude: livePos[0],
         longitude: livePos[1],
-        locationName: activeJourney?.originName || 'Transit Corridor',
+        locationName: activeJourney?.originName || 'Bhubaneswar Transit Route',
       });
     } catch (err) {
-      console.warn('Real-time SMS dispatch dispatched with fallback.', err);
+      console.warn('Carrier API fallback triggered:', err);
     }
 
-    // 2. Trigger native device SMS application with prefilled message
-    const physicalSmsText = `🚨 EMERGENCY ALERT: I need immediate assistance! My live GPS location is: ${mapLink} (Travelling on ${activeJourney?.routeName || 'Transit'}).`;
+    const physicalSmsText = `🚨 EMERGENCY ALERT: ${state.currentUser?.name || 'I'} triggered SOS near ${activeJourney?.originName || 'Bhubaneswar'}. Live Google Maps: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`;
     const nativeSmsUri = `sms:${rawDigitsPhone}?body=${encodeURIComponent(physicalSmsText)}`;
 
     try {
@@ -288,42 +358,219 @@ export default function ActiveJourneyPage() {
     activeJourney?.turnByTurn?.[Math.min(progressIndex, (activeJourney?.turnByTurn?.length || 1) - 1)] ||
     'Proceed along step-free transit corridor to destination.';
 
-  // If safely arrived, display clean celebration screen
+  // =========================================================================
+  // POST-RIDE EXPERIENCE: SMART CROWDSOURCED FEEDBACK FORM & REWARD
+  // =========================================================================
   if (hasArrivedSafely) {
     return (
-      <div className="max-w-md mx-auto px-4 py-12 text-center space-y-6">
-        <div className="w-20 h-20 rounded-full bg-emerald-100 border-4 border-emerald-500/20 text-emerald-700 flex items-center justify-center mx-auto shadow-lg animate-bounce">
-          <CheckCircle className="w-10 h-10" />
-        </div>
-
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-            Verified Safe Arrival
+      <div className="max-w-lg mx-auto px-4 py-6 sm:py-10 space-y-5 font-sans">
+        {/* Celebration Header */}
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 border-4 border-emerald-500/20 text-emerald-700 flex items-center justify-center mx-auto shadow-md animate-bounce">
+            <CheckCircle className="w-8 h-8" />
+          </div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 inline-block">
+            Verified Destination Arrival 🎉
           </span>
-          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-3">
-            You have arrived!
+          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
+            You Have Arrived!
           </h1>
-          <p className="text-xs text-neutral-600 mt-1 max-w-sm mx-auto">
-            You safely reached <strong>{activeJourney?.destinationName}</strong>. Your emergency contacts have been confirmed.
+          <p className="text-xs text-neutral-600 max-w-sm mx-auto">
+            Safely reached <strong>{activeJourney?.destinationName}</strong> via <strong>{activeJourney?.routeName}</strong>.
           </p>
         </div>
 
-        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs text-left space-y-2">
-          <div className="flex justify-between text-neutral-600">
-            <span>Trip Option:</span>
-            <strong className="text-neutral-900">{activeJourney?.routeName}</strong>
+        {/* Crowdsourced Feedback Card */}
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span className="text-xs font-black text-neutral-900 uppercase tracking-wider">
+                Help Commuters • Live Feedback
+              </span>
+            </div>
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+              +50 Karma Points
+            </span>
           </div>
-          <div className="flex justify-between text-neutral-600">
-            <span>Fare:</span>
-            <strong className="text-neutral-900">
-              {activeJourney?.fare?.type === 'exact' ? `₹${activeJourney.fare.exact}` : `₹${activeJourney?.fare?.min || 15} - ₹${activeJourney?.fare?.max || 25}`}
-            </strong>
+
+          {/* Question 1: Crowding Level (For Public Bus) or Star Rating (For Auto/Cab) */}
+          {isBus ? (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-800">
+                1. How crowded was the bus during your journey?
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'LOW', label: '🟢 Low', desc: 'Empty Seats' },
+                  { id: 'MEDIUM', label: '🟡 Medium', desc: 'Some Standing' },
+                  { id: 'HIGH', label: '🔴 High', desc: 'Packed Bus' },
+                ].map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCrowdFeedback(c.id as any)}
+                    className={`p-2.5 rounded-2xl border text-center transition-all ${
+                      crowdFeedback === c.id
+                        ? 'bg-black text-white border-black shadow-xs'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block">{c.label}</span>
+                    <span className={`text-[10px] block mt-0.5 ${crowdFeedback === c.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                      {c.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-800">
+                1. How was your ride experience?
+              </label>
+              <div className="flex items-center justify-center gap-2 py-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setStarRating(star)}
+                    className="p-1 text-2xl transition-transform hover:scale-125"
+                  >
+                    <Star
+                      className={`w-7 h-7 ${
+                        star <= starRating
+                          ? 'text-amber-400 fill-amber-400'
+                          : 'text-neutral-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Question 2: Road / Sidewalk Surface (Was the road plane/smooth?) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-neutral-800">
+              2. Was the road and sidewalk surface smooth & plane?
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'smooth', label: '🟢 Smooth / Plane', desc: 'Tactile Paved' },
+                { id: 'minor_bumps', label: '🟡 Minor Bumps', desc: 'Usable' },
+                { id: 'rough', label: '🔴 Uneven / Potholes', desc: 'Rough Surface' },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setRoadSurfaceFeedback(s.id as any)}
+                  className={`p-2.5 rounded-2xl border text-center transition-all ${
+                    roadSurfaceFeedback === s.id
+                      ? 'bg-black text-white border-black shadow-xs'
+                      : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                  }`}
+                >
+                  <span className="text-xs font-bold block">{s.label}</span>
+                  <span className={`text-[10px] block mt-0.5 ${roadSurfaceFeedback === s.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    {s.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Question 3: Ramp Condition (If Public Bus) or Fare (If Auto/Cab) */}
+          {isBus ? (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-800">
+                3. Low-Floor Wheelchair Ramp status:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'working', label: '♿ Deployed Smoothly' },
+                  { id: 'issue', label: '⚠️ Issue / Stiff' },
+                  { id: 'not_used', label: '⚪ Not Observed' },
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setRampFeedback(r.id as any)}
+                    className={`p-2.5 rounded-2xl border text-center transition-all text-xs font-bold ${
+                      rampFeedback === r.id
+                        ? 'bg-black text-white border-black shadow-xs'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-800">
+                3. Fare charged by driver:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'exact', label: '✅ Exact Meter / Estimated' },
+                  { id: 'overcharged', label: '⚠️ Asked Extra' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFareAccuracyFeedback(f.id as any)}
+                    className={`p-2.5 rounded-2xl border text-center transition-all text-xs font-bold ${
+                      fareAccuracyFeedback === f.id
+                        ? 'bg-black text-white border-black shadow-xs'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Optional Quick Comment */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-neutral-700">
+              Additional Notes for Commuters (Optional)
+            </label>
+            <input
+              type="text"
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              placeholder="e.g. Bus stop shade clean, gentle curb cuts..."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-medium text-neutral-900 focus:bg-white focus:border-black focus:outline-none"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pt-2 space-y-2">
+            <Button
+              onClick={handleSubmitFeedback}
+              size="lg"
+              className="w-full py-4 bg-black hover:bg-neutral-800 text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              <span>Submit & Update Live Community Data</span>
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => {
+                completeJourney();
+                navigate('/plan');
+              }}
+              className="w-full py-2 text-xs font-semibold text-neutral-500 hover:text-neutral-900 text-center"
+            >
+              Skip Feedback
+            </button>
           </div>
         </div>
-
-        <Button onClick={handleEndTrip} size="lg" className="w-full py-4 text-sm font-bold shadow-md">
-          Conclude Trip & Save
-        </Button>
       </div>
     );
   }
@@ -334,7 +581,7 @@ export default function ActiveJourneyPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-4 sm:py-6 space-y-4">
+    <div className="max-w-xl mx-auto px-4 py-4 sm:py-6 space-y-4 font-sans">
       {/* Active SOS Red Emergency Bar if Triggered */}
       {sosActive && (
         <div className="bg-red-600 text-white p-4 rounded-3xl shadow-xl space-y-3 animate-pulse">
@@ -395,36 +642,52 @@ export default function ActiveJourneyPage() {
         </div>
       )}
 
-      {/* Top Turn-by-Turn Instruction Banner */}
-      <div className="bg-black text-white p-4 sm:p-5 rounded-3xl shadow-lg space-y-2">
+      {/* Top Turn-by-Turn Instruction Banner with Cancel Button */}
+      <div className="bg-black text-white p-4 sm:p-5 rounded-3xl shadow-lg space-y-3">
         <div className="flex items-center justify-between text-xs text-neutral-400">
           <span className="flex items-center gap-1.5 font-bold text-white">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            Navigating • {activeJourney?.routeName}
+            Live Tracking • {activeJourney?.routeName}
           </span>
-          <span className="bg-neutral-800 text-emerald-400 font-bold px-2.5 py-0.5 rounded-full text-[11px]">
-            {remainingDistMeters > 1000 ? `${(remainingDistMeters / 1000).toFixed(1)} km away` : `${remainingDistMeters}m away`}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="bg-neutral-800 text-emerald-400 font-bold px-2.5 py-0.5 rounded-full text-[11px]">
+              {remainingDistMeters > 1000 ? `${(remainingDistMeters / 1000).toFixed(1)} km away` : `${remainingDistMeters}m away`}
+            </span>
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="px-2.5 py-0.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-bold transition-colors"
+            >
+              ✕ Cancel
+            </button>
+          </div>
         </div>
 
         {/* Big Next Maneuver Instruction */}
         <div className="pt-1">
           <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
-            Next Action:
+            Current Action:
           </span>
           <p className="text-base sm:text-lg font-black text-white leading-snug mt-0.5">
             {currentStep}
           </p>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-xs text-neutral-300">
-          <span>To: <strong>{activeJourney?.destinationName}</strong></span>
-          <span>Fare: <strong>{activeJourney?.fare?.type === 'exact' ? `₹${activeJourney.fare.exact}` : `₹${activeJourney?.fare?.min || 15} - ₹${activeJourney?.fare?.max || 25}`}</strong></span>
+        {/* Live Progress Bar */}
+        <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+          <div
+            className="bg-emerald-500 h-full transition-all duration-700 ease-out"
+            style={{
+              width: `${Math.min(
+                100,
+                Math.round(((progressIndex + 1) / Math.max(1, continuousRoute.length)) * 100)
+              )}%`,
+            }}
+          />
         </div>
       </div>
 
-      {/* Live Continuous Polyline & Tracking Map - Isolated Stacking Context */}
-      <div className="h-[340px] sm:h-[400px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
+      {/* CartoDB Voyager Live Interactive Map */}
+      <div className="h-[280px] sm:h-[340px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
         <MapContainer
           center={livePos}
           zoom={15}
@@ -432,7 +695,10 @@ export default function ActiveJourneyPage() {
           className="w-full h-full"
           style={{ zIndex: 1 }}
         >
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          />
           <NavBoundsController coordinates={continuousRoute} currentPos={livePos} />
 
           {/* Start Marker A */}
@@ -448,10 +714,10 @@ export default function ActiveJourneyPage() {
           {/* Real-Time Live User GPS Pin */}
           <Marker position={livePos} icon={userGpsPin}>
             <Popup>
-              <div className="p-1 text-xs font-bold text-neutral-900">
-                <span>📍 Live Position</span>
-                <span className="block text-[11px] text-neutral-500 font-normal mt-0.5">
-                  {remainingDistMeters > 1000 ? `${(remainingDistMeters / 1000).toFixed(1)} km to destination` : `${remainingDistMeters}m to destination`}
+              <div className="p-1 text-xs space-y-1">
+                <strong className="block font-black text-black">📍 Your Current Position</strong>
+                <span className="text-[10px] text-neutral-600 block">
+                  {remainingDistMeters}m to destination
                 </span>
               </div>
             </Popup>
@@ -465,166 +731,186 @@ export default function ActiveJourneyPage() {
           </Marker>
         </MapContainer>
 
-        {/* Quiet Background Safety Monitoring Badge */}
-        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-10 flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          <span>Safety Active</span>
+        {/* Live Floating Tracking Badge */}
+        <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Auto-Tracking Live GPS</span>
         </div>
       </div>
 
-      {/* Clean Minimalist Bottom Action Bar */}
-      <div className="bg-white border border-neutral-200 p-4 rounded-3xl shadow-sm space-y-2.5">
-        <div className="grid grid-cols-3 gap-2">
-          {/* Manual Safe Check Button */}
-          <Button
-            onClick={() => {
-              addToast('success', 'Verified Safe! Quiet background monitoring active.');
-            }}
-            className="py-3 font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center justify-center gap-1.5 shadow-sm"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>I'm Safe</span>
-          </Button>
-
-          {/* Report Condition Button */}
-          <Button
-            variant="secondary"
-            onClick={() => setShowReportModal(true)}
-            className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 border-neutral-200 shadow-sm"
-          >
-            <MessageSquarePlus className="w-3.5 h-3.5 text-neutral-700" />
-            <span>Report</span>
-          </Button>
-
-          {/* SOS Button */}
-          <Button
-            variant="danger"
-            onClick={handleSosClick}
-            className="py-3 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span>SOS</span>
-          </Button>
-        </div>
-
-        {/* End & Conclude Trip Button */}
+      {/* Safety & Action Controls HUD */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {/* Red SOS Button */}
         <button
-          type="button"
-          onClick={handleEndTrip}
-          className="w-full py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+          onClick={handleSosClick}
+          className="p-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs shadow-md active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-1.5"
         >
-          <span>End & Conclude Trip</span>
+          <ShieldAlert className="w-5 h-5 text-white" />
+          <span>Emergency SOS</span>
+        </button>
+
+        {/* Report Issue Button */}
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="p-3.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-900 rounded-2xl font-bold text-xs shadow-xs active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-1.5"
+        >
+          <MessageSquarePlus className="w-5 h-5 text-neutral-700" />
+          <span>Report Issue</span>
+        </button>
+
+        {/* Complete Ride Manual Override */}
+        <button
+          onClick={triggerSafeArrival}
+          className="p-3.5 bg-black hover:bg-neutral-800 text-white rounded-2xl font-bold text-xs shadow-md active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-1.5"
+        >
+          <CheckCircle className="w-5 h-5 text-emerald-400" />
+          <span>Arrived at Stop</span>
         </button>
       </div>
 
-      {/* Report Modal */}
+      {/* Cancel Ride Confirmation Modal */}
       <Modal
-        open={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        title="📢 Report Transit Condition"
+        open={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        title="Cancel Active Navigation?"
+        size="sm"
       >
         <div className="space-y-4 text-xs">
-          <p className="text-neutral-600">
-            Help other passengers and transit operators by reporting live route conditions.
+          <p className="text-neutral-600 leading-relaxed">
+            Are you sure you want to cancel this navigation session? Live route tracking will stop and you will return to the trip planner.
           </p>
 
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: '👥 Heavy Crowding', type: 'crowding', crowding: 'HIGH' },
-              { label: '⏱️ Vehicle Delay (+10m)', type: 'delay', delay: 10 },
-              { label: '♿ Ramp Broken / Stuck', type: 'accessibility', comment: 'Ramp mechanical failure' },
-              { label: '💡 Poor Corridor Lighting', type: 'accessibility', comment: 'Street lights not working' },
-            ].map((r, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  addToast('success', `Report logged: ${r.label}. Transit dispatch notified.`);
-                  setShowReportModal(false);
-                }}
-                className="p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 font-bold text-neutral-900 text-left transition-all"
-              >
-                {r.label}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowCancelModal(false)}
+              className="py-2.5 font-bold"
+            >
+              Keep Navigating
+            </Button>
+
+            <button
+              onClick={handleCancelJourney}
+              className="py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs transition-colors"
+            >
+              Yes, Cancel Ride
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Emergency Contact Setup Modal */}
+      <Modal
+        open={showEmergencySetupModal}
+        onClose={() => setShowEmergencySetupModal(false)}
+        title="Set Your Emergency Contact"
+        size="sm"
+      >
+        <div className="space-y-3.5 text-xs">
+          <p className="text-neutral-600">
+            Please provide your verified emergency contact details. Live GPS location will be sent to this number when SOS is pressed.
+          </p>
+
+          <div className="space-y-1">
+            <label className="block font-bold text-neutral-700 text-[11px] uppercase">
+              Contact Name
+            </label>
+            <input
+              type="text"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder="e.g. Father, Sister, Friend..."
+              className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 focus:border-black font-bold text-xs"
+            />
           </div>
 
-          <div className="flex justify-end pt-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowReportModal(false)}>
-              Close
+          <div className="space-y-1">
+            <label className="block font-bold text-neutral-700 text-[11px] uppercase">
+              10-Digit Mobile Number
+            </label>
+            <input
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              placeholder="e.g. 9876543210"
+              maxLength={15}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 focus:border-black font-bold text-xs"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block font-bold text-neutral-700 text-[11px] uppercase">
+              Relationship
+            </label>
+            <select
+              value={contactRelation}
+              onChange={(e) => setContactRelation(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 font-bold text-xs"
+            >
+              <option value="Family">Family Member</option>
+              <option value="Friend">Friend</option>
+              <option value="Doctor">Doctor / Caregiver</option>
+              <option value="Colleague">Colleague</option>
+            </select>
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowEmergencySetupModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSaveContact}>
+              Save & Send Alert
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Emergency Contact Setup Modal (If contact not set) */}
+      {/* Mid-Trip Report Issue Modal */}
       <Modal
-        open={showEmergencySetupModal}
-        onClose={() => setShowEmergencySetupModal(false)}
-        title="🛡️ Setup Emergency Contact"
+        open={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        title="Report Transit Condition"
+        size="sm"
       >
-        <form onSubmit={handleSaveContactAndTriggerSos} className="space-y-4 text-xs">
+        <div className="space-y-3 text-xs">
           <p className="text-neutral-600">
-            Please provide an emergency contact phone number to receive live GPS telemetry during emergencies.
+            Notice an issue on this route? Help update the system for other travellers.
           </p>
 
-          <Input
-            label="Contact Name"
-            placeholder="e.g. Parent / Friend / Spouse"
-            value={contactName}
-            onChange={(e) => setContactName(e.target.value)}
-            required
-          />
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                updateCondition(activeJourney?.routeId || 'C3', { crowding: 'HIGH' });
+                addToast('success', 'High crowding reported! Other commuters alerted.');
+                setShowReportModal(false);
+              }}
+              className="p-3 rounded-xl border border-neutral-200 hover:border-black text-left space-y-0.5"
+            >
+              <strong className="block font-bold text-neutral-900">🔴 High Crowding</strong>
+              <span className="text-[10px] text-neutral-500">Packed bus / stand</span>
+            </button>
 
-          <Input
-            label="Emergency Mobile Phone"
-            placeholder="+91 98765 43210"
-            icon={<Phone className="w-4 h-4" />}
-            value={contactPhone}
-            onChange={(e) => setContactPhone(e.target.value)}
-            required
-          />
-
-          <Input
-            label="Relationship"
-            placeholder="e.g. Sister / Family"
-            value={contactRelation}
-            onChange={(e) => setContactRelation(e.target.value)}
-          />
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" size="sm" type="button" onClick={() => setShowEmergencySetupModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" size="sm" type="submit">
-              Save & Send SOS
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Emergency SOS Confirmation Modal */}
-      <Modal
-        open={showEmergencyModal}
-        onClose={() => setShowEmergencyModal(false)}
-        title="🚨 Emergency SOS Alert"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-neutral-700 leading-relaxed">
-            This will immediately transmit your current live GPS coordinates ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) and route telemetry to your emergency contact and transit emergency services.
-          </p>
-
-          <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-900">
-            <span className="font-bold block">Live Emergency Dispatch Destination:</span>
-            <span className="text-[11px] block mt-0.5">Contact: {activeContact.name} ({activeContact.phone})</span>
+            <button
+              onClick={() => {
+                updateCondition(activeJourney?.routeId || 'C3', { accessibility: 'LIMITED' });
+                addToast('warning', 'Ramp / accessibility issue reported.');
+                setShowReportModal(false);
+              }}
+              className="p-3 rounded-xl border border-neutral-200 hover:border-black text-left space-y-0.5"
+            >
+              <strong className="block font-bold text-neutral-900">⚠️ Ramp Issue</strong>
+              <span className="text-[10px] text-neutral-500">Ramp inaccessible</span>
+            </button>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setShowEmergencyModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => triggerSosDispatch()}>
-              Confirm SOS Dispatch
+          <div className="flex justify-end pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setShowReportModal(false)}>
+              Close
             </Button>
           </div>
         </div>

@@ -48,7 +48,8 @@ export default function LandingPage() {
   const [pickup, setPickup] = useState('Campus Gate');
   const [dropoff, setDropoff] = useState('Patia Transit Station');
   const [timeMode, setTimeMode] = useState('now');
-  const [mobilityFilter, setMobilityFilter] = useState<'wheelchair' | 'walking' | 'senior' | 'all'>('wheelchair');
+  const [departTime, setDepartTime] = useState('09:30');
+  const [mobilityFilter, setMobilityFilter] = useState<'wheelchair' | 'walking' | 'senior' | 'all'>('all');
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +66,7 @@ export default function LandingPage() {
       updateProfile({ mobility: 'none', stairs: 'acceptable', walkingTolerance: 'high' });
     }
 
-    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&mobility=${mobilityFilter}`;
+    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&mobility=${mobilityFilter}&timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`;
 
     // If user is not logged in, redirect to login/signup/guest selection with search query
     if (!state.currentUser) {
@@ -124,7 +125,7 @@ export default function LandingPage() {
                 Go anywhere with barrier-free transit.
               </h1>
               <p className="text-sm text-neutral-600 mt-2">
-                Real-time accessibility scores, wheelchair ramp confirmation, and zero unexpected stairs.
+                Maybe it's time to take the road not taken.
               </p>
             </div>
 
@@ -168,9 +169,9 @@ export default function LandingPage() {
                     onChange={(e) => setTimeMode(e.target.value)}
                     className="w-full px-3 py-3 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
                   >
-                    <option value="now">🕒 Leave Now</option>
-                    <option value="depart">Depart at...</option>
-                    <option value="arrive">Arrive by...</option>
+                    <option value="now">⚡ Leave Now</option>
+                    <option value="depart">⏰ Depart at...</option>
+                    <option value="arrive">🏁 Arrive by...</option>
                   </select>
                 </div>
 
@@ -181,13 +182,26 @@ export default function LandingPage() {
                     onChange={(e) => setMobilityFilter(e.target.value as any)}
                     className="w-full px-3 py-3 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
                   >
-                    <option value="wheelchair">♿ Wheelchair</option>
-                    <option value="senior">👵 Senior</option>
+                    <option value="all">🚶 Standard (All Transit)</option>
+                    <option value="wheelchair">♿ Wheelchair (Step-Free & Ramps)</option>
+                    <option value="senior">👵 Senior Friendly</option>
                     <option value="walking">🦯 Walking Aid</option>
-                    <option value="all">🚶 Standard</option>
                   </select>
                 </div>
               </div>
+
+              {/* Time Input if Depart/Arrive selected */}
+              {timeMode !== 'now' && (
+                <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between gap-3 text-xs animate-fadeIn">
+                  <span className="font-bold text-neutral-800">Choose Exact Time:</span>
+                  <input
+                    type="time"
+                    value={departTime}
+                    onChange={(e) => setDepartTime(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-white border border-neutral-300 focus:border-black font-bold text-sm text-neutral-900 focus:outline-none"
+                  />
+                </div>
+              )}
 
               {/* Search CTA Button */}
               <button
@@ -230,7 +244,10 @@ export default function LandingPage() {
               className="w-full h-full"
               style={{ zIndex: 1 }}
             >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+              />
               <Polyline positions={polylineCoords} color="#2563eb" weight={5} opacity={0.9} />
 
               {DEMO_STOPS.map(stop => (
