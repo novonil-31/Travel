@@ -8,10 +8,20 @@ import L from 'leaflet';
 import {
   Navigation, ArrowRight, Clock, ShieldCheck, ChevronRight,
   Car, Sparkles, Check, ChevronDown, Bus, Footprints,
-  MapPin, AlertCircle, Phone, Info, Radio, Users, Calendar
+  MapPin, AlertCircle, Phone, Info, Radio, Users, Calendar,
+  Compass, Zap, CornerDownRight
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
-import { OFFICIAL_STOPS, getLiveStopArrivals, getNearestOfficialStop, type LiveUpcomingBus, type TransitStopInfo } from '../../data/liveTimetable';
+import {
+  OFFICIAL_STOPS,
+  OFFICIAL_ROUTES,
+  getLiveStopArrivals,
+  getNearestOfficialStop,
+  getWaysToReachStop,
+  type LiveUpcomingBus,
+  type TransitStopInfo,
+  type FirstMileOption,
+} from '../../data/liveTimetable';
 
 // Custom Minimalist Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -73,6 +83,7 @@ export default function RouteDiscoveryPage() {
   const [showTimetableModal, setShowTimetableModal] = useState<boolean>(false);
   const [selectedTimetableStop, setSelectedTimetableStop] = useState<TransitStopInfo | null>(null);
   const [showSteps, setShowSteps] = useState<boolean>(false);
+  const [showWaysToReach, setShowWaysToReach] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
   // Update clock every minute for accurate relative arrival times
@@ -127,22 +138,39 @@ export default function RouteDiscoveryPage() {
   const nearestOfficial = getNearestOfficialStop(originCoords[0], originCoords[1]);
   const activeBoardingStop = nearestOfficial.stop;
 
-  // Calculate detailed pickup & arrival timing relative to current time
-  const walkToPickupMinutes = nearestOfficial.walkingMinutes;
-  const walkToPickupDistanceMeters = nearestOfficial.distanceMeters;
+  // Multimodal available ways to reach this bus stop
+  const waysToReachList = getWaysToReachStop(originCoords[0], originCoords[1], activeBoardingStop);
 
+  // Live upcoming bus arrival data for this boarding stop
   const liveArrivalsForBoarding = getLiveStopArrivals(activeBoardingStop.id, currentTime);
-  const nextEarliestBus = liveArrivalsForBoarding[0];
 
-  const busWaitMinutes = nextEarliestBus ? nextEarliestBus.minutesAway : 5;
-  const formattedBusArrivalTime = nextEarliestBus ? nextEarliestBus.scheduledTime : '08:45 AM';
+  // Match the selected route to the specific official line
+  const matchedOfficialRoute =
+    selectedRoute?.route.id === 'C2'
+      ? OFFICIAL_ROUTES['11']
+      : selectedRoute?.route.id === 'S1'
+      ? OFFICIAL_ROUTES['Auto-Stand']
+      : selectedRoute?.route.id === 'CV1'
+      ? OFFICIAL_ROUTES['13']
+      : OFFICIAL_ROUTES['10'];
+
+  const matchedUpcomingBus =
+    liveArrivalsForBoarding.find(b => b.routeId === matchedOfficialRoute?.id) ||
+    liveArrivalsForBoarding[0];
+
+  const busWaitMinutes = matchedUpcomingBus ? matchedUpcomingBus.minutesAway : 6;
+  const formattedBusArrivalTime = matchedUpcomingBus ? matchedUpcomingBus.scheduledTime : '09:35 AM';
+  const actualVehiclePlate = matchedUpcomingBus?.vehicleNumber || 'OD-02-BA-1025';
+  const actualBusModel = matchedUpcomingBus?.busModel || 'Tata Starbus EV (100% Low-Floor Hydraulic Ramp)';
 
   const boardingStopName = activeBoardingStop.name;
   const alightingStopName = selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.from || `${selectedRoute?.destinationName} Transit Station`;
 
+  const walkToPickupMinutes = nearestOfficial.walkingMinutes;
+  const walkToPickupDistanceMeters = nearestOfficial.distanceMeters;
+
   const finalWalkMinutes = Math.max(1, selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.duration || 1);
   const finalWalkDistanceMeters = Math.round(finalWalkMinutes * 60);
-
   const totalWalkDistanceMeters = walkToPickupDistanceMeters + finalWalkDistanceMeters;
 
   const handleOpenTimetable = (stop: TransitStopInfo) => {
@@ -198,11 +226,11 @@ export default function RouteDiscoveryPage() {
                 icon={st.id === activeBoardingStop.id ? stopPin : otherStopPin}
               >
                 <Popup>
-                  <div className="p-1.5 space-y-1.5 max-w-[200px]">
+                  <div className="p-1.5 space-y-1.5 max-w-[210px]">
                     <div>
                       <strong className="block text-xs font-bold text-blue-900">🚏 {st.name}</strong>
                       <span className="text-[10px] text-neutral-600 block">
-                        {st.hasRamp ? '♿ 100% Low-Floor Ramp' : 'Standard Access'} • {st.bayNumber}
+                        {st.bayNumber} • {st.hasRamp ? '♿ Low-Floor Ramp' : 'Standard'}
                       </span>
                     </div>
                     <button
@@ -305,7 +333,15 @@ export default function RouteDiscoveryPage() {
                         isSelected ? 'bg-white text-black' : 'bg-neutral-100 text-neutral-900'
                       }`}
                     >
-                      {result.route.vehicleType === 'shared-transport' ? '🚖' : '🚌'}
+                      {result.route.id === 'AUTO_DIRECT'
+                        ? '🛺'
+                        : result.route.id === 'BIKE_TAXI'
+                        ? '🛵'
+                        : result.route.vehicleType === 'shared-transport'
+                        ? '🚖'
+                        : result.route.vehicleType === 'campus-vehicle'
+                        ? '🛺'
+                        : '🚌'}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -338,45 +374,68 @@ export default function RouteDiscoveryPage() {
             })}
           </div>
 
-          {/* Detailed Transit Pickup, Stop Location & Live Arrival Time Breakdown Card */}
+          {/* Detailed Transit Pickup, Stop Location & Actual Bus Running Breakdown Card */}
           {selectedRoute && (
             <div className="bg-white border border-neutral-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-900 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  Exact Pickup & Drop-off Breakdown
+                  Actual Bus Running & Pickup Breakdown
                 </span>
                 <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                   Total Walk: {totalWalkDistanceMeters}m
                 </span>
               </div>
 
-              {/* Step 1: Walk to nearest Boarding Stop */}
+              {/* Step 1: Exact Boarding Stop & Actual Running Vehicle Details */}
               <div className="flex items-start gap-3 text-xs">
                 <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
                   1
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <strong className="text-neutral-900 font-bold">Catch Vehicle At: {boardingStopName}</strong>
                     <span className="text-emerald-700 font-bold">{walkToPickupDistanceMeters}m walk</span>
                   </div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Walk <strong>{walkToPickupDistanceMeters}m (~{walkToPickupMinutes} mins)</strong> from your starting point to the designated stop ({activeBoardingStop.bayNumber || 'Main Stop'}).
+                  <p className="text-[11px] text-neutral-500">
+                    Board at <strong>{activeBoardingStop.bayNumber}</strong>. Located ~{walkToPickupMinutes} mins from your origin point.
                   </p>
 
-                  <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-100 rounded-xl space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-blue-900 font-semibold">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-blue-600" /> Next Vehicle Arrival:
-                      </span>
-                      <span className="font-bold bg-white px-2 py-0.5 rounded-md shadow-xs text-blue-800">
+                  {/* Actual Bus Live Telemetry Card */}
+                  <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-black text-white font-black text-xs">
+                          {matchedOfficialRoute?.routeNumber || 'Route 10'}
+                        </span>
+                        <span className="font-bold text-neutral-900 text-xs">
+                          Vehicle #{actualVehiclePlate}
+                        </span>
+                      </div>
+                      <span className="text-blue-800 bg-blue-50 font-bold px-2 py-0.5 rounded-md text-[10px] border border-blue-100">
                         {formattedBusArrivalTime} ({busWaitMinutes}m away)
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-blue-100/80 text-[10px] text-blue-800">
-                      <span>Vehicle: <strong>{nextEarliestBus?.vehicleNumber || 'OD-02-B-1024'}</strong> • ♿ Ramp Certified</span>
+                    <div className="text-[11px] text-neutral-600 space-y-1">
+                      <div>
+                        <strong>Full Corridor:</strong> {matchedOfficialRoute?.originTerminus} ➡️ {matchedOfficialRoute?.destTerminus}
+                      </div>
+                      <div>
+                        <strong>Model:</strong> {actualBusModel}
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-neutral-500 pt-0.5">
+                        <span>📅 {matchedOfficialRoute?.operatingDays}</span>
+                        <span>•</span>
+                        <span>⏰ {matchedOfficialRoute?.operatingHours}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between border-t border-neutral-200/80 text-[10px]">
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        {matchedOfficialRoute?.hasRamp ? '♿ Low-Floor Ramp Certified' : 'Standard Transit'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleOpenTimetable(activeBoardingStop)}
@@ -385,6 +444,35 @@ export default function RouteDiscoveryPage() {
                         View Full Stop Timetable →
                       </button>
                     </div>
+                  </div>
+
+                  {/* Available Ways to Reach This Bus Stop Button & Selector */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowWaysToReach(!showWaysToReach)}
+                      className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 underline"
+                    >
+                      <span>{showWaysToReach ? 'Hide' : 'Show'} Available Ways to Reach This Bus Stop ({waysToReachList.length} Options)</span>
+                      <ChevronDown className={`w-3 h-3 transition-transform ${showWaysToReach ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showWaysToReach && (
+                      <div className="mt-2 space-y-1.5 p-2.5 bg-blue-50/50 border border-blue-100 rounded-xl text-[11px]">
+                        {waysToReachList.map((way, wIdx) => (
+                          <div key={wIdx} className="p-2 bg-white rounded-lg border border-blue-100 flex items-start justify-between gap-2">
+                            <div>
+                              <strong className="text-neutral-900 block font-bold">{way.title}</strong>
+                              <span className="text-[10px] text-neutral-500 block leading-tight mt-0.5">{way.description}</span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-bold text-neutral-800 text-[10px] block">{way.durationMinutes} min</span>
+                              <span className="text-[9px] text-emerald-700 font-semibold">{way.fareEstimate}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -397,7 +485,7 @@ export default function RouteDiscoveryPage() {
                 <div className="flex-1">
                   <strong className="text-neutral-900 font-bold">Ride {selectedRoute.route.name}</strong>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Ride for approx. <strong>{Math.max(5, selectedRoute.duration - walkToPickupMinutes - finalWalkMinutes)} mins</strong> in vehicle. {selectedRoute.stairs === 0 ? '♿ 100% Step-free flat ramp access.' : 'Standard transit entry.'}
+                    Ride for approx. <strong>{Math.max(5, selectedRoute.duration - walkToPickupMinutes - finalWalkMinutes)} mins</strong>. Priority seating and ramp assistance available.
                   </p>
                 </div>
               </div>
@@ -470,7 +558,7 @@ export default function RouteDiscoveryPage() {
           {/* Stop metadata badge bar */}
           <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-neutral-700">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-neutral-900">{selectedTimetableStop?.bayNumber || 'Platform 1'}</span>
+              <span className="font-bold text-neutral-900">{selectedTimetableStop?.bayNumber || activeBoardingStop.bayNumber}</span>
               <span>•</span>
               <span className="text-emerald-700 font-bold">♿ Certified Wheelchair Ramp</span>
               <span>•</span>
@@ -484,9 +572,9 @@ export default function RouteDiscoveryPage() {
           {/* Upcoming Bus Datasheet Table */}
           <div className="border border-neutral-200 rounded-2xl overflow-hidden divide-y divide-neutral-100">
             <div className="bg-neutral-100 px-4 py-2.5 font-bold text-neutral-600 grid grid-cols-12 text-[11px] uppercase tracking-wider">
-              <div className="col-span-4">Line & Destination</div>
+              <div className="col-span-4">Line & Corridor</div>
               <div className="col-span-3">Scheduled Arrival</div>
-              <div className="col-span-3">Status & Headway</div>
+              <div className="col-span-3">Status & Vehicle</div>
               <div className="col-span-2 text-right">Accessibility</div>
             </div>
 
@@ -499,12 +587,12 @@ export default function RouteDiscoveryPage() {
                     </span>
                     <span>To {bus.destination}</span>
                   </div>
-                  <div className="text-[10px] text-neutral-500">Bus #{bus.vehicleNumber}</div>
+                  <div className="text-[10px] text-neutral-500">From {bus.originTerminus}</div>
                 </div>
 
                 <div className="col-span-3">
                   <div className="font-black text-neutral-900 text-sm">{bus.scheduledTime}</div>
-                  <div className="text-[10px] text-neutral-500">{bus.minutesAway} mins from now</div>
+                  <div className="text-[10px] text-neutral-500">{bus.minutesAway} mins away</div>
                 </div>
 
                 <div className="col-span-3 space-y-1">
@@ -517,8 +605,8 @@ export default function RouteDiscoveryPage() {
                   }`}>
                     {bus.status === 'ARRIVING_NOW' ? '⚡ Arriving Now' : bus.status === 'DELAYED' ? `+${bus.delayMinutes}m Delay` : 'On Time'}
                   </span>
-                  <div className="text-[10px] text-neutral-500">
-                    Occupancy: {bus.occupancyPercent}% ({bus.crowding})
+                  <div className="text-[10px] text-neutral-600 font-semibold">
+                    Plate: {bus.vehicleNumber}
                   </div>
                 </div>
 
