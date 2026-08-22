@@ -8,9 +8,10 @@ import L from 'leaflet';
 import {
   Navigation, ArrowRight, Clock, ShieldCheck, ChevronRight,
   Car, Sparkles, Check, ChevronDown, Bus, Footprints,
-  MapPin, AlertCircle, Phone, Info
+  MapPin, AlertCircle, Phone, Info, Radio, Users, Calendar
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
+import { OFFICIAL_STOPS, getLiveStopArrivals, getNearestOfficialStop, type LiveUpcomingBus, type TransitStopInfo } from '../../data/liveTimetable';
 
 // Custom Minimalist Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -42,6 +43,7 @@ const originPin = createMapPin('#10b981', 'A');
 const destPin = createMapPin('#ef4444', 'B');
 const taxiPin = createMapPin('#f59e0b', '🚖');
 const stopPin = createMapPin('#2563eb', '🚏');
+const otherStopPin = createMapPin('#4b5563', '•');
 
 // Auto fit Leaflet bounds smoothly
 function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
@@ -68,6 +70,8 @@ export default function RouteDiscoveryPage() {
     searchResults[0] || null
   );
   const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
+  const [showTimetableModal, setShowTimetableModal] = useState<boolean>(false);
+  const [selectedTimetableStop, setSelectedTimetableStop] = useState<TransitStopInfo | null>(null);
   const [showSteps, setShowSteps] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -119,21 +123,36 @@ export default function RouteDiscoveryPage() {
   const continuousRoute: Array<[number, number]> =
     fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
 
+  // Find nearest official transit stop for pickup location
+  const nearestOfficial = getNearestOfficialStop(originCoords[0], originCoords[1]);
+  const activeBoardingStop = nearestOfficial.stop;
+
   // Calculate detailed pickup & arrival timing relative to current time
-  const walkToPickupMinutes = Math.max(1, selectedRoute?.segments?.[0]?.duration || 2);
-  const walkToPickupDistanceMeters = Math.round(walkToPickupMinutes * 65);
+  const walkToPickupMinutes = nearestOfficial.walkingMinutes;
+  const walkToPickupDistanceMeters = nearestOfficial.distanceMeters;
 
-  const busWaitMinutes = Math.max(3, (selectedRoute?.delay || 0) + 4);
-  const busArrivalDate = new Date(currentTime.getTime() + busWaitMinutes * 60000);
-  const formattedBusArrivalTime = busArrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const liveArrivalsForBoarding = getLiveStopArrivals(activeBoardingStop.id, currentTime);
+  const nextEarliestBus = liveArrivalsForBoarding[0];
 
-  const boardingStopName = selectedRoute?.segments?.[0]?.to || `${selectedRoute?.originName} Transit Stop`;
-  const alightingStopName = selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.from || `${selectedRoute?.destinationName} Stop`;
+  const busWaitMinutes = nextEarliestBus ? nextEarliestBus.minutesAway : 5;
+  const formattedBusArrivalTime = nextEarliestBus ? nextEarliestBus.scheduledTime : '08:45 AM';
+
+  const boardingStopName = activeBoardingStop.name;
+  const alightingStopName = selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.from || `${selectedRoute?.destinationName} Transit Station`;
 
   const finalWalkMinutes = Math.max(1, selectedRoute?.segments?.[selectedRoute.segments.length - 1]?.duration || 1);
   const finalWalkDistanceMeters = Math.round(finalWalkMinutes * 60);
 
   const totalWalkDistanceMeters = walkToPickupDistanceMeters + finalWalkDistanceMeters;
+
+  const handleOpenTimetable = (stop: TransitStopInfo) => {
+    setSelectedTimetableStop(stop);
+    setShowTimetableModal(true);
+  };
+
+  const modalArrivals = selectedTimetableStop
+    ? getLiveStopArrivals(selectedTimetableStop.id, currentTime)
+    : liveArrivalsForBoarding;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6 space-y-4">
@@ -160,7 +179,7 @@ export default function RouteDiscoveryPage() {
       {/* Main Split Layout: Clean Map (Top/Left) + Clean Uber-Style Ride Selector (Bottom/Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Google Maps Style Clean Route Map (7 Cols) */}
-        <div className="lg:col-span-7 h-[360px] sm:h-[480px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
+        <div className="lg:col-span-7 h-[380px] sm:h-[500px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
           <MapContainer
             center={originCoords}
             zoom={14}
@@ -171,6 +190,33 @@ export default function RouteDiscoveryPage() {
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <MapBoundsController coordinates={continuousRoute} />
 
+            {/* All Nearby Official Transit Stops with Live Schedule Popups */}
+            {OFFICIAL_STOPS.map((st) => (
+              <Marker
+                key={st.id}
+                position={[st.lat, st.lng]}
+                icon={st.id === activeBoardingStop.id ? stopPin : otherStopPin}
+              >
+                <Popup>
+                  <div className="p-1.5 space-y-1.5 max-w-[200px]">
+                    <div>
+                      <strong className="block text-xs font-bold text-blue-900">🚏 {st.name}</strong>
+                      <span className="text-[10px] text-neutral-600 block">
+                        {st.hasRamp ? '♿ 100% Low-Floor Ramp' : 'Standard Access'} • {st.bayNumber}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTimetable(st)}
+                      className="w-full py-1 px-2 rounded-lg bg-black text-white text-[10px] font-bold shadow-xs hover:bg-neutral-800"
+                    >
+                      View Live Arrival Board
+                    </button>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
             {/* 1. Origin Marker A */}
             <Marker position={originCoords} icon={originPin}>
               <Popup>
@@ -180,21 +226,6 @@ export default function RouteDiscoveryPage() {
                 </div>
               </Popup>
             </Marker>
-
-            {/* 2. Boarding Stop Marker */}
-            {continuousRoute.length > 1 && (
-              <Marker position={continuousRoute[1] || originCoords} icon={stopPin}>
-                <Popup>
-                  <div className="p-1">
-                    <strong className="block text-xs font-bold text-blue-900">🚏 Boarding Stop</strong>
-                    <span className="text-[11px] text-neutral-700 block font-semibold">{boardingStopName}</span>
-                    <span className="text-[10px] text-neutral-500 block mt-0.5">
-                      Walk {walkToPickupDistanceMeters}m ({walkToPickupMinutes}m) • Next Vehicle: {formattedBusArrivalTime}
-                    </span>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
 
             {/* Continuous Blue Route Line */}
             <Polyline
@@ -331,15 +362,29 @@ export default function RouteDiscoveryPage() {
                     <span className="text-emerald-700 font-bold">{walkToPickupDistanceMeters}m walk</span>
                   </div>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Walk <strong>{walkToPickupDistanceMeters}m (~{walkToPickupMinutes} mins)</strong> from your starting point to the designated stop.
+                    Walk <strong>{walkToPickupDistanceMeters}m (~{walkToPickupMinutes} mins)</strong> from your starting point to the designated stop ({activeBoardingStop.bayNumber || 'Main Stop'}).
                   </p>
-                  <div className="mt-1.5 p-2 bg-blue-50/80 border border-blue-100 rounded-xl flex items-center justify-between text-[11px] text-blue-900 font-semibold">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-blue-600" /> Next Vehicle Arrival:
-                    </span>
-                    <span className="font-bold bg-white px-2 py-0.5 rounded-md shadow-xs text-blue-800">
-                      {formattedBusArrivalTime} ({busWaitMinutes}m away)
-                    </span>
+
+                  <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-100 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-blue-900 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" /> Next Vehicle Arrival:
+                      </span>
+                      <span className="font-bold bg-white px-2 py-0.5 rounded-md shadow-xs text-blue-800">
+                        {formattedBusArrivalTime} ({busWaitMinutes}m away)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-blue-100/80 text-[10px] text-blue-800">
+                      <span>Vehicle: <strong>{nextEarliestBus?.vehicleNumber || 'OD-02-B-1024'}</strong> • ♿ Ramp Certified</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTimetable(activeBoardingStop)}
+                        className="font-bold underline text-blue-900 hover:text-black"
+                      >
+                        View Full Stop Timetable →
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -413,6 +458,92 @@ export default function RouteDiscoveryPage() {
           </div>
         </div>
       </div>
+
+      {/* Official Live Bus Timetable & Stop Arrival Board Modal */}
+      <Modal
+        open={showTimetableModal}
+        onClose={() => setShowTimetableModal(false)}
+        title={`🚏 Live Arrival Board — ${selectedTimetableStop?.name || activeBoardingStop.name}`}
+        size="lg"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Stop metadata badge bar */}
+          <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-neutral-700">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-neutral-900">{selectedTimetableStop?.bayNumber || 'Platform 1'}</span>
+              <span>•</span>
+              <span className="text-emerald-700 font-bold">♿ Certified Wheelchair Ramp</span>
+              <span>•</span>
+              <span>Sheltered Stop</span>
+            </div>
+            <span className="text-[11px] font-semibold text-neutral-500">
+              Live Feed: Updated {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          </div>
+
+          {/* Upcoming Bus Datasheet Table */}
+          <div className="border border-neutral-200 rounded-2xl overflow-hidden divide-y divide-neutral-100">
+            <div className="bg-neutral-100 px-4 py-2.5 font-bold text-neutral-600 grid grid-cols-12 text-[11px] uppercase tracking-wider">
+              <div className="col-span-4">Line & Destination</div>
+              <div className="col-span-3">Scheduled Arrival</div>
+              <div className="col-span-3">Status & Headway</div>
+              <div className="col-span-2 text-right">Accessibility</div>
+            </div>
+
+            {modalArrivals.map((bus, i) => (
+              <div key={i} className="px-4 py-3 grid grid-cols-12 items-center hover:bg-neutral-50 transition-colors">
+                <div className="col-span-4 space-y-0.5">
+                  <div className="font-bold text-neutral-900 flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 bg-black text-white rounded font-black text-[10px]">
+                      {bus.routeNumber}
+                    </span>
+                    <span>To {bus.destination}</span>
+                  </div>
+                  <div className="text-[10px] text-neutral-500">Bus #{bus.vehicleNumber}</div>
+                </div>
+
+                <div className="col-span-3">
+                  <div className="font-black text-neutral-900 text-sm">{bus.scheduledTime}</div>
+                  <div className="text-[10px] text-neutral-500">{bus.minutesAway} mins from now</div>
+                </div>
+
+                <div className="col-span-3 space-y-1">
+                  <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                    bus.status === 'ARRIVING_NOW'
+                      ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                      : bus.status === 'DELAYED'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {bus.status === 'ARRIVING_NOW' ? '⚡ Arriving Now' : bus.status === 'DELAYED' ? `+${bus.delayMinutes}m Delay` : 'On Time'}
+                  </span>
+                  <div className="text-[10px] text-neutral-500">
+                    Occupancy: {bus.occupancyPercent}% ({bus.crowding})
+                  </div>
+                </div>
+
+                <div className="col-span-2 text-right">
+                  {bus.hasRamp ? (
+                    <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                      ♿ Ramp
+                    </span>
+                  ) : (
+                    <span className="inline-block bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-md text-[10px]">
+                      Standard
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowTimetableModal(false)}>
+              Close Timetable
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Simple Fare Compare Modal */}
       <Modal
