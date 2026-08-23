@@ -386,7 +386,7 @@ export function haversineDistanceClient(lat1: number, lon1: number, lat2: number
 }
 
 /**
- * Generate smooth curved points between coordinates
+ * Generate smooth curved points between coordinates (local road approximation)
  */
 export function interpolateCurvedPoints(
   startLat: number,
@@ -405,4 +405,114 @@ export function interpolateCurvedPoints(
     ]);
   }
   return points;
+}
+
+/**
+ * Generate mathematically exact spherical great-circle arc points for flight routes
+ */
+export function interpolateGreatCirclePoints(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  steps = 32
+): Array<[number, number]> {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+
+  const φ1 = toRad(lat1);
+  const λ1 = toRad(lon1);
+  const φ2 = toRad(lat2);
+  const λ2 = toRad(lon2);
+
+  const d = 2 * Math.asin(
+    Math.sqrt(
+      Math.sin((φ2 - φ1) / 2) ** 2 +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin((λ2 - λ1) / 2) ** 2
+    )
+  );
+
+  if (d < 1e-6) {
+    return [[lat1, lon1], [lat2, lon2]];
+  }
+
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+
+    const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+    const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+    const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+
+    const φ = Math.atan2(z, Math.sqrt(x * x + y * y));
+    const λ = Math.atan2(y, x);
+
+    points.push([toDeg(φ), toDeg(λ)]);
+  }
+
+  return points;
+}
+
+export interface TransitHubInfo {
+  code: string;
+  name: string;
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+  type: 'airport' | 'railway';
+}
+
+export const MAJOR_AIRPORTS: Record<string, TransitHubInfo> = {
+  BBI: { code: 'BBI', name: 'Biju Patnaik International Airport', city: 'Bhubaneswar', country: 'India', lat: 20.2520, lng: 85.8180, type: 'airport' },
+  DEL: { code: 'DEL', name: 'Indira Gandhi International Airport (T3)', city: 'New Delhi', country: 'India', lat: 28.5562, lng: 77.1000, type: 'airport' },
+  BOM: { code: 'BOM', name: 'Chhatrapati Shivaji Maharaj International Airport (T2)', city: 'Mumbai', country: 'India', lat: 19.0896, lng: 72.8656, type: 'airport' },
+  BLR: { code: 'BLR', name: 'Kempegowda International Airport (T1/T2)', city: 'Bengaluru', country: 'India', lat: 13.1986, lng: 77.7066, type: 'airport' },
+  CCU: { code: 'CCU', name: 'Netaji Subhash Chandra Bose International Airport', city: 'Kolkata', country: 'India', lat: 22.6547, lng: 88.4467, type: 'airport' },
+  HYD: { code: 'HYD', name: 'Rajiv Gandhi International Airport', city: 'Hyderabad', country: 'India', lat: 17.2403, lng: 78.4294, type: 'airport' },
+  MAA: { code: 'MAA', name: 'Chennai International Airport', city: 'Chennai', country: 'India', lat: 12.9941, lng: 80.1709, type: 'airport' },
+  LHR: { code: 'LHR', name: 'London Heathrow Airport (T2/T3/T5)', city: 'London', country: 'United Kingdom', lat: 51.4700, lng: -0.4543, type: 'airport' },
+  JFK: { code: 'JFK', name: 'John F. Kennedy International Airport (T4/T8)', city: 'New York', country: 'United States', lat: 40.6413, lng: -73.7781, type: 'airport' },
+  DXB: { code: 'DXB', name: 'Dubai International Airport (T3)', city: 'Dubai', country: 'United Arab Emirates', lat: 25.2532, lng: 55.3657, type: 'airport' },
+  SIN: { code: 'SIN', name: 'Singapore Changi Airport (T1/T2/T3)', city: 'Singapore', country: 'Singapore', lat: 1.3644, lng: 103.9915, type: 'airport' },
+  HND: { code: 'HND', name: 'Tokyo Haneda International Airport (T3)', city: 'Tokyo', country: 'Japan', lat: 35.5494, lng: 139.7798, type: 'airport' },
+  NRT: { code: 'NRT', name: 'Tokyo Narita International Airport', city: 'Tokyo', country: 'Japan', lat: 35.7720, lng: 140.3929, type: 'airport' },
+  CDG: { code: 'CDG', name: 'Paris Charles de Gaulle Airport (T2)', city: 'Paris', country: 'France', lat: 49.0097, lng: 2.5479, type: 'airport' },
+  FRA: { code: 'FRA', name: 'Frankfurt Airport', city: 'Frankfurt', country: 'Germany', lat: 50.0379, lng: 8.5622, type: 'airport' },
+  SYD: { code: 'SYD', name: 'Sydney Kingsford Smith Airport (T1)', city: 'Sydney', country: 'Australia', lat: -33.9399, lng: 151.1753, type: 'airport' },
+  YYZ: { code: 'YYZ', name: 'Toronto Pearson International Airport (T1)', city: 'Toronto', country: 'Canada', lat: 43.6777, lng: -79.6248, type: 'airport' },
+  SFO: { code: 'SFO', name: 'San Francisco International Airport', city: 'San Francisco', country: 'United States', lat: 37.6213, lng: -122.3790, type: 'airport' },
+};
+
+/**
+ * Find closest major airport to a coordinate
+ */
+export function findNearestAirport(lat: number, lng: number): TransitHubInfo {
+  let closest = MAJOR_AIRPORTS.DEL;
+  let minDist = Infinity;
+
+  for (const ap of Object.values(MAJOR_AIRPORTS)) {
+    const d = haversineDistanceClient(lat, lng, ap.lat, ap.lng);
+    if (d < minDist) {
+      minDist = d;
+      closest = ap;
+    }
+  }
+
+  // If outside India and closest is not within 400km, return destination-tailored airport
+  if (minDist > 400000 && Math.abs(lat - 20.25) > 5) {
+    return {
+      code: 'DEST-AIRPORT',
+      name: `International Airport near target`,
+      city: 'Destination Metropolitan Hub',
+      country: 'International',
+      lat,
+      lng,
+      type: 'airport',
+    };
+  }
+
+  return closest;
 }

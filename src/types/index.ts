@@ -64,7 +64,7 @@ export interface RouteStop {
   departureOffset: number;
 }
 
-export type VehicleType = 'bus' | 'shared-transport' | 'campus-vehicle';
+export type VehicleType = 'bus' | 'shared-transport' | 'campus-vehicle' | 'train' | 'flight';
 
 export interface Vehicle {
   id: string;
@@ -111,6 +111,21 @@ export interface RouteSearchResult {
   recommendation: RouteRecommendation;
   segments: JourneySegment[];
   condition: TransportCondition;
+  travelScope?: 'local' | 'regional' | 'domestic' | 'international';
+  transitChainInfo?: {
+    carrierName: string;
+    carrierCode: string;
+    flightOrTrainNumber: string;
+    originHubName: string;
+    originHubCode?: string;
+    destHubName: string;
+    destHubCode?: string;
+    layoverHubName?: string;
+    layoverHubCode?: string;
+    bookingService: string;
+    bookingUrl: string;
+    wheelchairAssistanceCode: string;
+  };
   // Enhanced Real-world Map & Navigation Geometry
   originCoords?: { lat: number; lng: number };
   destinationCoords?: { lat: number; lng: number };
@@ -138,8 +153,8 @@ export interface RouteSearchResult {
     max?: number;
     currency: string;
     confidence: number;
-    source: string;
-    status: 'confirmed' | 'estimated' | 'unknown';
+    source?: string;
+    status?: 'confirmed' | 'estimated' | 'unknown';
     notes?: string;
   };
   nearbyStands?: Array<{
@@ -195,7 +210,9 @@ export interface Journey {
     max?: number;
     currency: string;
     confidence: number;
-    source: string;
+    source?: string;
+    status?: 'confirmed' | 'estimated' | 'unknown';
+    notes?: string;
   };
   nearbyStands?: Array<{
     id: string;

@@ -11,6 +11,12 @@
     @apply outline-2 outline-offset-2 outline-navy-500;
   }
 
+  button, [role="button"], .cursor-pointer {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
