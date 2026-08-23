@@ -11,7 +11,8 @@ import {
   ChevronRight, ExternalLink, ShieldCheck, CheckCircle2,
   Car, Bus, Train, Plane, RefreshCw, AlertCircle, Users,
   Plus, Check, X, Phone, UserCheck, Trash2, Sparkles, Share2,
-  CreditCard, Ticket, Play, Pause, RotateCcw, FastForward
+  CreditCard, Ticket, Play, Pause, RotateCcw, FastForward,
+  Crosshair, Layers
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import {
@@ -142,6 +143,129 @@ function MapBoundsController({ coordinates }: { coordinates: Array<[number, numb
     }
   }, [coordinates, map]);
   return null;
+}
+
+// Ultra-High Definition Cartography & Satellite Layer Presets
+const TILE_LAYERS = {
+  voyager: {
+    name: 'HD Vector',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+  },
+  satellite: {
+    name: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  },
+  positron: {
+    name: 'Clean Light',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+  },
+};
+
+function MapCustomControls({
+  coordinates,
+  mapStyle,
+  setMapStyle,
+}: {
+  coordinates: Array<[number, number]>;
+  mapStyle: 'voyager' | 'satellite' | 'positron';
+  setMapStyle: (s: 'voyager' | 'satellite' | 'positron') => void;
+}) {
+  const map = useMap();
+
+  const handleZoomIn = () => map.zoomIn();
+  const handleZoomOut = () => map.zoomOut();
+  const handleRecenter = () => {
+    if (coordinates && coordinates.length > 0) {
+      const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17, animate: true, duration: 0.6 });
+      }
+    }
+  };
+
+  return (
+    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '12px' }}>
+      <div className="flex flex-col gap-2 items-end">
+        {/* Map Layer Style Switcher */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-neutral-200/90 p-1 flex items-center gap-1 text-[11px] font-bold text-neutral-700">
+          <button
+            type="button"
+            onClick={() => setMapStyle('voyager')}
+            className={`px-2.5 py-1.5 rounded-xl transition-all ${
+              mapStyle === 'voyager'
+                ? 'bg-neutral-900 text-white shadow-sm'
+                : 'hover:bg-neutral-100 text-neutral-600'
+            }`}
+            title="Ultra-Clear Vector HD Map"
+          >
+            🗺️ HD Map
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapStyle('satellite')}
+            className={`px-2.5 py-1.5 rounded-xl transition-all ${
+              mapStyle === 'satellite'
+                ? 'bg-neutral-900 text-white shadow-sm'
+                : 'hover:bg-neutral-100 text-neutral-600'
+            }`}
+            title="Satellite Aerial Imagery"
+          >
+            🛰️ Satellite
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapStyle('positron')}
+            className={`px-2.5 py-1.5 rounded-xl transition-all ${
+              mapStyle === 'positron'
+                ? 'bg-neutral-900 text-white shadow-sm'
+                : 'hover:bg-neutral-100 text-neutral-600'
+            }`}
+            title="Minimalist Light Map"
+          >
+            ⚪ Clean
+          </button>
+        </div>
+
+        {/* Quick View Controls: Recenter & Zoom */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-neutral-200/90 p-1 flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={handleRecenter}
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-700 transition-all"
+            title="Recenter Map on Complete Route"
+          >
+            <Crosshair className="w-4 h-4 text-neutral-800" />
+          </button>
+          <div className="w-5 h-[1px] bg-neutral-200" />
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-800 font-black text-sm"
+            title="Zoom In"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-800 font-black text-sm"
+            title="Zoom Out"
+          >
+            &minus;
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Transfer Point Interface
@@ -388,6 +512,7 @@ export default function RouteDiscoveryPage() {
   const [isAnimationPlaying, setIsAnimationPlaying] = useState<boolean>(false);
   const [animSpeed, setAnimSpeed] = useState<number>(1);
   const [animProgressIndex, setAnimProgressIndex] = useState<number>(0);
+  const [mapStyle, setMapStyle] = useState<'voyager' | 'satellite' | 'positron'>('voyager');
 
   // Keep selected index valid
   useEffect(() => {
@@ -1029,11 +1154,19 @@ export default function RouteDiscoveryPage() {
               zoomControl={false}
             >
               <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                key={mapStyle}
+                attribution={TILE_LAYERS[mapStyle].attribution}
+                url={TILE_LAYERS[mapStyle].url}
+                subdomains={TILE_LAYERS[mapStyle].subdomains}
+                maxZoom={TILE_LAYERS[mapStyle].maxZoom}
               />
 
               <MapBoundsController coordinates={continuousRoute} />
+              <MapCustomControls
+                coordinates={continuousRoute}
+                mapStyle={mapStyle}
+                setMapStyle={setMapStyle}
+              />
 
               {/* 1. Backdrop Casing Polyline for High Contrast & Sharp Clarity */}
               <Polyline
