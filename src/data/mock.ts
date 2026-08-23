@@ -1585,7 +1585,7 @@ export async function generateDynamicSearchResults(
         shortName: '⚡ EV-5 Shuttle',
         stops: [
           { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
-          { id: 'ev_stop_c12', name: 'KIIT Campus 12 (Film & Media)', lat: 20.352367, lng: 85.819374, type: 'end_terminus', description: 'Campus 12 Film & Media Sciences Stand' },
+          { id: 'ev_stop_c12', name: 'KIIT Campus 12 (Film & Media)', lat: 20.355100, lng: 85.819100, type: 'end_terminus', description: 'Campus 12 Film & Media Sciences Stand' },
         ],
       },
     ];
@@ -1596,12 +1596,12 @@ export async function generateDynamicSearchResults(
     let selectedEvLine: typeof ALL_CAMPUS_EV_LINES[0] | null = null;
     let bestEvBoardStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
     let bestEvAlightStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
-    let bestJourneyBenefitScore = 0;
+    let bestJourneyBenefitScore = -Infinity;
     let bestBoardDist = Infinity;
     let bestAlightDist = Infinity;
 
-    // Minimum direct journey distance required for EV to even be considered helpful (>= 350m)
-    if (directDistanceM >= 350) {
+    // Minimum direct journey distance required for EV to even be considered (>= 200m)
+    if (directDistanceM >= 200) {
       for (const line of ALL_CAMPUS_EV_LINES) {
         for (let i = 0; i < line.stops.length; i++) {
           for (let j = 0; j < line.stops.length; j++) {
@@ -1613,29 +1613,23 @@ export async function generateDynamicSearchResults(
             const boardWalkDist = haversineDistanceClient(origin.lat, origin.lng, stBoard.lat, stBoard.lng);
             const alightWalkDist = haversineDistanceClient(destination.lat, destination.lng, stAlight.lat, stAlight.lng);
 
-            // 1. Proximity Check: Origin must be near boarding stop (<= 300m) AND Destination near drop stop (<= 300m)
-            if (boardWalkDist > 300 || alightWalkDist > 300) {
+            // 1. Proximity Check: User must be within comfortable campus walking range (<= 550m) of boarding & drop stops
+            if (boardWalkDist > 550 || alightWalkDist > 550) {
               continue;
             }
 
-            // 2. Forward Progress Check: EV ride must actually move the commuter towards destination
+            // 2. Forward Progress Check: EV ride must move the commuter towards destination
             const distFromBoardToDest = haversineDistanceClient(stBoard.lat, stBoard.lng, destination.lat, destination.lng);
             const distFromAlightToDest = haversineDistanceClient(stAlight.lat, stAlight.lng, destination.lat, destination.lng);
             const forwardProgress = distFromBoardToDest - distFromAlightToDest;
 
-            // Must cut down destination distance by at least 200 meters (no detours or backward loops)
-            if (forwardProgress < 200) {
+            // Must cut down destination distance by at least 80 meters (strict positive forward movement)
+            if (forwardProgress < 80) {
               continue;
             }
 
-            // 3. Efficiency Check: Total walking with EV must be substantially less than direct walk
-            const totalWalk = boardWalkDist + alightWalkDist;
-            if (totalWalk >= directDistanceM * 0.85) {
-              continue;
-            }
-
-            // Calculate benefit score: Higher forward progress and shorter walk to boarding point
-            const benefitScore = forwardProgress - totalWalk;
+            // 3. Efficiency Benefit Score: Favor maximum forward progress with minimal walk legs
+            const benefitScore = forwardProgress * 1.5 - (boardWalkDist + alightWalkDist);
             if (benefitScore > bestJourneyBenefitScore) {
               bestJourneyBenefitScore = benefitScore;
               selectedEvLine = line;
