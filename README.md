@@ -3,7 +3,7 @@
   <img src="public/logo.png" alt="Maarg Darshan Logo" width="130" />
 
   # मार्ग Darshan (Maarg Darshan)
-  ### *Safer, Smarter & Inclusive Accessible Public Transit Navigation*
+  ### *Safer, Smarter & Inclusive Accessible Public Transit & Campus Navigation*
 
   [![Vercel](https://img.shields.io/badge/Live%20Demo-maargdarshan.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://maargdarshan.vercel.app)
 
@@ -13,13 +13,14 @@
   [![React](https://img.shields.io/badge/React-19.1.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
   [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4.17-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-  [![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+  [![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900?logo=leaflet&logoColor=white)](https://leafletjs.com/)
+  [![Node.js](https://img.shields.io/badge/Node.js-20.x%20%2F%2024.x-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
   [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
   <p align="center">
     <b>Your Journey. Your Accessibility. Your Safety.</b><br />
-    <i>Not just the fastest route — the SAFEST and most ACCESSIBLE route for YOU.</i><br />
+    <i>Not just the fastest route — the SAFEST, most ACCESSIBLE and AFFORDABLE route for YOU.</i><br />
     🌐 <b>Live Production App:</b> <a href="https://maargdarshan.vercel.app" target="_blank"><b>maargdarshan.vercel.app</b></a>
   </p>
 
@@ -27,107 +28,91 @@
 
 ---
 
-## 🌐 Live Deployment
+## 🌐 Live Production Deployment
 
-Maarg Darshan is deployed in production on Vercel:
-- 🔗 **Production URL**: [https://maargdarshan.vercel.app](https://maargdarshan.vercel.app)
-- ⚡ **Continuous Deployment**: Automated CI/CD deployments triggered on every push to branch `main`.
-
----
-
-## 📌 Executive Summary
-
-**मार्ग Darshan (Maarg Darshan)** is an accessibility-first public transport and micro-transit navigation platform built to empower passengers with mobility challenges, elderly commuters, wheelchair users, and late-night travellers.
-
-Unlike traditional mapping applications that exclusively optimize for shortest travel time, **Maarg Darshan** algorithms evaluate real-world infrastructure parameters:
-- ♿ **Zero-Step Accessibility**: Ramps, station elevators, step-free sidewalks, and low-floor electric buses.
-- 🚖 **Shared Micro-Transit Discovery**: Automatic detection of closest famous shared auto/taxi stands with fare estimation.
-- 🛡️ **Proactive Safety Watchdog**: Real-time live GPS tracking, background safety monitoring, emergency SOS escalation, and automatic verified safe arrival detection.
-- 👥 **Live Crowd & Delay Reporting**: Community-driven reporting of bus delays, vehicle occupancy, and broken ramps.
-- 📱 **Minimalist Ola/Uber Experience**: Clean, uncluttered UI with 1-click guest mode and continuous Google Maps-style route polylines.
+Maarg Darshan is deployed and live in production on Vercel:
+- 🔗 **Live URL**: [https://maargdarshan.vercel.app](https://maargdarshan.vercel.app)
+- ⚡ **Continuous Deployment**: Automated CI/CD builds triggered on every commit to `main`.
 
 ---
 
-## 🚀 Commercial Modules Matrix
+## 📌 Overview & Core Value Proposition
 
-| Module | Core Capabilities | Production Status |
+**मार्ग Darshan (Maarg Darshan)** is an accessibility-first public transport, smart micro-transit, and intra-campus navigation ecosystem built for everyday commuters, students, elderly citizens, wheelchair users, and late-night travellers.
+
+Unlike traditional navigation apps that exclusively optimize for raw vehicular speed, **Maarg Darshan** factors in human infrastructure reality:
+1. ♿ **Zero-Step Accessibility**: Ramps, step-free sidewalks, low-floor electric buses, and elevator-equipped transit hubs.
+2. ⚡ **Official Campus EV Shuttle Corridors**: Real-time matching with zero-emission campus electric buggies (₹0 Free transit) with strict forward-progress verification.
+3. 🤝 **Smart Peer-to-Peer Corridor Carpooling**: Instant ride matching, broadcast requests, automatic co-rider acceptance notifications, and masked pricing (`Split on Match`) until confirmed.
+4. 🗺️ **Ultra-HD Vector Cartography**: **CartoDB Voyager Retina HD @2x** tile rendering with an interactive style switcher (🗺️ HD Vector, 🛰️ Satellite, ⚪ Clean Minimal) and auto-zoom framing for small campus hops.
+5. 🚖 **Multi-Modal Door-to-Door Transit**: Seamless combinations of walking, campus EV, shared autos, on-demand cabs (Uber Web Intent), and intercity rail (IRCTC).
+6. 🛡️ **Proactive Safety Watchdog**: Background safety monitoring, 1-click **"I'm Safe"** verification, emergency SOS with live GPS broadcast, and automatic verified safe arrival detection.
+
+---
+
+## 🚀 Core Feature Modules
+
+| Module | Key Capabilities | Status |
 | :--- | :--- | :---: |
-| **1. Route & Stop Discovery** | • Live geocoding with instant autocomplete.<br>• Nearest public bus stops with ramp certifications.<br>• Closest shared taxi/auto stands with distance and typical fares.<br>• Exact & range fare calculations (Bus: ₹15–₹20, Auto: ₹25–₹40). | ✅ **Ready** |
-| **2. Accessible-Route Planning** | • Multi-criteria algorithmic ranking engine.<br>• Wheelchair (100% step-free, 0 stairs), Senior (minimal walking), Night Travellers (well-lit corridors).<br>• Continuous start-to-end Google Maps-style blue polyline. | ✅ **Ready** |
-| **3. Crowding, Delay & Condition Reporting** | • In-journey passenger reporting modal.<br>• Real-time reports for heavy crowding, vehicle delays, broken ramps, and lighting outages.<br>• Feed updates directly to dispatch and fellow commuters. | ✅ **Ready** |
-| **4. Safety Check-in & Emergency Watchdog** | • Quiet background safety monitoring.<br>• One-click **"I'm Safe"** verification.<br>• One-click **"Emergency SOS"** broadcasting live GPS coords to emergency contacts & transit control.<br>• Automatic **"Verified Safe Arrival 🎉"** screen upon destination reach. | ✅ **Ready** |
-| **5. Arrival & Route-Change Notifications** | • Real-time push alert center (`/notifications`).<br>• Filtered alert streams for Delays, Crowding, Accessibility, Safety, and System events. | ✅ **Ready** |
-| **6. Driver & Operator Dashboard** | • Dedicated operator dispatch portal (`/operator`).<br>• Real-time vehicle fleet telemetry, delay injection, crowd level overrides, and passenger report triage. | ✅ **Ready** |
-| **7. Offline Route Information** | • 1-Click **"Download Offline Transit Pack"** (`/profile`).<br>• Pre-cached schedule data, corridor maps, and emergency contacts for zero-connectivity zones. | ✅ **Ready** |
+| **1. High-Precision Campus Navigation** | • Full directory of KIIT King's Palace (KP-1 to KP-25), Queen's Castle (QC-1 to QC-22), Campuses 1 to 25, KSOM, and KIMS.<br>• Instant single-letter & abbreviation autocomplete (`kp5`, `qc1`, `c3 oat`, `ksom`).<br>• Default route initialized to **Queen's Castle 1 (QC 1)** $\rightarrow$ **Campus 3 OAT**. | ✅ **Live** |
+| **2. Free Campus EV Fleet Routing** | • Official EV corridors: Loop 0, EV-1, EV-2, EV-3, EV-4, EV-5.<br>• Verified GPS stops: QC 1, Campus 17, Campus 15A, Campus 3 OAT, Campus 25 Block C, Campus 13, Campus 14, Campus 11.<br>• Strict forward progress validation ($\ge 200\text{m}$ progress required; zero detour/backward loops).<br>• 100% Free transit (**₹0 Free**). | ✅ **Live** |
+| **3. Smart Corridor Carpooling** | • Post & broadcast carpool requests with departure time and seats.<br>• Live simulated match acceptance notification toasts with co-rider contact details.<br>• Masked pricing (**`Split on Match`**) until ride confirmation.<br>• "Active Carpool Requests Applied" section with automated pruning of expired requests. | ✅ **Live** |
+| **4. Ultra-HD Map Design & Switcher** | • **CartoDB Voyager Retina HD** base tiles with sharp vector clarity.<br>• Interactive style switcher (🗺️ HD Map, 🛰️ Esri Satellite, ⚪ Clean Light).<br>• Floating glassmorphic controls: Recenter on Route (`🎯`), Zoom (`+`/`−`), and Live Route Legend.<br>• High-detail auto-zoom framing for short intra-campus distances ($300\text{m} - 1.2\text{km}$). | ✅ **Live** |
+| **5. Door-to-Door Multimodal Itineraries** | • Combines Walking $\rightarrow$ Campus EV $\rightarrow$ Shared Auto $\rightarrow$ On-Demand Cab (Uber) $\rightarrow$ Rail (IRCTC).<br>• Itemized price breakdown with step-free badges and booking deep links. | ✅ **Live** |
+| **6. Turn-by-Turn GPS Navigation** | • Live movement simulation and step-by-step progress tracking.<br>• Community reporting for vehicle delays, crowding, and broken ramps.<br>• Verified Safe Arrival confirmation screen. | ✅ **Live** |
+| **7. Operator Dispatch Portal** | • Operator dashboard (`/operator`) for managing fleet telemetry, injecting condition alerts, and reviewing crowd reports. | ✅ **Live** |
 
 ---
 
-## 🏗️ System Architecture
+## 🗺️ Data Sources & Open-Source Tools
 
-```mermaid
-flowchart TD
-    subgraph Client["📱 Frontend (Vite + React 19 + TypeScript)"]
-        Landing["Landing & Hero Page"]
-        TripPlanner["Trip Planner & Geocoding"]
-        RouteDiscovery["Google Maps Route & Fare Selector"]
-        ActiveNav["Turn-by-Turn Live GPS Navigation"]
-        OperatorUI["Operator Dispatch Portal"]
-        AuthUI["Sign In / Sign Up / 1-Click Guest Mode"]
-    end
+* **Map & Cartography Data**:
+  * **OpenStreetMap (OSM)** — Global open-source road network and pedestrian pathway dataset (ODbL).
+  * **CartoDB Voyager (CARTO)** — Open-access high-definition vector map tile service based on OSM data.
+* **Road Routing & Geometry Engine**:
+  * **Project OSRM (Open Source Routing Machine)** — High-performance routing engine using OSM road network graphs for real-world driving and walking navigation geometries.
+* **Geocoding & Landmark Search**:
+  * **Nominatim (OpenStreetMap Foundation)** — Open-source forward search and reverse geocoding engine.
+* **Campus Ground-Truth Mapping**:
+  * High-precision surveyed GPS dataset for all student hostels (KP 1–25, QC 1–22) and academic campuses (1–25).
+* **Transit Integrations & Protocols**:
+  * **Uber Web Intent Protocol** — Universal URI protocol for direct GPS point-to-point cab dispatch.
+  * **IRCTC Portal Protocol** — Public integration gateway for long-distance Indian Railways ticket booking.
+* **Mapping Framework**:
+  * **Leaflet.js & React-Leaflet** — Open-source interactive JavaScript mapping framework.
 
-    subgraph API["⚡ Backend (Node.js + Express + TypeScript)"]
-        Router["REST API Gateway (/api/*)"]
-        AuthMiddleware["JWT Authentication Middleware"]
-    end
+---
 
-    subgraph Engines["🧠 Core Algorithmic Engines"]
-        JourneyPlanner["Journey Planner Engine"]
-        AccessibilityEngine["Accessibility Scorer Engine"]
-        SafetyEngine["Safety Watchdog & Escalation Engine"]
-        FareEngine["Fare & Stand Estimation Engine"]
-        CrowdingEngine["Crowding & Delay Resolution Engine"]
-    end
+## 🧠 Mathematical Algorithms
 
-    subgraph Storage["🗄️ Persistence Layer"]
-        PrismaORM["Prisma ORM"]
-        DB[(SQLite / PostgreSQL Database)]
-        OSRM["Live OSRM Routing Service"]
-    end
+1. **Haversine Great-Circle Distance Metric**:
+   $$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \text{lat}}{2}\right) + \cos(\text{lat}_1)\cos(\text{lat}_2)\sin^2\left(\frac{\Delta \text{lng}}{2}\right)}\right)$$
+   *Calculates accurate ground distances across coordinates without planar projection distortion.*
 
-    Client -->|HTTPS / REST| Router
-    Router --> AuthMiddleware
-    AuthMiddleware --> Engines
-    Engines --> PrismaORM
-    Engines --> OSRM
-    PrismaORM --> DB
-```
+2. **Vector Compass Bearing & Directional Alignment**:
+   $$\theta = \text{atan2}\left(\sin(\Delta\text{lng})\cos(\text{lat}_2), \cos(\text{lat}_1)\sin(\text{lat}_2) - \sin(\text{lat}_1)\cos(\text{lat}_2)\cos(\Delta\text{lng})\right)$$
+   *Matches carpools and shared routes strictly moving along the same corridor vector ($\le 55^\circ$ angle difference).*
+
+3. **EV Forward Progress & Journey Benefit Verification**:
+   $$\text{Progress} = \text{dist}(\text{BoardStop}, \text{Destination}) - \text{dist}(\text{AlightStop}, \text{Destination}) \ge 200\text{ m}$$
+   *Guarantees an EV option is only shown if it substantially moves the commuter closer to their destination.*
 
 ---
 
 ## 🛠️ Technology Stack
 
-### **Frontend**
-- **Framework**: React 19 with Vite 6
-- **Language**: TypeScript 5.8
-- **Styling**: Tailwind CSS with custom Ola/Uber-inspired design system
-- **Mapping**: Leaflet & React-Leaflet with OpenStreetMap & custom SVG map markers
-- **Icons**: Lucide React
-- **State Management**: React Context + Centralized Reducer Architecture
-
-### **Backend**
-- **Runtime**: Node.js LTS (v20+ / v24+)
-- **Framework**: Express.js with TypeScript
-- **Database ORM**: Prisma ORM
-- **Database**: SQLite (Development) / PostgreSQL (Production)
-- **Security**: bcrypt password hashing, JSON Web Tokens (JWT), input validation via Zod
-- **Testing**: Vitest integration testing suite (22/22 unit & route tests passing)
+```
+├── Frontend: React 19 • TypeScript 5.8 • Vite 6 • Tailwind CSS • Leaflet • Lucide Icons
+├── Backend: Node.js (v20+ / v24+) • Express.js • TypeScript • Prisma ORM • SQLite / PostgreSQL
+└── Routing & Geospatial: Project OSRM • OpenStreetMap • CartoDB Voyager • Nominatim
+```
 
 ---
 
-## 🏁 Quickstart & Installation
+## 🏁 Quickstart & Local Development
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) v18+ or v24+
+- [Node.js](https://nodejs.org/) v20+ or v24+
 - `npm` v9+
 - `git`
 
@@ -159,39 +144,12 @@ npm run dev
 
 ---
 
-## 📖 Key User Journeys
+## 👥 Hackathon & Project Information
 
-### 1. 1-Click Guest & Accessibility Calibration
-- Open **[http://localhost:5173/login](http://localhost:5173/login)**
-- Tap **"⚡ Continue as Guest (One-Time / No Login)"** or select a 1-click persona (**♿ Wheelchair** or **👵 Senior Citizen**).
-
-### 2. Search & Fare Estimation
-- Enter pickup point (or click GPS locate) and destination.
-- View discovered **Nearby Public Bus Stops** (with ramp status) and **Closest Shared Auto Stands** (with typical fare ranges).
-- Click **"See Routes & Fares"**.
-
-### 3. Google Maps Continuous Route & Uber-Style Ride Selection
-- Inspect the continuous vibrant blue route line on the interactive map.
-- Select your preferred transit option:
-  - **♿ Low-Floor Bus Line C3** (Recommended • 25 min • **₹20**)
-  - **⚡ Express Transit Line C2** (Fastest • 20 min • **₹15**)
-  - **🚖 Shared Auto Stand S1** (Doorstep stand • 18 min • **₹25–₹40**)
-- Click **"Start Navigation"**.
-
-### 4. Live Turn-by-Turn Navigation & Automatic Safe Arrival
-- Track live movement with remaining distance countdown (`1.2 km` → `400m` → `45m`).
-- Submit condition reports (*Heavy Crowding*, *Vehicle Delay*, *Ramp Broken*).
-- When reaching destination, the system triggers the **"🎉 Verified Safe Arrival"** screen and sends confirmation to designated emergency contacts.
-
----
-
-## 👥 Hackathon Details
-
-- **Event**: HACQUIRE 2026
-- **Problem Statement**: PS-05 — *Accessible Public Transport Assistant*
-- **Team Name**: CLUELESS
-- **Team ID**: HA-095-6558
-- **Project**: मार्ग Darshan (Maarg Darshan)
+- **Project Name**: मार्ग Darshan (Maarg Darshan)
+- **Problem Statement**: Accessible Public Transport & Smart Campus Micro-Transit Navigation
+- **Live URL**: [https://maargdarshan.vercel.app](https://maargdarshan.vercel.app)
+- **Repository**: [https://github.com/novonil-31/Travel](https://github.com/novonil-31/Travel)
 
 ---
 
