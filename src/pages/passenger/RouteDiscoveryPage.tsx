@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
@@ -7,30 +7,24 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
-  Navigation, ArrowRight, ShieldCheck, ChevronRight,
-  ChevronDown, MapPin, ExternalLink, Star, Compass,
-  Sparkles, Check, Clock, Radio, Footprints, Users,
-  Phone, Share2, Award, CheckCircle2, UserCheck, Trash2, Car
+  Navigation, ArrowRight, MapPin, Clock,
+  ChevronRight, ExternalLink, ShieldCheck, CheckCircle2,
+  Car, Bus, Train, Plane, RefreshCw, AlertCircle, Users,
+  Plus, Check, X, Phone, UserCheck, Trash2, Sparkles, Share2,
+  CreditCard, Ticket, Play, Pause, RotateCcw, FastForward
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import {
-  OFFICIAL_STOPS,
-  OFFICIAL_ROUTES,
-  getLiveStopArrivals,
-  getNearestOfficialStop,
-  getWaysToReachStop,
-  calculateSharedAutoProbability,
-  getOnDemandTaxiLive,
   getMatchingCarpools,
   registerCarpoolRequest,
   cancelCarpoolRequest,
   getUserActiveCarpoolRequest,
-  type TransitStopInfo,
+  getUserActiveCarpoolRequests,
+  acceptCarpoolRequest,
   type CarpoolRide,
 } from '../../data/liveTimetable';
-import { haversineDistanceClient } from '../../utils/onlineRouting';
 
-// Custom Minimalist Map Pins
+// Minimalist Endpoint Pins
 const createMapPin = (color: string, label: string) =>
   L.divIcon({
     className: 'custom-route-pin',
@@ -38,42 +32,326 @@ const createMapPin = (color: string, label: string) =>
       <div style="
         background-color: ${color};
         color: white;
-        border: 2px solid white;
+        border: 2.5px solid white;
         border-radius: 50%;
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 900;
-        font-size: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        font-size: 13px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
       ">
         ${label}
       </div>
     `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 
 const originPin = createMapPin('#10b981', 'A');
 const destPin = createMapPin('#ef4444', 'B');
-const taxiPin = createMapPin('#f59e0b', '🚖');
-const stopPin = createMapPin('#2563eb', '🚏');
-const meetingPin = createMapPin('#9333ea', '🤝');
-const flightPin = createMapPin('#dc2626', '✈️');
-const trainPin = createMapPin('#2563eb', '🚆');
 
-// Helper to auto-fit map view to the continuous polyline
+// Transport Change / Transfer Mode Switch Badge Marker
+const createTransferPin = (fromIcon: string, toIcon: string, label: string) =>
+  L.divIcon({
+    className: 'transfer-pin',
+    html: `
+      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+        <div class="transfer-pulse-effect"></div>
+        <div style="
+          background: linear-gradient(135deg, #18181b, #09090b);
+          color: white;
+          border: 2px solid #f59e0b;
+          border-radius: 20px;
+          padding: 3px 9px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-weight: 800;
+          font-size: 11px;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+          white-space: nowrap;
+          z-index: 2;
+          cursor: pointer;
+        ">
+          <span style="font-size: 13px;">${fromIcon}</span>
+          <span style="color: #f59e0b; font-size: 12px; font-weight: 900;">➔</span>
+          <span style="font-size: 13px;">${toIcon}</span>
+          <span style="font-size: 10px; color: #fde68a; margin-left: 2px; font-weight: 700;">CHANGE</span>
+        </div>
+      </div>
+    `,
+    iconSize: [95, 30],
+    iconAnchor: [47, 15],
+  });
+
+// Moving Animated Vehicle Tracer Marker
+const createVehicleTracerPin = (icon: string, rotationDeg: number, label: string) =>
+  L.divIcon({
+    className: 'vehicle-tracer-pin',
+    html: `
+      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+        <div style="
+          position: absolute;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(14, 165, 233, 0.25);
+          animation: transferPulseRing 1.4s ease-out infinite;
+        "></div>
+        <div style="
+          background: #0f172a;
+          color: white;
+          border: 2px solid #38bdf8;
+          border-radius: 50%;
+          width: 34px;
+          height: 34px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 17px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          transform: rotate(${rotationDeg}deg);
+          transition: transform 0.15s ease;
+          z-index: 10;
+        ">
+          ${icon}
+        </div>
+      </div>
+    `,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  });
+
+// Auto-fit map viewport to continuous polyline so starting & ending points are clearly visible (especially for campus distances)
 function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
   const map = useMap();
   useEffect(() => {
     if (coordinates && coordinates.length > 0) {
       const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, {
+          padding: [50, 50],
+          maxZoom: 17,
+          animate: true,
+          duration: 0.6,
+        });
+      }
     }
   }, [coordinates, map]);
   return null;
+}
+
+// Transfer Point Interface
+interface TransferChangePoint {
+  id: string;
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  fromMode: string;
+  toMode: string;
+  fromIcon: string;
+  toIcon: string;
+  badgeLabel: string;
+  description: string;
+  hasRamp?: boolean;
+}
+
+// Compute precise Transport Change points along the route
+function extractTransferChangePoints(route: RouteSearchResult): TransferChangePoint[] {
+  const transfers: TransferChangePoint[] = [];
+  if (!route) return transfers;
+
+  const scope = route.travelScope || 'local';
+  const vType = route.route?.vehicleType;
+  const stops = route.intermediateStops || [];
+  const geom = route.geometry;
+
+  // 1. International Flights (Origin Airport Transfer + Layover Hub + Destination Airport Egress)
+  if (scope === 'international') {
+    if (stops.length >= 3) {
+      transfers.push({
+        id: 'transfer-intl-origin',
+        latitude: stops[0].latitude,
+        longitude: stops[0].longitude,
+        locationName: stops[0].name,
+        fromMode: 'Cab / Metro',
+        toMode: 'International Flight',
+        fromIcon: '🚖',
+        toIcon: '✈️',
+        badgeLabel: 'Airport Check-in',
+        description: `Transfer from local cab to Flight Check-in & Security at ${stops[0].name}`,
+        hasRamp: true,
+      });
+
+      transfers.push({
+        id: 'transfer-intl-layover',
+        latitude: stops[1].latitude,
+        longitude: stops[1].longitude,
+        locationName: stops[1].name,
+        fromMode: 'Flight Leg 1',
+        toMode: 'Connecting Flight Leg 2',
+        fromIcon: '✈️',
+        toIcon: '✈️',
+        badgeLabel: 'Layover Interchange',
+        description: `Aircraft change & transit security at Hub Airport ${stops[1].name}`,
+        hasRamp: true,
+      });
+
+      transfers.push({
+        id: 'transfer-intl-dest',
+        latitude: stops[2].latitude,
+        longitude: stops[2].longitude,
+        locationName: stops[2].name,
+        fromMode: 'International Flight',
+        toMode: 'Destination Cab',
+        fromIcon: '✈️',
+        toIcon: '🚖',
+        badgeLabel: 'Airport Exit & Cab',
+        description: `Baggage claim exit & transfer to pre-booked destination cab at ${stops[2].name}`,
+        hasRamp: true,
+      });
+    }
+    return transfers;
+  }
+
+  // 2. Domestic Long-Distance Flight (Origin Airport Transfer + Destination Airport Egress)
+  if (scope === 'domestic' && (vType === 'flight' || route.route?.id?.includes('AIR'))) {
+    if (stops.length >= 2) {
+      const isCarpool = route.route?.id?.includes('CARPOOL');
+      transfers.push({
+        id: 'transfer-air-origin',
+        latitude: stops[0].latitude,
+        longitude: stops[0].longitude,
+        locationName: stops[0].name,
+        fromMode: isCarpool ? 'Carpool Split' : 'Airport Cab',
+        toMode: 'Domestic Flight',
+        fromIcon: isCarpool ? '🚗' : '🚖',
+        toIcon: '✈️',
+        badgeLabel: 'Airport Boarding',
+        description: `Alight from ${isCarpool ? 'Carpool' : 'Cab'} and proceed to Departure Terminal for ${route.transitChainInfo?.flightOrTrainNumber || 'Flight'}`,
+        hasRamp: true,
+      });
+
+      transfers.push({
+        id: 'transfer-air-dest',
+        latitude: stops[1].latitude,
+        longitude: stops[1].longitude,
+        locationName: stops[1].name,
+        fromMode: 'Domestic Flight',
+        toMode: 'Destination Cab',
+        fromIcon: '✈️',
+        toIcon: '🚖',
+        badgeLabel: 'Arrival Cab Transfer',
+        description: `Alight from flight at ${stops[1].name} and connect with destination taxi`,
+        hasRamp: true,
+      });
+    }
+    return transfers;
+  }
+
+  // 3. Superfast & Vande Bharat Rail (Origin Station Transfer + Destination Station Egress)
+  if (vType === 'train' || route.route?.id?.includes('RAIL') || route.route?.id?.includes('IRCTC')) {
+    if (stops.length >= 2) {
+      transfers.push({
+        id: 'transfer-rail-origin',
+        latitude: stops[0].latitude,
+        longitude: stops[0].longitude,
+        locationName: stops[0].name,
+        fromMode: 'Station Cab',
+        toMode: 'Superfast / Vande Bharat Train',
+        fromIcon: '🚖',
+        toIcon: '🚆',
+        badgeLabel: 'Station Platform Transfer',
+        description: `Alight cab at station porch & take ramp/elevator to platform for ${route.transitChainInfo?.flightOrTrainNumber || 'Train'}`,
+        hasRamp: true,
+      });
+
+      transfers.push({
+        id: 'transfer-rail-dest',
+        latitude: stops[1].latitude,
+        longitude: stops[1].longitude,
+        locationName: stops[1].name,
+        fromMode: 'Superfast Train',
+        toMode: 'Destination Cab',
+        fromIcon: '🚆',
+        toIcon: '🚖',
+        badgeLabel: 'Station Exit Transfer',
+        description: `Alight train at ${stops[1].name} platform and transfer to taxi stand`,
+        hasRamp: true,
+      });
+    }
+    return transfers;
+  }
+
+  // 4. Urban Public Transit (Mo Bus Boarding & Alighting Stops)
+  if (vType === 'bus') {
+    if (stops.length >= 2) {
+      transfers.push({
+        id: 'transfer-bus-board',
+        latitude: stops[0].latitude,
+        longitude: stops[0].longitude,
+        locationName: stops[0].name,
+        fromMode: 'Sidewalk Walk',
+        toMode: `Mo Bus ${route.route?.shortName || ''}`,
+        fromIcon: '🚶',
+        toIcon: '🚌',
+        badgeLabel: 'Bus Boarding Stop',
+        description: `Switch from walk to Mo Bus ${route.route?.shortName || ''} at ${stops[0].name} (Level boarding platform)`,
+        hasRamp: stops[0].hasRamp,
+      });
+
+      transfers.push({
+        id: 'transfer-bus-alight',
+        latitude: stops[1].latitude,
+        longitude: stops[1].longitude,
+        locationName: stops[1].name,
+        fromMode: `Mo Bus ${route.route?.shortName || ''}`,
+        toMode: 'Walk to Final Address',
+        fromIcon: '🚌',
+        toIcon: '🚶',
+        badgeLabel: 'Bus Alighting Stop',
+        description: `Alight bus at ${stops[1].name} and walk final segment to destination`,
+        hasRamp: stops[1].hasRamp,
+      });
+    }
+    return transfers;
+  }
+
+  // 5. Shared Stand Taxi / Auto (Stand Boarding)
+  if (route.route?.id?.includes('S1') || route.route?.id?.includes('CARPOOL')) {
+    if (geom?.transitPath && geom.transitPath.length > 0) {
+      const boardCoord = geom.transitPath[0];
+      transfers.push({
+        id: 'transfer-stand-board',
+        latitude: boardCoord[0],
+        longitude: boardCoord[1],
+        locationName: 'Designated Corridor Meeting Point',
+        fromMode: 'Walk',
+        toMode: 'Shared Corridor Ride',
+        fromIcon: '🚶',
+        toIcon: '🚗',
+        badgeLabel: 'Meeting Spot',
+        description: 'Meet host/driver at designated accessible corridor pickup spot',
+        hasRamp: true,
+      });
+    }
+  }
+
+  return transfers;
+}
+
+// Calculate bearing between two GPS coordinates in degrees
+function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
 }
 
 export default function RouteDiscoveryPage() {
@@ -84,159 +362,43 @@ export default function RouteDiscoveryPage() {
   const { searchResults, currentUser } = state;
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
-  const urlDepartTime = searchParams.get('departTime');
+  const urlDepartTime = searchParams.get('departTime') || '09:30';
 
-  // Compute base time according to user's chosen departure schedule
-  const getInitialTime = () => {
-    const d = new Date();
-    if (urlTimeMode !== 'now' && urlDepartTime) {
-      const [hh, mm] = urlDepartTime.split(':').map(Number);
-      if (!isNaN(hh) && !isNaN(mm)) {
-        d.setHours(hh, mm, 0, 0);
-      }
-    }
-    return d;
-  };
-
-  const [currentTime, setCurrentTime] = useState<Date>(getInitialTime());
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
-  const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
-  const [showTimetableModal, setShowTimetableModal] = useState<boolean>(false);
-  const [selectedTimetableStop, setSelectedTimetableStop] = useState<TransitStopInfo | null>(null);
-  const [showSteps, setShowSteps] = useState<boolean>(false);
-  const [showWaysToReach, setShowWaysToReach] = useState<boolean>(false);
+  const [showSteps, setShowSteps] = useState<boolean>(true);
 
-  // Carpooling & Shared Taxi Matcher States
-  const [showCarpoolListModal, setShowCarpoolListModal] = useState<boolean>(false);
+  // Carpooling States & Modals
+  const [showCarpoolModal, setShowCarpoolModal] = useState<boolean>(false);
   const [showRaisePoolModal, setShowRaisePoolModal] = useState<boolean>(false);
-  const [showCarpoolConfirmedModal, setShowCarpoolConfirmedModal] = useState<boolean>(false);
-  const [selectedCarpool, setSelectedCarpool] = useState<CarpoolRide | null>(null);
+  const [selectedCarpoolMatch, setSelectedCarpoolMatch] = useState<CarpoolRide | null>(null);
   const [carpoolRegistryVersion, setCarpoolRegistryVersion] = useState<number>(0);
 
-  // Raise Request Form Inputs
+  // Form Inputs
   const [poolRoleInput, setPoolRoleInput] = useState<'passenger_split' | 'driver'>('passenger_split');
-  const [poolNameInput, setPoolNameInput] = useState<string>(currentUser?.name || 'Novonil Das');
-  const [poolPhoneInput, setPoolPhoneInput] = useState<string>(
-    currentUser?.phoneNumber || currentUser?.emergencyContact?.phone || '+91 94370 12345'
-  );
+  const [poolNameInput, setPoolNameInput] = useState<string>(currentUser?.name || 'Commuter');
+  const [poolPhoneInput, setPoolPhoneInput] = useState<string>(currentUser?.phoneNumber || '+91 94370 12345');
   const [poolVehicleModelInput, setPoolVehicleModelInput] = useState<string>('Tata Nexon EV');
   const [poolVehiclePlateInput, setPoolVehiclePlateInput] = useState<string>('OD-02-AZ-8890');
-  const [poolDepartTimeInput, setPoolDepartTimeInput] = useState<string>(urlDepartTime || '09:30');
+  const [poolDepartTimeInput, setPoolDepartTimeInput] = useState<string>(urlDepartTime);
   const [poolSeatsInput, setPoolSeatsInput] = useState<number>(1);
   const [poolStepFreeInput, setPoolStepFreeInput] = useState<boolean>(false);
   const [poolNotesInput, setPoolNotesInput] = useState<string>('');
 
-  // Update user default inputs when currentUser updates
-  useEffect(() => {
-    if (currentUser?.name && poolNameInput === 'Novonil Das') {
-      setPoolNameInput(currentUser.name);
-    }
-    if (currentUser?.phoneNumber) {
-      setPoolPhoneInput(currentUser.phoneNumber);
-    }
-  }, [currentUser]);
+  // Route Animation Controller State (Disabled by default - only plays when user manually clicks Play)
+  const [isAnimationPlaying, setIsAnimationPlaying] = useState<boolean>(false);
+  const [animSpeed, setAnimSpeed] = useState<number>(1);
+  const [animProgressIndex, setAnimProgressIndex] = useState<number>(0);
 
-  // Update clock every 30s only if user chose 'now'
-  useEffect(() => {
-    if (urlTimeMode === 'now') {
-      const timer = setInterval(() => setCurrentTime(new Date()), 30000);
-      return () => clearInterval(timer);
-    }
-  }, [urlTimeMode]);
-
-  // Keep selected index within range
+  // Keep selected index valid
   useEffect(() => {
     if (selectedIndex >= searchResults.length) {
       setSelectedIndex(0);
     }
   }, [searchResults, selectedIndex]);
 
-  if (!searchResults || searchResults.length === 0) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4 font-sans">
-        <div className="w-14 h-14 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-800 mx-auto">
-          <Navigation className="w-6 h-6" />
-        </div>
-        <h2 className="text-xl font-black text-neutral-900">No Routes Planned Yet</h2>
-        <p className="text-xs text-neutral-500">
-          Search for your pickup and destination stop to find accessible buses and shared auto stands.
-        </p>
-        <Button onClick={() => navigate('/plan')} size="sm">
-          Plan Accessible Route
-        </Button>
-      </div>
-    );
-  }
-
-  // Active selected route object strictly based on selectedIndex
   const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
 
-  const handleStart = () => {
-    if (selectedRoute) {
-      startJourney(selectedRoute);
-      navigate(`/journey/${selectedRoute.route.id}`);
-    }
-  };
-
-  // Smart ride booking launcher — uses best available deep-link for each provider
-  const handleBookRide = (
-    service: 'uber' | 'uber-moto' | 'ola' | 'rapido' | 'rapido-bike',
-  ) => {
-    const oLat = selectedRoute?.originCoords?.lat ?? 20.3555;
-    const oLng = selectedRoute?.originCoords?.lng ?? 85.8145;
-    const dLat = selectedRoute?.destinationCoords?.lat ?? 20.3450;
-    const dLng = selectedRoute?.destinationCoords?.lng ?? 85.8180;
-    const oName = encodeURIComponent(selectedRoute?.originName || 'Pickup');
-    const dName = encodeURIComponent(selectedRoute?.destinationName || 'Destination');
-    const rawOName = selectedRoute?.originName || 'Pickup';
-    const rawDName = selectedRoute?.destinationName || 'Destination';
-
-    let url = '';
-
-    if (service === 'uber' || service === 'uber-moto') {
-      const productId = service === 'uber-moto'
-        ? '2d1d002b-d4d0-4411-98e1-673b244878b2'
-        : '';
-      url = `https://m.uber.com/ul/?action=setPickup`
-        + `&pickup[latitude]=${oLat}&pickup[longitude]=${oLng}`
-        + `&pickup[formatted_address]=${oName}`
-        + `&dropoff[latitude]=${dLat}&dropoff[longitude]=${dLng}`
-        + `&dropoff[formatted_address]=${dName}`
-        + (productId ? `&product_id=${productId}` : '');
-
-    } else if (service === 'ola') {
-      const olaApp = `olacabs://app/launch?lat=${oLat}&lng=${oLng}&drop_lat=${dLat}&drop_lng=${dLng}`;
-      const olaWeb = `https://book.olacabs.com/?pickup_name=${oName}&drop_name=${dName}&lat=${oLat}&lng=${oLng}&drop_lat=${dLat}&drop_lng=${dLng}&source=web`;
-
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = olaApp;
-      document.body.appendChild(iframe);
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 2000);
-
-      window.open(olaWeb, '_blank');
-      addToast('info', `Opening Ola: From ${rawOName} → ${rawDName}. Confirm location in the Ola app.`, 4000);
-      return;
-
-    } else if (service === 'rapido' || service === 'rapido-bike') {
-      const vehicleParam = service === 'rapido-bike' ? '&vehicle_type=bike' : '';
-      url = `https://rapido.bike/ride`
-        + `?pickup=${oName}&drop=${dName}`
-        + `&pickup_lat=${oLat}&pickup_lng=${oLng}`
-        + `&drop_lat=${dLat}&drop_lng=${dLng}`
-        + vehicleParam;
-    }
-
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-      const appName = service.includes('rapido') ? 'Rapido' : service === 'uber-moto' ? 'Uber Moto' : 'Uber';
-      addToast('info', `Opening ${appName}: ${rawOName} → ${rawDName}`, 3500);
-    }
-  };
-
-  // Extract precise coordinates for origin and destination
+  // Coordinates extraction
   const fullRouteArr: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
   const originCoords: [number, number] = [
     selectedRoute?.originCoords?.lat ?? (fullRouteArr[0] ? fullRouteArr[0][0] : 20.3555),
@@ -247,157 +409,167 @@ export default function RouteDiscoveryPage() {
     selectedRoute?.destinationCoords?.lng ?? (fullRouteArr[fullRouteArr.length - 1] ? fullRouteArr[fullRouteArr.length - 1][1] : 85.8180),
   ];
 
-  // Continuous route path for the selected transit mode
   const continuousRoute: Array<[number, number]> =
     fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
 
-  // Identify the selected mode based on route properties, route name, and selection index
-  const routeId = selectedRoute?.route?.id || '';
-  const routeName = (selectedRoute?.route?.name || '').toLowerCase();
-  const vehicleType = selectedRoute?.route?.vehicleType;
+  // Ingress, Transit, and Egress geometries for multi-colored crisp rendering
+  const ingressPath: Array<[number, number]> = selectedRoute?.geometry?.originToBoardWalk || [];
+  const transitPath: Array<[number, number]> = selectedRoute?.geometry?.transitPath || continuousRoute;
+  const egressPath: Array<[number, number]> = selectedRoute?.geometry?.alightToDestWalk || [];
 
-  const isFlight = vehicleType === 'flight' || selectedRoute?.travelScope === 'international' || routeId.includes('FLIGHT') || routeId.includes('AIR');
-  const isTrain = vehicleType === 'train' || routeId.includes('RAIL') || routeId.includes('IRCTC') || routeId.includes('VANDE_BHARAT');
-  const isInterstateBus = routeId === 'OSRTC_DELUXE_BUS';
-  const isOutstationCab = routeId === 'OUTSTATION_CAB';
-  const isAutoDirect = !isFlight && !isTrain && !isInterstateBus && !isOutstationCab && (routeId === 'AUTO_DIRECT' || routeName.includes('direct auto'));
-  const isBikeTaxi = !isFlight && !isTrain && !isInterstateBus && !isOutstationCab && (routeId === 'BIKE_TAXI' || routeName.includes('bike'));
-  const isSharedAuto =
-    !isFlight && !isTrain && !isInterstateBus && !isOutstationCab && !isAutoDirect && !isBikeTaxi &&
-    (routeId === 'S1' || routeName.includes('sharing') || routeName.includes('shared') || vehicleType === 'shared-transport');
-  const isExpressBus =
-    !isFlight && !isTrain && !isInterstateBus && !isOutstationCab && !isAutoDirect && !isBikeTaxi && !isSharedAuto &&
-    (routeId === 'C2' || routeId.includes('11') || routeName.includes('express'));
+  // Extract transfer points for transport change symbols
+  const transferPoints = extractTransferChangePoints(selectedRoute);
 
-  // Dynamic Bus Line & Stop Matching for ANY official route (10, 11, 12, 13, 16, 18, 20, 23, 24, 33, 50)
-  const matchedOfficialRoute = OFFICIAL_ROUTES[routeId] || (isExpressBus ? OFFICIAL_ROUTES['11'] : OFFICIAL_ROUTES['10']);
-  const servingRouteId = matchedOfficialRoute.id;
+  // Reset animation when changing routes (keep paused unless user plays)
+  useEffect(() => {
+    setAnimProgressIndex(0);
+    setIsAnimationPlaying(false);
+  }, [selectedIndex]);
 
-  const candidateStops = OFFICIAL_STOPS.filter(s => s.servingRoutes.includes(servingRouteId));
-  const fallbackStops = candidateStops.length > 0 ? candidateStops : OFFICIAL_STOPS;
+  // Smooth Route Animation Interval
+  useEffect(() => {
+    if (!isAnimationPlaying || continuousRoute.length < 2) return;
 
-  // Use the pre-computed intermediate stops if available, or dynamically match closest
-  const intermediateStops = selectedRoute?.intermediateStops || [];
-  let activeBoardingStop = intermediateStops.length > 0
-    ? OFFICIAL_STOPS.find(s => s.id === intermediateStops[0].id) || fallbackStops[0]
-    : fallbackStops[0];
+    const intervalMs = Math.max(25, Math.round(75 / animSpeed));
+    const timer = setInterval(() => {
+      setAnimProgressIndex((prev) => {
+        if (prev >= continuousRoute.length - 1) {
+          return 0; // Loop seamlessly
+        }
+        return prev + 1;
+      });
+    }, intervalMs);
 
-  let activeAlightingStop = intermediateStops.length > 1
-    ? OFFICIAL_STOPS.find(s => s.id === intermediateStops[1].id) || fallbackStops[fallbackStops.length - 1]
-    : fallbackStops[fallbackStops.length - 1];
+    return () => clearInterval(timer);
+  }, [isAnimationPlaying, animSpeed, continuousRoute.length]);
 
-  let minBoardDist = haversineDistanceClient(originCoords[0], originCoords[1], activeBoardingStop.lat, activeBoardingStop.lng);
-  let minAlightDist = haversineDistanceClient(destCoords[0], destCoords[1], activeAlightingStop.lat, activeAlightingStop.lng);
-
-  if (intermediateStops.length < 2) {
-    minBoardDist = Infinity;
-    fallbackStops.forEach(st => {
-      const dist = haversineDistanceClient(originCoords[0], originCoords[1], st.lat, st.lng);
-      if (dist < minBoardDist) {
-        minBoardDist = dist;
-        activeBoardingStop = st;
-      }
-    });
-
-    minAlightDist = Infinity;
-    fallbackStops.forEach(st => {
-      const dist = haversineDistanceClient(destCoords[0], destCoords[1], st.lat, st.lng);
-      if (dist < minAlightDist) {
-        minAlightDist = dist;
-        activeAlightingStop = st;
-      }
-    });
-  }
-
-  // Multimodal available ways to reach this specific bus stop
-  const waysToReachList = getWaysToReachStop(originCoords[0], originCoords[1], activeBoardingStop);
-
-  // Live upcoming bus arrival data for this boarding stop according to departure time
-  const liveArrivalsForBoarding = getLiveStopArrivals(activeBoardingStop.id, currentTime);
-
-  const matchedUpcomingBus =
-    liveArrivalsForBoarding.find((b) => b.routeId === servingRouteId) || liveArrivalsForBoarding[0];
-
-  const busWaitMinutes = matchedUpcomingBus ? matchedUpcomingBus.minutesAway : 6;
-  const formattedBusArrivalTime = matchedUpcomingBus ? matchedUpcomingBus.scheduledTime : '09:35 AM';
-  const actualVehiclePlate =
-    matchedUpcomingBus?.vehicleNumber || (isExpressBus ? 'OD-02-BB-2104' : 'OD-02-BA-1025');
-  const actualBusModel = isExpressBus
-    ? 'Ashok Leyland JanBus AC Express'
-    : 'Tata Starbus EV (100% Low-Floor Ramp)';
-
-  // Shared Auto Probability Engine Data based on departure time
-  const sharedStandProbability = calculateSharedAutoProbability(
-    originCoords[0],
-    originCoords[1],
-    currentTime
+  // Calculate current animated vehicle position & mode icon
+  const currentAnimCoord = continuousRoute[animProgressIndex] || originCoords;
+  const nextAnimCoord = continuousRoute[Math.min(animProgressIndex + 1, continuousRoute.length - 1)] || currentAnimCoord;
+  const currentBearing = calculateBearing(
+    currentAnimCoord[0],
+    currentAnimCoord[1],
+    nextAnimCoord[0],
+    nextAnimCoord[1]
   );
 
-  // Intelligent Carpooling Corridor Matches for this Origin and Destination (Excluding current user)
+  // Determine current active vehicle icon based on progress fraction along legs
+  const ingressLen = ingressPath.length;
+  const transitLen = transitPath.length;
+  const isFlight = selectedRoute?.route?.vehicleType === 'flight' || selectedRoute?.travelScope === 'international';
+  const isTrain = selectedRoute?.route?.vehicleType === 'train';
+
+  let currentVehicleIcon = '🚖';
+  if (animProgressIndex < ingressLen && ingressLen > 0) {
+    currentVehicleIcon = selectedRoute.route?.vehicleType === 'bus' ? '🚶' : '🚖';
+  } else if (animProgressIndex < ingressLen + transitLen) {
+    currentVehicleIcon = isFlight ? '✈️' : isTrain ? '🚆' : selectedRoute.route?.vehicleType === 'bus' ? '🚌' : '🚗';
+  } else {
+    currentVehicleIcon = selectedRoute.route?.vehicleType === 'bus' ? '🚶' : '🚖';
+  }
+
+  // Live Matching Carpools along this Corridor
   const matchingCarpools = getMatchingCarpools(
     originCoords[0],
     originCoords[1],
     destCoords[0],
     destCoords[1],
-    urlDepartTime || '09:30',
+    urlDepartTime,
     currentUser?.id
   );
 
-  // Active broadcast created by current user
-  const userActiveBroadcast = getUserActiveCarpoolRequest(currentUser?.id);
+  // Active Applied Carpool Requests by Current User
+  const [activeUserCarpools, setActiveUserCarpools] = useState<CarpoolRide[]>([]);
 
-  // On-Demand Taxi Data
-  const directDistanceKm = Math.max(1, (selectedRoute?.duration || 15) * 0.4);
-  const onDemandAutoData = getOnDemandTaxiLive('auto', directDistanceKm, currentTime);
-  const onDemandBikeData = getOnDemandTaxiLive('bike', directDistanceKm, currentTime);
+  const refreshActiveCarpools = useCallback(() => {
+    const list = getUserActiveCarpoolRequests(currentUser?.id);
+    setActiveUserCarpools(list);
+  }, [currentUser?.id]);
 
-  // Dynamic Stop & Pickup Names per selected vehicle mode
-  const pickupLocationName = isAutoDirect
-    ? `Doorstep Pickup at ${selectedRoute?.originName || 'Origin'}`
-    : isBikeTaxi
-    ? `Pickup Point at ${selectedRoute?.originName || 'Origin'}`
-    : isSharedAuto
-    ? `${sharedStandProbability.standName}`
-    : `${activeBoardingStop.name} (${activeBoardingStop.bayNumber})`;
+  useEffect(() => {
+    refreshActiveCarpools();
+  }, [carpoolRegistryVersion, refreshActiveCarpools]);
 
-  const dropoffLocationName = isAutoDirect
-    ? `Direct Drop-off at ${selectedRoute?.destinationName || 'Destination'}`
-    : isBikeTaxi
-    ? `Drop-off at ${selectedRoute?.destinationName || 'Destination'}`
-    : isSharedAuto
-    ? `${selectedRoute?.destinationName || 'Destination'} Auto Stop`
-    : `${activeAlightingStop.name}`;
+  // Periodic Auto-Pruning every 15s to remove requests once arrival/expiry time has crossed
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshActiveCarpools();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [refreshActiveCarpools]);
 
-  const walkToPickupMinutes = isAutoDirect || isBikeTaxi ? 0 : Math.max(1, Math.round(minBoardDist / 65));
-  const walkToPickupDistanceMeters = isAutoDirect || isBikeTaxi ? 0 : Math.round(minBoardDist);
+  // Listen for Live Acceptance Notifications
+  useEffect(() => {
+    const handleMatchEvent = (e: Event) => {
+      const custom = e as CustomEvent;
+      const detail = custom.detail;
+      refreshActiveCarpools();
+      setCarpoolRegistryVersion((v) => v + 1);
 
-  const finalWalkMinutes = isAutoDirect || isBikeTaxi ? 0 : Math.max(1, Math.round(minAlightDist / 65));
-  const finalWalkDistanceMeters = isAutoDirect || isBikeTaxi ? 0 : Math.round(minAlightDist);
-  const totalWalkDistanceMeters = walkToPickupDistanceMeters + finalWalkDistanceMeters;
+      addToast(
+        'success',
+        `🎉 Carpool Match Accepted! ${detail.partnerName} (${detail.partnerVehicle || 'Co-Rider'}) accepted your ride along ${detail.routeCorridor}!`,
+        8000
+      );
+    };
 
-  const handleOpenTimetable = (stop: TransitStopInfo) => {
-    setSelectedTimetableStop(stop);
-    setShowTimetableModal(true);
+    window.addEventListener('carpool_matched', handleMatchEvent);
+    return () => window.removeEventListener('carpool_matched', handleMatchEvent);
+  }, [addToast, refreshActiveCarpools]);
+
+  const handleStart = () => {
+    if (selectedRoute) {
+      startJourney(selectedRoute);
+      navigate(`/journey/${selectedRoute.route.id}`);
+    }
   };
 
-  // Carpool Accept Action (Matching with another user)
+  // Open booking / external partner provider
+  const handleBookExternal = () => {
+    if (!selectedRoute) return;
+
+    if (selectedRoute.transitChainInfo?.bookingUrl) {
+      window.open(selectedRoute.transitChainInfo.bookingUrl, '_blank', 'noopener,noreferrer');
+      addToast('info', `Opening ${selectedRoute.transitChainInfo.bookingService || 'Booking Portal'}...`, 3000);
+      return;
+    }
+
+    const oLat = originCoords[0];
+    const oLng = originCoords[1];
+    const dLat = destCoords[0];
+    const dLng = destCoords[1];
+    const oName = encodeURIComponent(selectedRoute?.originName || 'Pickup');
+    const dName = encodeURIComponent(selectedRoute?.destinationName || 'Destination');
+
+    const uberUrl = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${oLat}&pickup[longitude]=${oLng}&pickup[formatted_address]=${oName}&dropoff[latitude]=${dLat}&dropoff[longitude]=${dLng}&dropoff[formatted_address]=${dName}`;
+    window.open(uberUrl, '_blank', 'noopener,noreferrer');
+    addToast('info', `Opening Uber for ${selectedRoute.originName} ➔ ${selectedRoute.destinationName}`, 3000);
+  };
+
+  const handleBookLegUrl = (url?: string, label?: string) => {
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      addToast('info', `Opening ${label || 'Booking Provider'}...`, 3000);
+    }
+  };
+
+  // Carpool Match Accept
   const handleAcceptCarpool = (carpool: CarpoolRide) => {
-    setSelectedCarpool(carpool);
-    setShowCarpoolListModal(false);
-    setShowCarpoolConfirmedModal(true);
+    setSelectedCarpoolMatch(carpool);
+    setShowCarpoolModal(false);
     addToast(
       'success',
       `🤝 Matched with ${carpool.hostName}! Meeting spot: ${carpool.optimalMeetingPoint.name} at ${carpool.meetingTime}.`
     );
   };
 
-  // Raise Request Submission (with real user profile)
+  // Raise Carpool Broadcast
   const handleRaisePoolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanName = poolNameInput.trim() || currentUser?.name || 'Passenger';
+    const cleanName = poolNameInput.trim() || currentUser?.name || 'Commuter';
     const cleanPhone = poolPhoneInput.trim() || currentUser?.phoneNumber || '+91 94370 12345';
 
-    const created = registerCarpoolRequest({
+    registerCarpoolRequest({
       userId: currentUser?.id || `usr-${Date.now()}`,
       userName: cleanName,
       userPhone: cleanPhone,
@@ -416,1666 +588,902 @@ export default function RouteDiscoveryPage() {
     });
 
     setShowRaisePoolModal(false);
-    setCarpoolRegistryVersion(v => v + 1);
+    setCarpoolRegistryVersion((v) => v + 1);
     addToast(
       'success',
-      `📢 Carpool request broadcasted under your name (${cleanName}) for ${poolDepartTimeInput}! Matching co-riders along your corridor.`
+      `📢 Carpool request broadcasted under ${cleanName} for ${poolDepartTimeInput}! Matching co-riders along your corridor.`
     );
   };
 
-  // Cancel broadcast request
+  // Cancel Carpool Broadcast
   const handleCancelBroadcast = (requestId: string) => {
     cancelCarpoolRequest(requestId);
-    if (selectedCarpool?.id === requestId) {
-      setSelectedCarpool(null);
+    if (selectedCarpoolMatch?.id === requestId) {
+      setSelectedCarpoolMatch(null);
     }
-    setCarpoolRegistryVersion(v => v + 1);
+    setCarpoolRegistryVersion((v) => v + 1);
     addToast('info', 'Your carpool request has been cancelled.');
   };
 
-  const modalArrivals = selectedTimetableStop
-    ? getLiveStopArrivals(selectedTimetableStop.id, currentTime)
-    : liveArrivalsForBoarding;
+  const formatDuration = (mins: number) => {
+    if (mins < 60) return `${mins} min`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h} hrs`;
+  };
+
+  const getModeIcon = (route: RouteSearchResult) => {
+    const vType = route.route?.vehicleType;
+    if (vType === 'flight' || route.travelScope === 'international') return <Plane className="w-4 h-4 text-sky-600" />;
+    if (vType === 'train') return <Train className="w-4 h-4 text-blue-600" />;
+    if (vType === 'bus') return <Bus className="w-4 h-4 text-emerald-600" />;
+    if (route.route?.id?.includes('CARPOOL') || route.route?.name?.toLowerCase().includes('carpool') || route.route?.name?.toLowerCase().includes('sharing')) {
+      return <Users className="w-4 h-4 text-purple-600" />;
+    }
+    return <Car className="w-4 h-4 text-amber-600" />;
+  };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6 space-y-4 font-sans">
-      {/* Top Header Summary */}
-      <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
-        <div className="flex items-center gap-2 text-xs text-neutral-600">
-          <span className="font-bold text-neutral-900">{selectedRoute?.originName || 'Origin'}</span>
-          <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
-          <span className="font-bold text-neutral-900">{selectedRoute?.destinationName || 'Destination'}</span>
-          <span className="text-[10px] text-neutral-500 font-bold px-2 py-0.5 bg-neutral-100 rounded-md ml-1">
-            {urlTimeMode === 'now'
-              ? '⚡ Leave Now'
-              : `⏰ Depart ${currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+    <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 space-y-4 font-sans">
+      {/* Top Header Bar */}
+      <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-neutral-900 font-bold overflow-hidden">
+          <span className="truncate max-w-[180px] sm:max-w-[240px]">{selectedRoute?.originName || 'Origin'}</span>
+          <ArrowRight className="w-4 h-4 text-neutral-400 shrink-0" />
+          <span className="truncate max-w-[180px] sm:max-w-[240px]">{selectedRoute?.destinationName || 'Destination'}</span>
+          <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg shrink-0 ml-1">
+            {urlTimeMode === 'now' ? '⚡ Leave Now' : `⏰ ${urlDepartTime || '09:30'}`}
           </span>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Carpool Hub Action Button */}
           <button
-            onClick={() => setShowCompareModal(true)}
-            className="text-xs font-semibold text-neutral-600 hover:text-black underline px-2 py-1"
+            onClick={() => setShowCarpoolModal(true)}
+            className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
           >
-            Compare Fares
+            <Users className="w-3.5 h-3.5 text-purple-600" />
+            <span>Carpool Hub ({matchingCarpools.length} nearby)</span>
           </button>
-          <Button size="sm" variant="secondary" onClick={() => navigate('/plan')}>
-            Edit
-          </Button>
+
+          <button
+            onClick={() => navigate('/plan')}
+            className="text-xs font-bold text-neutral-700 hover:text-black bg-neutral-100 hover:bg-neutral-200 px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Change</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Split Layout: Map (7 Cols) + Ride Selector & Clean Details (5 Cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* CartoDB Voyager Clean High-Def Map */}
-        <div className="lg:col-span-7 h-[380px] sm:h-[500px] w-full rounded-3xl overflow-hidden border border-neutral-200 shadow-sm relative z-0 isolate">
-          <MapContainer
-            center={originCoords}
-            zoom={14}
-            scrollWheelZoom={true}
-            className="w-full h-full"
-            style={{ zIndex: 1 }}
-          >
-            {/* Premium CartoDB Voyager Tiles */}
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            />
-            <MapBoundsController coordinates={continuousRoute} />
-
-            {/* If Flight selected: show airport terminal markers */}
-            {isFlight && (
-              <>
-                <Marker position={originCoords} icon={flightPin}>
-                  <Popup>
-                    <div className="p-1 space-y-0.5 max-w-[220px]">
-                      <strong className="block text-xs font-bold text-red-900">✈️ Departure Airport</strong>
-                      <span className="text-[11px] text-neutral-700 block">{selectedRoute?.transitChainInfo?.originHubName || 'BBI Airport Terminal 1'}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-                <Marker position={destCoords} icon={flightPin}>
-                  <Popup>
-                    <div className="p-1 space-y-0.5 max-w-[220px]">
-                      <strong className="block text-xs font-bold text-red-900">✈️ Destination International Airport</strong>
-                      <span className="text-[11px] text-neutral-700 block">{selectedRoute?.transitChainInfo?.destHubName || selectedRoute?.destinationName}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-              </>
-            )}
-
-            {/* If Train selected: show railway terminal markers */}
-            {isTrain && (
-              <>
-                <Marker position={originCoords} icon={trainPin}>
-                  <Popup>
-                    <div className="p-1 space-y-0.5 max-w-[220px]">
-                      <strong className="block text-xs font-bold text-blue-900">🚆 Boarding Railway Station</strong>
-                      <span className="text-[11px] text-neutral-700 block">{selectedRoute?.transitChainInfo?.originHubName || 'Bhubaneswar (BBS PF 1)'}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-                <Marker position={destCoords} icon={trainPin}>
-                  <Popup>
-                    <div className="p-1 space-y-0.5 max-w-[220px]">
-                      <strong className="block text-xs font-bold text-blue-900">🚆 Destination Station</strong>
-                      <span className="text-[11px] text-neutral-700 block">{selectedRoute?.transitChainInfo?.destHubName || selectedRoute?.destinationName}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-              </>
-            )}
-
-            {/* If Public Bus selected: show the specific line's Boarding & Alighting stops */}
-            {!isFlight && !isTrain && !isInterstateBus && !isOutstationCab && !isAutoDirect && !isBikeTaxi && !isSharedAuto && (
-              <>
-                <Marker position={[activeBoardingStop.lat, activeBoardingStop.lng]} icon={stopPin}>
-                  <Popup>
-                    <div className="p-1 space-y-1 max-w-[200px]">
-                      <strong className="block text-xs font-bold text-blue-900">🚏 Board: {activeBoardingStop.name}</strong>
-                      <span className="text-[10px] text-neutral-600 block">{activeBoardingStop.bayNumber} • {matchedOfficialRoute.routeNumber}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-
-                <Marker position={[activeAlightingStop.lat, activeAlightingStop.lng]} icon={stopPin}>
-                  <Popup>
-                    <div className="p-1 space-y-1 max-w-[200px]">
-                      <strong className="block text-xs font-bold text-blue-900">🚏 Alight: {activeAlightingStop.name}</strong>
-                      <span className="text-[10px] text-neutral-600 block">{activeAlightingStop.bayNumber}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-              </>
-            )}
-
-            {/* If Shared Auto selected: show designated stand pin */}
-            {isSharedAuto && !selectedCarpool && (
-              <Marker
-                position={[
-                  sharedStandProbability.distanceMeters ? originCoords[0] + 0.001 : originCoords[0],
-                  originCoords[1] + 0.001,
-                ]}
-                icon={taxiPin}
-              >
-                <Popup>
-                  <div className="p-1">
-                    <strong className="block text-xs font-bold text-amber-900">
-                      🚖 {sharedStandProbability.standName}
-                    </strong>
-                    <span className="text-[10px] text-neutral-600 block">
-                      {sharedStandProbability.distanceMeters}m walk • {sharedStandProbability.fixedFareText}
-                    </span>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-
-            {/* If Carpool is active: show common meeting point pin */}
-            {selectedCarpool && (
-              <Marker
-                position={selectedCarpool.optimalMeetingPoint.coordinates}
-                icon={meetingPin}
-              >
-                <Popup>
-                  <div className="p-1 space-y-1 max-w-[220px]">
-                    <strong className="block text-xs font-bold text-purple-900">
-                      🤝 Meeting Point: {selectedCarpool.optimalMeetingPoint.name}
-                    </strong>
-                    <span className="text-[10px] text-neutral-600 block">
-                      Meet at <strong>{selectedCarpool.meetingTime}</strong> with {selectedCarpool.hostName} ({selectedCarpool.vehicleModel})
-                    </span>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-
-            {/* Origin Pin A */}
-            <Marker position={originCoords} icon={originPin}>
-              <Popup>
-                <div className="p-1">
-                  <strong className="block text-xs font-bold text-emerald-900">Pickup Origin (A)</strong>
-                  <span className="text-[11px] text-neutral-600">{selectedRoute?.originName}</span>
-                </div>
-              </Popup>
-            </Marker>
-
-            {/* Continuous Mode Road Route Polyline */}
-            <Polyline positions={continuousRoute} color="#2563eb" weight={6} opacity={0.9} />
-
-            {/* Destination Pin B */}
-            <Marker position={destCoords} icon={destPin}>
-              <Popup>
-                <div className="p-1">
-                  <strong className="block text-xs font-bold text-red-900">Destination (B)</strong>
-                  <span className="text-[11px] text-neutral-600">{selectedRoute?.destinationName}</span>
-                </div>
-              </Popup>
-            </Marker>
-          </MapContainer>
-
-          {/* Floating Badge */}
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-neutral-200 text-xs font-bold text-neutral-900 shadow-md z-[1000] flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
-            <span>
-              {selectedRoute?.duration} min via {selectedRoute?.route.name}
+      {/* Active Carpool Requests Section */}
+      {activeUserCarpools.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-purple-800 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              Active Carpool Requests Applied ({activeUserCarpools.length})
             </span>
+            <span className="text-[11px] text-neutral-500">Auto-expires after scheduled arrival</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {activeUserCarpools.map((pool) => {
+              const isMatched = pool.status === 'matched';
+              return (
+                <div
+                  key={pool.id}
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    isMatched
+                      ? 'bg-emerald-50/80 border-emerald-300 shadow-sm'
+                      : 'bg-purple-50/80 border-purple-200 shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                            isMatched
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-purple-600 text-white animate-pulse'
+                          }`}
+                        >
+                          {isMatched ? '✅ Match Accepted' : '⏳ Matching Co-Riders'}
+                        </span>
+                        <span className="text-xs font-bold text-neutral-900">
+                          {pool.scheduledDepartureTime}
+                        </span>
+                      </div>
+
+                      <div className="text-xs font-bold text-neutral-800">
+                        {pool.originName.split('(')[0]} ➔ {pool.destinationName.split('(')[0]}
+                      </div>
+
+                      {isMatched ? (
+                        <div className="text-[11px] text-emerald-900 font-medium">
+                          Matched with <strong>{pool.matchedWith || 'Co-Rider'}</strong> ({pool.matchedVehicle || 'Vehicle Verified'})
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-purple-800">
+                          Broadcasting to nearby verified students & commuters on this corridor...
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isMatched && pool.matchedPhone && (
+                        <a
+                          href={`tel:${pool.matchedPhone}`}
+                          className="text-[11px] font-bold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-100 px-2.5 py-1 rounded-lg flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span>Call</span>
+                        </a>
+                      )}
+                      <button
+                        onClick={() => handleCancelBroadcast(pool.id)}
+                        className="text-[11px] font-bold text-red-600 hover:text-red-800 bg-white border border-red-200 px-2 py-1 rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        {/* Right Pane: Clean Transit Selector & Minimalist Telemetry */}
+      {/* Main Grid: Left Column = Route Choices & Details; Right Column = Interactive Map */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column: Route Choices & Trip Breakdown (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
-          <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
-            Choose Your Transit Option:
-          </span>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-wider text-neutral-600">
+              Trip Itinerary Options ({searchResults.length})
+            </h2>
+            <span className="text-xs text-neutral-400 font-medium">Select to view path</span>
+          </div>
 
-          {/* Clean Ride Options List */}
-          <div className="space-y-2">
-            {searchResults.map((result, idx) => {
+          {/* Route Options List */}
+          <div className="space-y-2.5">
+            {searchResults.map((route, idx) => {
               const isSelected = selectedIndex === idx;
-              const fareDisplay = result.fare
-                ? result.fare.type === 'exact'
-                  ? `₹${result.fare.exact}`
-                  : `₹${result.fare.min} - ₹${result.fare.max}`
-                : '₹15';
+              const hasBreakdown = !!route.priceBreakdown;
+              
+              // Bulletproof Zero-Fare & Pricing Logic for EV, Walk, and transit
+              const isZeroFare =
+                route.route?.id?.includes('EV') ||
+                route.route?.id?.includes('WALK') ||
+                route.route?.id?.includes('STEP_FREE') ||
+                route.route?.vehicleType === 'campus-vehicle' ||
+                route.priceBreakdown?.totalPrice === 0 ||
+                route.fare?.exact === 0;
 
-              const displayName = result.route.name;
+              const isRouteCarpool =
+                route.route?.id?.includes('CARPOOL') ||
+                route.route?.name?.toLowerCase().includes('carpool') ||
+                route.route?.name?.toLowerCase().includes('sharing');
+
+              const isRouteCarpoolConfirmed =
+                !!selectedCarpoolMatch ||
+                activeUserCarpools.some((p) => p.status === 'matched' || p.status === 'confirmed');
+
+              const displayTotalPrice = route.priceBreakdown?.totalPrice !== undefined
+                ? route.priceBreakdown.totalPrice
+                : route.fare?.exact;
+
+              const fareDisplay = isZeroFare
+                ? '₹0 Free'
+                : isRouteCarpool && !isRouteCarpoolConfirmed
+                ? 'Split on Match'
+                : typeof displayTotalPrice === 'number'
+                ? `₹${displayTotalPrice.toLocaleString()}`
+                : route.fare?.min !== undefined && route.fare?.max !== undefined
+                ? `₹${route.fare.min} - ₹${route.fare.max}`
+                : '₹0 Free';
 
               return (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => {
-                    setSelectedIndex(idx);
-                    if (result.route.id !== 'S1' && result.route.id !== 'Auto-Stand') setSelectedCarpool(null);
-                  }}
-                  className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between focus:outline-none ${
+                  onClick={() => setSelectedIndex(idx)}
+                  className={`w-full text-left p-4 rounded-2xl border transition-all ${
                     isSelected
-                      ? 'bg-neutral-900 text-white border-black shadow-md scale-[1.01]'
-                      : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50'
+                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-md ring-2 ring-black/10'
+                      : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 shadow-sm'
                   }`}
                 >
-                  <div className="flex items-center gap-3 pointer-events-none">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
-                        isSelected ? 'bg-white text-black' : 'bg-neutral-100 text-neutral-900'
-                      }`}
-                    >
-                      {result.route.vehicleType === 'flight'
-                        ? '✈️'
-                        : result.route.vehicleType === 'train'
-                        ? '🚆'
-                        : result.route.id === 'AUTO_DIRECT'
-                        ? '🛺'
-                        : result.route.id === 'BIKE_TAXI'
-                        ? '🛵'
-                        : result.route.id === 'OSRTC_DELUXE_BUS'
-                        ? '🚌'
-                        : result.route.id === 'OUTSTATION_CAB'
-                        ? '🚖'
-                        : result.route.vehicleType === 'shared-transport'
-                        ? '🚖'
-                        : '🚌'}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm leading-tight block">{displayName}</span>
-                        {result.recommendation.recommended && (
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
-                              isSelected
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-emerald-100 text-emerald-900'
-                            }`}
-                          >
-                            ♿ Step-Free
-                          </span>
-                        )}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100'}`}>
+                        {getModeIcon(route)}
                       </div>
-                      <span
-                        className={`text-xs block mt-0.5 ${
-                          isSelected ? 'text-neutral-300' : 'text-neutral-500'
-                        }`}
-                      >
-                        {result.duration >= 60
-                          ? `${Math.floor(result.duration / 60)}h ${result.duration % 60 > 0 ? `${result.duration % 60}m` : ''}`
-                          : `${result.duration} min`} •{' '}
-                        {result.stairs === 0 ? '0 Stairs' : `${result.stairs} Stairs`}
-                      </span>
+                      <div>
+                        <div className="font-bold text-sm leading-tight flex items-center gap-1.5 flex-wrap">
+                          <span>{route.route?.name || 'Transit Option'}</span>
+                          {route.transitChainInfo?.flightOrTrainNumber && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-800'}`}>
+                              {route.transitChainInfo.flightOrTrainNumber.split(' ')[0]}
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                          {route.route?.description || 'Public Transport Corridor'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="font-black text-sm">{formatDuration(route.duration)}</div>
+                      <div className={`text-xs font-black ${isSelected ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                        {fareDisplay}
+                      </div>
+                      {hasBreakdown && (
+                        <div className={`text-[10px] font-medium ${isSelected ? 'text-neutral-400' : 'text-neutral-400'}`}>
+                          Total (Incl. Cabs)
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0 pointer-events-none">
-                    <span className="text-base font-black block leading-none">{fareDisplay}</span>
-                    <span
-                      className={`text-[10px] block mt-0.5 ${
-                        isSelected ? 'text-neutral-400' : 'text-neutral-500'
-                      }`}
-                    >
-                      {result.fare?.status === 'confirmed' ? 'Govt Gazette' : 'Estimated'}
-                    </span>
-                  </div>
+                  {/* Multi-modal Legs Sequence Pills */}
+                  {route.segments && route.segments.length > 0 && (
+                    <div className="flex items-center flex-wrap gap-1.5 mt-3 pt-2.5 border-t border-white/10 border-neutral-100 text-[11px] font-medium">
+                      {route.segments.map((seg, sIdx) => (
+                        <React.Fragment key={sIdx}>
+                          <span
+                            className={`px-2 py-0.5 rounded-md ${
+                              isSelected ? 'bg-white/15 text-neutral-200' : 'bg-neutral-100 text-neutral-700'
+                            }`}
+                          >
+                            {seg.vehicleType === 'flight' || seg.routeId?.includes('FLIGHT') ? '✈️ Flight' :
+                             seg.vehicleType === 'train' || seg.routeId?.includes('RAIL') ? '🚆 Train' :
+                             seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🚗 Carpool` :
+                             seg.type === 'walk' ? `🚶 ${seg.duration}m` :
+                             seg.vehicleType === 'bus' ? `🚌 Bus` : `🚖 Cab`}
+                          </span>
+                          {sIdx < route.segments.length - 1 && (
+                            <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  )}
                 </button>
               );
             })}
           </div>
 
-          {/* Minimalist, Clean Selected Vehicle Details Card */}
-          {selectedRoute && (
-            <div className="bg-white border border-neutral-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
-              {/* Header Title & Walk Badge */}
-              <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
-                <span className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  {isFlight
-                    ? `✈️ ${selectedRoute.transitChainInfo?.carrierName || 'Scheduled Air Transit'}`
-                    : isTrain
-                    ? `🚆 ${selectedRoute.transitChainInfo?.carrierName || 'Indian Railways Superfast'}`
-                    : isInterstateBus
-                    ? '🚌 OSRTC Interstate Express Bus'
-                    : isOutstationCab
-                    ? '🚖 Outstation Highway Cab'
-                    : isAutoDirect
-                    ? 'Direct Auto (Doorstep Pickup)'
-                    : isBikeTaxi
-                    ? 'Rapido Solo Bike Taxi'
-                    : isSharedAuto
-                    ? 'Shared Taxi & Carpool Matcher'
-                    : isExpressBus
-                    ? 'Mo Bus (Route 11 Fast Express)'
-                    : 'Mo Bus (Route 10 City Line)'}
-                </span>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                  Total Walk: {totalWalkDistanceMeters}m
-                </span>
-              </div>
+          {/* Selected Route Action & Step Breakdown */}
+          <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Selected Journey</span>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{selectedRoute.vehicleAccessible ? 'Step-Free / Accessible' : 'Standard Access'}</span>
+              </span>
+            </div>
 
-              {/* Case 0A: Scheduled Flight Chain (International / Domestic) */}
-              {isFlight ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900 flex items-center gap-1">
-                        ✈️ {selectedRoute.transitChainInfo?.carrierName || 'Scheduled Airline'}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-red-50 text-red-800 font-bold text-[10px] border border-red-200">
-                      {selectedRoute.transitChainInfo?.carrierCode || 'AIR'} • Long-Distance Air Chain
-                    </span>
-                  </div>
+            {/* Total Combined Price Card with Itemized Breakdown */}
+            {selectedRoute.priceBreakdown && (() => {
+              const isSelectedRouteCarpool =
+                selectedRoute.route?.id?.includes('CARPOOL') ||
+                selectedRoute.route?.name?.toLowerCase().includes('carpool') ||
+                selectedRoute.route?.name?.toLowerCase().includes('sharing');
 
-                  {/* Flight Route Details Strip */}
-                  <div className="p-3 bg-red-50/60 border border-red-100 rounded-2xl space-y-1.5 text-xs text-neutral-800">
-                    <div className="flex items-center justify-between font-bold">
-                      <span>🛫 Flight: {selectedRoute.transitChainInfo?.flightOrTrainNumber || 'Scheduled Flight'}</span>
-                      <span className="text-red-700">{Math.round(directDistanceKm).toLocaleString()} km</span>
+              const isSelectedCarpoolConfirmed =
+                !!selectedCarpoolMatch ||
+                activeUserCarpools.some((p) => p.status === 'matched' || p.status === 'confirmed');
+
+              return (
+                <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-neutral-900">
+                      <CreditCard className="w-4 h-4 text-emerald-600" />
+                      <span>Total Door-to-Door Journey Fare:</span>
                     </div>
-                    <div className="text-[11px] text-neutral-600 space-y-0.5">
-                      <div>📍 <strong>Origin Hub:</strong> {selectedRoute.transitChainInfo?.originHubName || 'BBI Airport'}</div>
-                      {selectedRoute.transitChainInfo?.layoverHubName && (
-                        <div>🔄 <strong>Transit Layover:</strong> {selectedRoute.transitChainInfo.layoverHubName}</div>
-                      )}
-                      <div>🛬 <strong>Destination Hub:</strong> {selectedRoute.transitChainInfo?.destHubName || selectedRoute.destinationName}</div>
-                      <div className="pt-1 text-emerald-800 font-semibold flex items-center gap-1">
-                        ♿ <strong>Special Assistance:</strong> {selectedRoute.transitChainInfo?.wheelchairAssistanceCode || 'WCHR / DPNA Supported'}
-                      </div>
+                    <div className="text-base font-black text-emerald-700">
+                      {selectedRoute.priceBreakdown.totalPrice === 0
+                        ? '₹0 (Free)'
+                        : isSelectedRouteCarpool && !isSelectedCarpoolConfirmed
+                        ? 'Split on Match'
+                        : `₹${selectedRoute.priceBreakdown.totalPrice.toLocaleString()}`}
                     </div>
                   </div>
 
-                  {/* Clean Flight Progression */}
-                  <div className="space-y-2 text-xs pt-1">
-                    {selectedRoute.turnByTurn?.map((step, sIdx) => (
-                      <div key={sIdx} className="flex items-start gap-2.5">
-                        <div className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                          {sIdx + 1}
+                  {/* Itemized Fares Breakdown (Flight/Train + All Taxi Routes) */}
+                  <div className="space-y-1.5 pt-2 border-t border-neutral-200/80 text-xs">
+                    {selectedRoute.priceBreakdown.itemizedLegs.map((leg, lIdx) => (
+                      <div key={lIdx} className="flex items-center justify-between py-1 bg-white px-2.5 rounded-xl border border-neutral-100">
+                        <div className="flex items-center gap-2 overflow-hidden mr-2">
+                          <span className="shrink-0 text-sm">
+                            {leg.mode === 'flight' ? '✈️' : leg.mode === 'train' ? '🚆' : leg.mode === 'carpool' ? '🚗' : leg.mode === 'bus' ? '🚌' : '🚖'}
+                          </span>
+                          <div className="truncate">
+                            <div className="font-bold text-[11px] text-neutral-900 truncate">{leg.title}</div>
+                            <div className="text-[10px] text-neutral-500 truncate">{leg.from.split('(')[0]} ➔ {leg.to.split('(')[0]}</div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <span className="text-neutral-800 text-[11px] leading-tight block">{step}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
 
-                  {/* Official Air Tariff Breakdown */}
-                  {selectedRoute.fare && (
-                    <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-[11px] text-neutral-800 space-y-0.5">
-                      <div className="flex items-center justify-between font-bold">
-                        <span>Official Tariff Benchmark:</span>
-                        <span className="text-neutral-900 font-black text-xs">
-                          ₹{selectedRoute.fare.exact?.toLocaleString() || selectedRoute.fare.min?.toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-neutral-500 leading-tight">
-                        {selectedRoute.fare.notes || selectedRoute.fare.source}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Booking Link Button */}
-                  <div className="pt-1">
-                    <a
-                      href={selectedRoute.transitChainInfo?.bookingUrl || `https://www.google.com/travel/flights?q=flights+from+BBI+to+${destCoords[0]}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Search Flights & Compare Deals</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-              ) : isTrain ? (
-                /* Case 0B: Indian Railways Superfast / Vande Bharat */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900 flex items-center gap-1">
-                        🚆 {selectedRoute.transitChainInfo?.carrierName || 'Indian Railways Superfast'}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 font-bold text-[10px] border border-blue-200">
-                      IRCTC Official Rail
-                    </span>
-                  </div>
-
-                  {/* Train Details Strip */}
-                  <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-2xl space-y-1.5 text-xs text-neutral-800">
-                    <div className="flex items-center justify-between font-bold">
-                      <span>🚆 {selectedRoute.transitChainInfo?.flightOrTrainNumber || 'Superfast Express'}</span>
-                      <span className="text-blue-700">{Math.round(directDistanceKm).toLocaleString()} km</span>
-                    </div>
-                    <div className="text-[11px] text-neutral-600 space-y-0.5">
-                      <div>📍 <strong>Boarding Station:</strong> {selectedRoute.transitChainInfo?.originHubName || 'Bhubaneswar (BBS PF 1)'}</div>
-                      <div>🏁 <strong>Destination Station:</strong> {selectedRoute.transitChainInfo?.destHubName || selectedRoute.destinationName}</div>
-                      <div className="pt-1 text-emerald-800 font-semibold flex items-center gap-1">
-                        ♿ <strong>Accessibility:</strong> {selectedRoute.transitChainInfo?.wheelchairAssistanceCode || 'Divyangjan Platform Ramp & Buggy'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Progression Timeline */}
-                  <div className="space-y-2 text-xs pt-1">
-                    {selectedRoute.turnByTurn?.map((step, sIdx) => (
-                      <div key={sIdx} className="flex items-start gap-2.5">
-                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                          {sIdx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <span className="text-neutral-800 text-[11px] leading-tight block">{step}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Official IRCTC Gazette Tariff */}
-                  {selectedRoute.fare && (
-                    <div className="p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-[11px] text-blue-950 space-y-0.5">
-                      <div className="flex items-center justify-between font-bold">
-                        <span>🏛️ Indian Railways Gazette Fare:</span>
-                        <span className="text-blue-900 font-black text-xs">
-                          {selectedRoute.fare.type === 'exact'
-                            ? `₹${selectedRoute.fare.exact}`
-                            : `₹${selectedRoute.fare.min} - ₹${selectedRoute.fare.max}`}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-blue-800 leading-tight">
-                        {selectedRoute.fare.notes || selectedRoute.fare.source}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Booking Link */}
-                  <div className="pt-1">
-                    <a
-                      href={selectedRoute.transitChainInfo?.bookingUrl || 'https://www.irctc.co.in/'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Book on IRCTC Official Portal</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-              ) : isInterstateBus ? (
-                /* Case 0C: OSRTC Deluxe Bus */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900">
-                        🚌 {selectedRoute.transitChainInfo?.carrierName || 'OSRTC State Bus'}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px] border border-emerald-200">
-                      State Road Transport
-                    </span>
-                  </div>
-
-                  {/* OSRTC Details Strip */}
-                  <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-2xl space-y-1.5 text-xs text-neutral-800">
-                    <div className="flex items-center justify-between font-bold">
-                      <span>🚌 {selectedRoute.transitChainInfo?.flightOrTrainNumber || 'OSRTC AC Deluxe Coach'}</span>
-                      <span className="text-emerald-700">{Math.round(directDistanceKm).toLocaleString()} km</span>
-                    </div>
-                    <div className="text-[11px] text-neutral-600 space-y-0.5">
-                      <div>📍 <strong>Terminal:</strong> Baramunda ISBT Interstate Bus Terminal</div>
-                      <div>🏁 <strong>Destination:</strong> {selectedRoute.transitChainInfo?.destHubName || selectedRoute.destinationName}</div>
-                    </div>
-                  </div>
-
-                  {/* Progression Timeline */}
-                  <div className="space-y-2 text-xs pt-1">
-                    {selectedRoute.turnByTurn?.map((step, sIdx) => (
-                      <div key={sIdx} className="flex items-start gap-2.5">
-                        <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                          {sIdx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <span className="text-neutral-800 text-[11px] leading-tight block">{step}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Official OSRTC Fare */}
-                  {selectedRoute.fare && (
-                    <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 space-y-0.5">
-                      <div className="flex items-center justify-between font-bold">
-                        <span>🏛️ Official OSRTC State Tariff:</span>
-                        <span className="text-emerald-900 font-black text-xs">₹{selectedRoute.fare.exact}</span>
-                      </div>
-                      <p className="text-[10px] text-emerald-800 leading-tight">
-                        {selectedRoute.fare.notes || selectedRoute.fare.source}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Booking Link */}
-                  <div className="pt-1">
-                    <a
-                      href="https://osrtc.in/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Book on OSRTC Official Portal</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-              ) : isOutstationCab ? (
-                /* Case 0D: Outstation Highway Cab */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-neutral-900">
-                      🚖 Outstation Highway AC Cab
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200">
-                      Doorstep Pickup
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">1</div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{pickupLocationName}</strong>
-                        <span className="text-[10px] text-emerald-700 font-semibold">Private Chauffeur Pickup</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">2</div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{dropoffLocationName}</strong>
-                        <span className="text-[10px] text-neutral-500">Highway transit for {directDistanceKm.toFixed(1)} km</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedRoute.fare && (
-                    <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-[11px] text-amber-950 space-y-0.5">
-                      <div className="flex items-center justify-between font-bold">
-                        <span>Estimated Highway Outstation Fare:</span>
-                        <span className="text-amber-900 font-black text-xs">₹{selectedRoute.fare.exact}</span>
-                      </div>
-                      <p className="text-[10px] text-amber-800 leading-tight">
-                        {selectedRoute.fare.notes || selectedRoute.fare.source}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('uber')}
-                      className="py-2.5 px-3 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Uber Intercity</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('ola')}
-                      className="py-2.5 px-3 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Ola Outstation</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ) : isAutoDirect ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900">
-                        {onDemandAutoData.vehicleModel}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 flex items-center gap-1">
-                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                        {onDemandAutoData.driverRating}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200">
-                      ⚡ ETA {onDemandAutoData.driverEtaMinutes} mins
-                    </span>
-                  </div>
-
-                  {/* Clean 2-Step Direct Progression */}
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        1
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{pickupLocationName}</strong>
-                        <span className="text-[10px] text-emerald-700 font-semibold">0m walking (Door-to-Door)</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{dropoffLocationName}</strong>
-                        <span className="text-[10px] text-neutral-500">Direct entrance arrival</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-neutral-500 leading-relaxed pt-1 border-t border-neutral-100">
-                    Meter fare calculated for {directDistanceKm.toFixed(1)} km (Base ₹30 + ₹12/km).
-                  </p>
-
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('uber')}
-                      className="py-2 px-2 rounded-xl bg-black text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs hover:bg-neutral-800 transition-colors"
-                    >
-                      <span>Uber Auto</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('ola')}
-                      className="py-2 px-2 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
-                    >
-                      <span>Ola Auto</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('rapido')}
-                      className="py-2 px-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
-                    >
-                      <span>Rapido</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ) : isBikeTaxi ? (
-                /* Case 2: Bike Taxi (Rapido/Uber Moto) */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900">
-                        {onDemandBikeData.vehicleModel}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 flex items-center gap-1">
-                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                        {onDemandBikeData.driverRating}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800 font-bold text-[10px] border border-cyan-200">
-                      ⚡ ETA {onDemandBikeData.driverEtaMinutes} mins
-                    </span>
-                  </div>
-
-                  {/* Clean 2-Step Bike Progression */}
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        1
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{pickupLocationName}</strong>
-                        <span className="text-[10px] text-cyan-700 font-semibold">Instant solo pickup</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">{dropoffLocationName}</strong>
-                        <span className="text-[10px] text-neutral-500">Fastest transit (saves ~15m)</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-100">
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('rapido-bike')}
-                      className="py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Rapido Bike</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleBookRide('uber-moto')}
-                      className="py-2 px-3 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <span>Uber Moto</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ) : isSharedAuto ? (
-                /* Case 3: Shared Auto Stand + SMART CARPOOLING CORRIDOR MATCHER */
-                <div className="space-y-3">
-                  {/* Stand Probability Status */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-purple-900">
-                      {sharedStandProbability.standName}
-                    </span>
-                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-black text-[10px] rounded-full">
-                      🎯 {sharedStandProbability.probabilityPercent}% Stand Availability
-                    </span>
-                  </div>
-
-                  {/* Active User's Own Broadcasted Pool Request Banner (If Active) */}
-                  {userActiveBroadcast && !selectedCarpool && (
-                    <div className="p-3 bg-blue-50/90 border border-blue-200 rounded-2xl space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-blue-950 font-bold text-xs">
-                          <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-                          <span>Your Pool Request is Live Broadcast</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCancelBroadcast(userActiveBroadcast.id)}
-                          className="text-[10px] text-red-600 hover:text-red-800 font-bold flex items-center gap-1 hover:underline"
-                        >
-                          <Trash2 className="w-3 h-3" /> Cancel
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-blue-900 space-y-0.5">
-                        <div>
-                          👤 <strong>Name:</strong> {userActiveBroadcast.hostName} • {userActiveBroadcast.role === 'driver' ? `🚗 Driving ${userActiveBroadcast.vehicleModel}` : '🤝 Splitting Auto/Cab'}
-                        </div>
-                        <div>
-                          🕒 <strong>Leaves:</strong> {userActiveBroadcast.scheduledDepartureTime} • <strong>{userActiveBroadcast.availableSeats}</strong> seat(s) requested
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Active Matched Carpool Banner (If Matched with Another User) */}
-                  {selectedCarpool ? (
-                    <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <strong className="text-emerald-950 font-black">
-                            Carpool Matched with {selectedCarpool.hostName}
-                          </strong>
-                        </div>
-                        <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full">
-                          ₹{selectedCarpool.farePerSeat} / Seat
-                        </span>
-                      </div>
-
-                      <div className="text-[11px] text-emerald-900 space-y-0.5">
-                        <div>
-                          📍 <strong>Meeting Point:</strong> {selectedCarpool.optimalMeetingPoint.name} ({selectedCarpool.optimalMeetingPoint.distanceMeters}m walk)
-                        </div>
-                        <div>
-                          🕒 <strong>Meet At:</strong> {selectedCarpool.meetingTime} • {selectedCarpool.vehicleModel} (#{selectedCarpool.vehiclePlate})
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <a
-                          href={`tel:${selectedCarpool.hostPhone}`}
-                          className="py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] text-center flex items-center justify-center gap-1"
-                        >
-                          <Phone className="w-3 h-3" /> Call {selectedCarpool.hostName.split(' ')[0]}
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowCarpoolConfirmedModal(true)}
-                          className="py-1.5 px-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 font-bold text-[11px] text-center"
-                        >
-                          View Meeting Pass
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Smart Carpooling Matcher Prompt */
-                    <div className="p-3 bg-purple-50/80 rounded-2xl border border-purple-200 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-purple-950 font-bold text-xs">
-                          <Users className="w-3.5 h-3.5 text-purple-700" />
-                          <span>Corridor Carpooling & Ride Match</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded-full border border-purple-200 shadow-xs">
-                          Save up to 80%
-                        </span>
-                      </div>
-
-                      {matchingCarpools.length > 0 ? (
-                        <>
-                          <p className="text-[11px] text-purple-900 leading-relaxed">
-                            <strong>{matchingCarpools.length} verified co-rider{matchingCarpools.length > 1 ? 's' : ''}</strong> travelling along this same corridor around {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
-                          </p>
-
-                          <div className="grid grid-cols-2 gap-2 pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => setShowCarpoolListModal(true)}
-                              className="py-2 px-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
-                            >
-                              <span>Browse Matches ({matchingCarpools.length})</span>
-                              <ArrowRight className="w-3 h-3" />
-                            </button>
-
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-bold text-xs text-neutral-800">
+                            {leg.mode === 'carpool' && !isSelectedCarpoolConfirmed
+                              ? 'Split on Match'
+                              : `₹${leg.fare.toLocaleString()}`}
+                          </span>
+                          {leg.mode === 'carpool' ? (
                             <button
                               type="button"
                               onClick={() => setShowRaisePoolModal(true)}
-                              className="py-2 px-2.5 bg-white hover:bg-purple-100/50 text-purple-900 border border-purple-300 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 transition-colors"
+                              className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm"
                             >
-                              <span>+ Post Pool Request</span>
+                              <Users className="w-2.5 h-2.5" />
+                              <span>Raise Request</span>
                             </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-[11px] text-purple-900 leading-relaxed">
-                            No other co-riders currently on this exact corridor ({selectedRoute.originName} ➔ {selectedRoute.destinationName}). Post a request to let commuters along your route find you!
-                          </p>
-
-                          <div className="pt-0.5">
+                          ) : leg.bookingUrl ? (
                             <button
                               type="button"
-                              onClick={() => setShowRaisePoolModal(true)}
-                              className="w-full py-2.5 px-3 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                              onClick={() => handleBookLegUrl(leg.bookingUrl, leg.bookingLabel)}
+                              className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-700 text-white rounded-md text-[10px] font-bold flex items-center gap-1"
                             >
-                              <span>+ Broadcast Your Pool Request</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
+                              <span>Book</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
                             </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
 
-                  {/* Clean 3-Step Stand Progression */}
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        1
+                    {isSelectedCarpoolConfirmed && selectedRoute.priceBreakdown.carpoolSplitSavings && (
+                      <div className="flex items-center justify-between text-[11px] text-purple-700 font-bold px-1 pt-1">
+                        <span>✨ Carpool Sharing Savings Applied:</span>
+                        <span>-₹{selectedRoute.priceBreakdown.carpoolSplitSavings}</span>
                       </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">Board at {pickupLocationName}</strong>
-                        <span className="text-[10px] text-emerald-700 font-semibold">
-                          {sharedStandProbability.distanceMeters}m walk (~{sharedStandProbability.walkingMinutes} min)
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">Corridor Flow: {sharedStandProbability.operatingRoute}</strong>
-                        <span className="text-[10px] text-neutral-500 block">
-                          ~{sharedStandProbability.availableVehiclesCount} autos waiting • Departs every {sharedStandProbability.averageHeadwayMinutes}m
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        3
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900 block">Arrive at {dropoffLocationName}</strong>
-                        <span className="text-[10px] text-neutral-500">Fixed rate: {sharedStandProbability.fixedFareText}</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleStart}
+                className="flex-1 py-3.5 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Navigation className="w-4 h-4" />
+                <span>Start Live Navigation</span>
+              </button>
+
+              {selectedRoute.route?.id?.includes('CARPOOL') || selectedRoute.route?.name?.toLowerCase().includes('carpool') ? (
+                <button
+                  onClick={() => setShowRaisePoolModal(true)}
+                  className="px-4 py-3.5 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Raise Carpool Request</span>
+                </button>
               ) : (
-                /* Case 4: Public City Bus (Mo Bus Route 10 / Route 11) */
-                <div className="space-y-3">
-                  {/* Clean Telemetry Chip Strip */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-md bg-black text-white font-black text-xs">
-                        {matchedOfficialRoute.routeNumber}
-                      </span>
-                      <span className="font-bold text-neutral-800 text-xs">
-                        #{actualVehiclePlate}
-                      </span>
-                    </div>
-                    <span className="text-blue-800 bg-blue-50 font-bold px-2 py-0.5 rounded-md text-[11px] border border-blue-100">
-                      {formattedBusArrivalTime} ({busWaitMinutes}m away)
-                    </span>
-                  </div>
+                <button
+                  onClick={handleBookExternal}
+                  className="px-4 py-3.5 rounded-xl border border-neutral-300 hover:bg-neutral-50 font-bold text-sm text-neutral-800 transition-colors flex items-center gap-1.5 shrink-0"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>{isFlight ? 'Book Flight' : isTrain ? 'Book IRCTC' : 'Book Ride'}</span>
+                </button>
+              )}
+            </div>
 
-                  {/* Clean Minimalist Route Progression Timeline */}
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        1
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <strong className="text-neutral-900">Board: {pickupLocationName}</strong>
-                          <span className="text-emerald-700 font-semibold text-[10px]">
-                            {walkToPickupDistanceMeters}m walk
-                          </span>
+            {/* Complete Turn-by-Turn Arrangement */}
+            <div className="pt-2 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setShowSteps(!showSteps)}
+                className="w-full flex items-center justify-between text-xs font-bold text-neutral-700 py-1"
+              >
+                <span>Full Arrangement ({selectedRoute.turnByTurn?.length || selectedRoute.segments?.length || 3} legs)</span>
+                <ChevronRight className={`w-4 h-4 text-neutral-400 transition-transform ${showSteps ? 'rotate-90' : ''}`} />
+              </button>
+
+              {showSteps && (
+                <div className="mt-3 space-y-2.5 text-xs text-neutral-700">
+                  {selectedRoute.turnByTurn && selectedRoute.turnByTurn.length > 0 ? (
+                    selectedRoute.turnByTurn.map((step, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-neutral-100 text-neutral-800 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          {idx + 1}
                         </div>
-                        <span className="text-[10px] text-neutral-500 block">
-                          {actualBusModel}
-                        </span>
+                        <div className="flex-1 font-medium leading-relaxed">{step}</div>
                       </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div className="flex-1">
-                        <strong className="text-neutral-900">
-                          Ride {matchedOfficialRoute.originTerminus} ➡️ {matchedOfficialRoute.destTerminus}
-                        </strong>
-                        <span className="text-[10px] text-neutral-500 block">
-                          {Math.max(5, (selectedRoute.duration || 15) - walkToPickupMinutes - finalWalkMinutes)} mins in-vehicle
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
-                        3
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <strong className="text-neutral-900">Alight: {dropoffLocationName}</strong>
-                          <span className="text-neutral-500 font-semibold text-[10px]">
-                            {finalWalkDistanceMeters}m walk
-                          </span>
+                    ))
+                  ) : (
+                    selectedRoute.segments?.map((seg, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-neutral-100 text-neutral-800 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1 font-medium leading-relaxed">
+                          {seg.type === 'walk' ? `Walk from ${seg.from} to ${seg.to} (${seg.distance || 100}m, ${seg.duration} min)` :
+                           seg.vehicleType === 'flight' ? `Fly from ${seg.from} to ${seg.to} (~${seg.duration} min)` :
+                           seg.vehicleType === 'train' ? `Ride train from ${seg.from} to ${seg.to} (~${seg.duration} min)` :
+                           `Travel via ${seg.routeName || 'Cab'} from ${seg.from} to ${seg.to} (~${seg.duration} min)`}
                         </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Official CRUT Mo Bus Fare Gazette Note */}
-                  {selectedRoute?.fare && (
-                    <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 space-y-0.5">
-                      <div className="flex items-center justify-between font-bold">
-                        <span className="flex items-center gap-1">
-                          🏛️ Official CRUT Gazette Fare:
-                        </span>
-                        <span className="text-emerald-900 font-black text-xs">
-                          ₹{selectedRoute.fare.exact}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-emerald-800 leading-tight">
-                        {selectedRoute.fare.notes || selectedRoute.fare.source}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Actions Bar */}
-                  <div className="flex items-center justify-between pt-2 border-t border-neutral-100 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setShowWaysToReach(!showWaysToReach)}
-                      className="text-blue-700 hover:text-blue-900 font-semibold underline flex items-center gap-1"
-                    >
-                      <span>Ways to Reach Stop ({waysToReachList.length})</span>
-                      <ChevronDown
-                        className={`w-3 h-3 transition-transform ${
-                          showWaysToReach ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTimetable(activeBoardingStop)}
-                      className="text-neutral-900 hover:underline font-bold"
-                    >
-                      Live Stop Board →
-                    </button>
-                  </div>
-
-                  {/* Expandable Ways to Reach Drawer */}
-                  {showWaysToReach && (
-                    <div className="space-y-1.5 p-2 bg-neutral-50 border border-neutral-200 rounded-xl text-[11px]">
-                      {waysToReachList.map((way, wIdx) => (
-                        <div
-                          key={wIdx}
-                          className="p-2 bg-white rounded-lg border border-neutral-100 flex items-start justify-between gap-2"
-                        >
-                          <div>
-                            <strong className="text-neutral-900 block">{way.title}</strong>
-                            <span className="text-[10px] text-neutral-500 block">
-                              {way.description}
-                            </span>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className="font-bold text-neutral-800 text-[10px] block">
-                              {way.durationMinutes} min
-                            </span>
-                            <span className="text-[9px] text-emerald-700 font-semibold">
-                              {way.fareEstimate}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    ))
                   )}
                 </div>
               )}
             </div>
-          )}
+          </div>
+        </div>
 
-          {/* Big Clean Navigation CTA */}
-          <Button
-            size="lg"
-            onClick={handleStart}
-            className="w-full py-4 text-base font-black rounded-2xl bg-black hover:bg-neutral-800 text-white shadow-lg flex items-center justify-center gap-2 active:scale-[0.99]"
-          >
-            <span>Start Live Navigation</span>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-
-          {/* Collapsible Step-by-Step Directions */}
-          <div className="pt-0.5">
-            <button
-              onClick={() => setShowSteps(!showSteps)}
-              className="w-full py-2.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold flex items-center justify-between transition-colors"
+        {/* Right Column: High Precision Leaflet Map (7 cols) */}
+        <div className="lg:col-span-7 sticky top-4">
+          <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[480px] sm:h-[620px] relative">
+            <MapContainer
+              center={originCoords}
+              zoom={12}
+              className="w-full h-full"
+              zoomControl={false}
             >
-              <span>
-                {showSteps ? 'Hide' : 'View'} Turn-by-Turn ({selectedRoute?.turnByTurn?.length || 4} Steps)
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${showSteps ? 'rotate-180' : ''}`}
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-            </button>
 
-            {showSteps && selectedRoute && (
-              <div className="mt-2 p-3 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-2 text-xs text-neutral-800">
-                {(selectedRoute.turnByTurn && selectedRoute.turnByTurn.length > 0
-                  ? selectedRoute.turnByTurn
-                  : selectedRoute.segments.map((s) => `${s.type.toUpperCase()}: ${s.from} → ${s.to}`)
-                ).map((step, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                      {idx + 1}
-                    </span>
-                    <span className="leading-relaxed">{step}</span>
+              <MapBoundsController coordinates={continuousRoute} />
+
+              {/* 1. Backdrop Casing Polyline for High Contrast & Sharp Clarity */}
+              <Polyline
+                positions={continuousRoute}
+                pathOptions={{
+                  color: '#0f172a',
+                  weight: isFlight ? 6 : 7,
+                  opacity: 0.3,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                }}
+              />
+
+              {/* 2. Distinct Leg 1: Ingress Road Path (Cab / Auto / Walk) */}
+              {ingressPath.length > 0 && (
+                <Polyline
+                  positions={ingressPath}
+                  pathOptions={{
+                    color: selectedRoute.route?.vehicleType === 'bus' ? '#10b981' : '#d97706',
+                    weight: 5,
+                    opacity: 0.95,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+              )}
+
+              {/* 3. Distinct Leg 2: Main Transit Corridor (Flight / Rail / Bus / Carpool) */}
+              <Polyline
+                positions={transitPath}
+                pathOptions={{
+                  color: isFlight ? '#0284c7' : isTrain ? '#1d4ed8' : selectedRoute.route?.vehicleType === 'bus' ? '#059669' : '#9333ea',
+                  weight: isFlight ? 4 : 5,
+                  opacity: 0.95,
+                  dashArray: isFlight ? '12, 10' : undefined,
+                  className: isFlight ? 'animated-flight-flow' : 'animated-route-flow',
+                }}
+              />
+
+              {/* 4. Distinct Leg 3: Egress Road Path (Cab / Walk to Final Destination) */}
+              {egressPath.length > 0 && (
+                <Polyline
+                  positions={egressPath}
+                  pathOptions={{
+                    color: selectedRoute.route?.vehicleType === 'bus' ? '#10b981' : '#d97706',
+                    weight: 5,
+                    opacity: 0.95,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+              )}
+
+              {/* Origin Marker */}
+              <Marker position={originCoords} icon={originPin}>
+                <Popup>
+                  <div className="text-xs font-bold p-1">
+                    <div className="text-emerald-700 flex items-center gap-1">
+                      <span>🟢 Journey Start (A)</span>
+                    </div>
+                    <div className="text-neutral-700 font-semibold mt-1">{selectedRoute.originName}</div>
                   </div>
-                ))}
+                </Popup>
+              </Marker>
+
+              {/* 🔄 TRANSPORT CHANGE / TRANSFER SYMBOL MARKERS ON MAP */}
+              {transferPoints.map((tp) => (
+                <Marker
+                  key={tp.id}
+                  position={[tp.latitude, tp.longitude]}
+                  icon={createTransferPin(tp.fromIcon, tp.toIcon, tp.badgeLabel)}
+                >
+                  <Popup>
+                    <div className="text-xs space-y-1.5 p-1 min-w-[210px]">
+                      <div className="flex items-center gap-1.5 text-amber-700 font-black">
+                        <span>🔄 Transport Change Hub</span>
+                      </div>
+                      <div className="font-bold text-neutral-900 leading-snug">
+                        {tp.locationName}
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[11px] font-medium text-amber-900">
+                        <div className="font-bold mb-0.5">
+                          {tp.fromIcon} {tp.fromMode} ➔ {tp.toIcon} {tp.toMode}
+                        </div>
+                        <div>{tp.description}</div>
+                      </div>
+                      {tp.hasRamp && (
+                        <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Certified Step-Free & Wheelchair Ramp Available</span>
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+
+              {/* Precise Animated Vehicle Tracer / Traveler Pulse */}
+              <Marker
+                position={currentAnimCoord}
+                icon={createVehicleTracerPin(currentVehicleIcon, currentBearing, selectedRoute.route?.shortName || '')}
+              >
+                <Popup>
+                  <div className="text-xs font-bold p-1">
+                    <div>{currentVehicleIcon} Live Vehicle Simulation</div>
+                    <div className="text-neutral-500 font-medium text-[11px]">
+                      Traveling along {selectedRoute.route?.name || 'Route'}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+
+              {/* Destination Marker */}
+              <Marker position={destCoords} icon={destPin}>
+                <Popup>
+                  <div className="text-xs font-bold p-1">
+                    <div className="text-red-600 flex items-center gap-1">
+                      <span>🔴 Journey Destination (B)</span>
+                    </div>
+                    <div className="text-neutral-700 font-semibold mt-1">{selectedRoute.destinationName}</div>
+                  </div>
+                </Popup>
+              </Marker>
+            </MapContainer>
+
+            {/* Floating Top Animation Controller */}
+            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-neutral-200 px-3 py-2 rounded-2xl shadow-lg text-xs font-bold text-neutral-800 flex items-center gap-2 z-[1000]">
+              <button
+                type="button"
+                onClick={() => setIsAnimationPlaying(!isAnimationPlaying)}
+                className={`p-1.5 rounded-xl transition-colors flex items-center gap-1 ${
+                  isAnimationPlaying ? 'bg-black text-white' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                }`}
+                title={isAnimationPlaying ? 'Pause Animation' : 'Play Animation'}
+              >
+                {isAnimationPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                <span className="text-[11px] pr-0.5">{isAnimationPlaying ? 'Live Flow' : 'Play'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnimProgressIndex(0)}
+                className="p-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
+                title="Restart Animation"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnimSpeed(animSpeed === 1 ? 2 : animSpeed === 2 ? 4 : 1)}
+                className="px-2 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-black"
+                title="Change Speed"
+              >
+                {animSpeed}x
+              </button>
+
+              <div className="hidden sm:flex items-center gap-1.5 pl-1 text-[11px] text-neutral-500 font-medium border-l border-neutral-200">
+                <span>{currentVehicleIcon}</span>
+                <span>
+                  {Math.round(((animProgressIndex + 1) / Math.max(1, continuousRoute.length)) * 100)}%
+                </span>
               </div>
-            )}
+            </div>
+
+            {/* Floating Bottom Legend */}
+            <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md border border-neutral-200 px-3.5 py-2 rounded-2xl shadow-lg text-[11px] font-bold text-neutral-800 flex flex-wrap items-center gap-3 z-[1000]">
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span>Origin (A)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>🔄 Transport Change Hub</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                <span>Transit Corridor</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <span>Destination (B)</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* CARPOOL MATCHES MODAL (Corridor Co-Rider Search) */}
-      {/* ========================================================================= */}
-      <Modal
-        open={showCarpoolListModal}
-        onClose={() => setShowCarpoolListModal(false)}
-        title="🚗 Matching Carpools & Co-Riders Along Your Route"
-        size="lg"
-      >
-        <div className="space-y-3.5 text-xs font-sans">
-          <p className="text-neutral-600 text-xs">
-            These verified commuters have an active route along your corridor (<strong>{selectedRoute?.originName} ➔ {selectedRoute?.destinationName}</strong>) around <strong>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>.
-          </p>
-
-          {matchingCarpools.length > 0 ? (
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {matchingCarpools.map((pool) => (
-                <div
-                  key={pool.id}
-                  className="p-4 bg-white border border-neutral-200 hover:border-purple-600 rounded-2xl transition-all space-y-3 shadow-xs"
-                >
-                  {/* Top Host Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-900 font-black text-sm flex items-center justify-center shrink-0">
-                        {pool.hostName.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <strong className="text-sm font-bold text-neutral-900">{pool.hostName}</strong>
-                          <span className="text-[10px] font-bold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                            {pool.hostVerification}
-                          </span>
-                          <span className="text-[10px] font-semibold text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded-md">
-                            {pool.role === 'driver' ? '🚗 Driver' : '🤝 Splitting Ride'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-neutral-500 block">
-                          ⭐ {pool.hostRating} • {pool.hostRidesCount} pooled trips • {pool.vehicleModel}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="text-lg font-black text-emerald-800 block leading-tight">
-                        ₹{pool.farePerSeat} <span className="text-xs font-normal text-neutral-500">/ seat</span>
-                      </span>
-                      <span className="text-[10px] text-emerald-700 font-bold">
-                        Saves {pool.savingsPercent}% vs solo cab
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Corridor & Route Overlap Badge */}
-                  <div className="p-2.5 bg-neutral-50 rounded-xl space-y-1.5 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-neutral-800 flex items-center gap-1">
-                        <Compass className="w-3.5 h-3.5 text-purple-600" />
-                        Corridor: {pool.routeCorridor}
-                      </span>
-                      <span className="px-2 py-0.5 bg-purple-100 text-purple-900 font-bold rounded-md text-[10px]">
-                        🎯 {pool.corridorMatchPercent}% Corridor Overlap
-                      </span>
-                    </div>
-
-                    {/* Common Meeting Point */}
-                    <div className="flex items-start gap-1.5 text-neutral-700 pt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong>Meeting Point:</strong> {pool.optimalMeetingPoint.name} (~{pool.optimalMeetingPoint.distanceMeters}m walk, {pool.optimalMeetingPoint.walkingMinutes} min)
-                        <span className="block text-[10px] text-neutral-500">{pool.optimalMeetingPoint.landmark}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Notes / Route Comment */}
-                  {pool.notes && (
-                    <p className="text-[11px] text-neutral-600 italic bg-purple-50/50 p-2 rounded-lg border border-purple-100">
-                      "{pool.notes}"
-                    </p>
-                  )}
-
-                  {/* Footer: Departure time, seats, and action button */}
-                  <div className="flex items-center justify-between pt-1 border-t border-neutral-100">
-                    <div className="flex items-center gap-3 text-[11px] text-neutral-600">
-                      <span>🕒 Leaves: <strong>{pool.scheduledDepartureTime}</strong></span>
-                      <span>💺 <strong>{pool.availableSeats}</strong> of {pool.totalSeats} seats open</span>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => handleAcceptCarpool(pool)}
-                      className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-4"
-                    >
-                      Match & Accept
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-8 text-center bg-neutral-50 rounded-2xl border border-neutral-200 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center mx-auto text-xl font-bold">
-                🚗
+      {/* =========================================================================
+          CARPOOLING & SHARED RIDES HUB MODAL
+          ========================================================================= */}
+      {showCarpoolModal && (
+        <Modal
+          open={showCarpoolModal}
+          onClose={() => setShowCarpoolModal(false)}
+          title="🚗 Carpooling & Shared Rides Hub"
+        >
+          <div className="space-y-4 font-sans">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-neutral-900">Co-Riders on Your Corridor</h3>
+                <p className="text-xs text-neutral-500">
+                  {selectedRoute?.originName} ➔ {selectedRoute?.destinationName}
+                </p>
               </div>
-              <h4 className="font-bold text-neutral-900 text-sm">No Active Co-Riders on this Exact Corridor</h4>
-              <p className="text-neutral-500 text-xs max-w-sm mx-auto">
-                No verified commuters are heading between <strong>{selectedRoute?.originName}</strong> and <strong>{selectedRoute?.destinationName}</strong> right now.
-              </p>
-              <Button
-                size="sm"
+
+              <button
                 onClick={() => {
-                  setShowCarpoolListModal(false);
+                  setShowCarpoolModal(false);
                   setShowRaisePoolModal(true);
                 }}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs"
+                className="text-xs font-bold text-white bg-black hover:bg-neutral-800 px-3 py-2 rounded-xl transition-all flex items-center gap-1"
               >
-                + Post Your Pool Request Now
-              </Button>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pt-2">
-            <button
-              onClick={() => {
-                setShowCarpoolListModal(false);
-                setShowRaisePoolModal(true);
-              }}
-              className="text-xs font-bold text-purple-700 hover:underline"
-            >
-              Can't find a matching ride? Broadcast a Request →
-            </button>
-
-            <Button variant="secondary" size="sm" onClick={() => setShowCarpoolListModal(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ========================================================================= */}
-      {/* RAISE CARPOOL REQUEST MODAL */}
-      {/* ========================================================================= */}
-      <Modal
-        open={showRaisePoolModal}
-        onClose={() => setShowRaisePoolModal(false)}
-        title="📢 Raise a Carpooling / Shared Ride Request"
-        size="md"
-      >
-        <form onSubmit={handleRaisePoolSubmit} className="space-y-4 text-xs font-sans">
-          <p className="text-neutral-600 text-xs">
-            Broadcast your journey to verified commuters travelling along your route corridor. You can offer empty seats in your car or find co-passengers to split an auto/cab.
-          </p>
-
-          {/* Corridor Preview */}
-          <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5 text-xs">
-            <div className="flex items-center gap-2 text-neutral-900 font-bold">
-              <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Pickup: {selectedRoute?.originName || 'Origin'}</span>
-            </div>
-            <div className="flex items-center gap-2 text-neutral-900 font-bold">
-              <MapPin className="w-3.5 h-3.5 text-red-600" />
-              <span>Drop-off: {selectedRoute?.destinationName || 'Destination'}</span>
-            </div>
-          </div>
-
-          {/* Role Mode Selector */}
-          <div className="space-y-1">
-            <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-              Your Pooling Mode
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setPoolRoleInput('passenger_split')}
-                className={`py-2 px-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
-                  poolRoleInput === 'passenger_split'
-                    ? 'border-purple-600 bg-purple-50/80 text-purple-950 font-bold'
-                    : 'border-neutral-200 bg-white text-neutral-600'
-                }`}
-              >
-                <Users className="w-4 h-4 text-purple-600 shrink-0" />
-                <div>
-                  <span className="block text-xs leading-tight">Commuter</span>
-                  <span className="text-[10px] text-neutral-500 block">Split Cab / Auto</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPoolRoleInput('driver')}
-                className={`py-2 px-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
-                  poolRoleInput === 'driver'
-                    ? 'border-purple-600 bg-purple-50/80 text-purple-950 font-bold'
-                    : 'border-neutral-200 bg-white text-neutral-600'
-                }`}
-              >
-                <Car className="w-4 h-4 text-purple-600 shrink-0" />
-                <div>
-                  <span className="block text-xs leading-tight">Car Owner</span>
-                  <span className="text-[10px] text-neutral-500 block">Offer Empty Seats</span>
-                </div>
+                <Plus className="w-3.5 h-3.5" />
+                <span>Offer / Request</span>
               </button>
             </div>
-          </div>
 
-          {/* Real User Profile Info */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                Your Full Name
-              </label>
-              <input
-                type="text"
-                value={poolNameInput}
-                onChange={(e) => setPoolNameInput(e.target.value)}
-                placeholder="e.g. Novonil Das"
-                required
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 font-bold text-xs text-neutral-900 focus:border-purple-600 focus:outline-none"
-              />
-            </div>
+            {matchingCarpools.length > 0 ? (
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {matchingCarpools.map((pool) => (
+                  <div
+                    key={pool.id}
+                    className="p-3.5 rounded-2xl border border-neutral-200 bg-neutral-50 hover:bg-white transition-all space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-bold text-xs text-neutral-900 flex items-center gap-1.5">
+                          <span>{pool.hostName}</span>
+                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
+                            {pool.hostVerification}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">
+                          {pool.vehicleModel} • {pool.role === 'driver' ? 'Offering Seats' : 'Splitting Cab/Auto'}
+                        </div>
+                      </div>
 
-            <div className="space-y-1">
-              <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                Phone / WhatsApp Number
-              </label>
-              <input
-                type="tel"
-                value={poolPhoneInput}
-                onChange={(e) => setPoolPhoneInput(e.target.value)}
-                placeholder="+91 98612 34567"
-                required
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 font-bold text-xs text-neutral-900 focus:border-purple-600 focus:outline-none"
-              />
-            </div>
-          </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black text-purple-700">₹{pool.farePerSeat}</div>
+                        <div className="text-[10px] text-neutral-400 line-through">₹{pool.originalSoloFare}</div>
+                      </div>
+                    </div>
 
-          {/* If Driver: Vehicle Model & Plate */}
-          {poolRoleInput === 'driver' && (
-            <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-              <div className="space-y-1">
-                <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                  Vehicle Model
-                </label>
-                <input
-                  type="text"
-                  value={poolVehicleModelInput}
-                  onChange={(e) => setPoolVehicleModelInput(e.target.value)}
-                  placeholder="e.g. Tata Nexon EV"
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 font-bold text-xs text-neutral-900 focus:border-purple-600 focus:outline-none"
-                />
+                    <div className="text-xs text-neutral-700 bg-white p-2 rounded-xl border border-neutral-100 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="font-medium text-[11px]">{pool.optimalMeetingPoint.name}</span>
+                      </div>
+                      <span className="text-[11px] font-bold text-neutral-500">
+                        {pool.scheduledDepartureTime}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => handleAcceptCarpool(pool)}
+                      className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Request Seat / Match with {pool.hostName.split(' ')[0]}</span>
+                    </button>
+                  </div>
+                ))}
               </div>
-
-              <div className="space-y-1">
-                <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                  Registration Plate
-                </label>
-                <input
-                  type="text"
-                  value={poolVehiclePlateInput}
-                  onChange={(e) => setPoolVehiclePlateInput(e.target.value)}
-                  placeholder="e.g. OD-02-AZ-8890"
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 font-bold text-xs text-neutral-900 focus:border-purple-600 focus:outline-none uppercase"
-                />
+            ) : (
+              <div className="p-6 text-center bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
+                <Users className="w-8 h-8 text-neutral-400 mx-auto" />
+                <div className="text-xs font-bold text-neutral-800">No Co-Riders Currently on this Corridor</div>
+                <p className="text-[11px] text-neutral-500 max-w-xs mx-auto">
+                  Be the first to post a carpool request for {urlDepartTime || '09:30 AM'} and commuters along your route will match with you!
+                </p>
+                <button
+                  onClick={() => {
+                    setShowCarpoolModal(false);
+                    setShowRaisePoolModal(true);
+                  }}
+                  className="mt-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Post Carpool Request</span>
+                </button>
               </div>
-            </div>
-          )}
-
-          {/* Time & Seats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                Departure Time
-              </label>
-              <input
-                type="time"
-                value={poolDepartTimeInput}
-                onChange={(e) => setPoolDepartTimeInput(e.target.value)}
-                required
-                className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 font-bold text-sm text-neutral-900 focus:border-purple-600 focus:outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-                {poolRoleInput === 'driver' ? 'Open Seats' : 'Seats Needed'}
-              </label>
-              <select
-                value={poolSeatsInput}
-                onChange={(e) => setPoolSeatsInput(Number(e.target.value))}
-                className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 font-bold text-xs text-neutral-900 focus:border-purple-600 focus:outline-none"
-              >
-                <option value={1}>1 Seat</option>
-                <option value={2}>2 Seats</option>
-                <option value={3}>3 Seats</option>
-                <option value={4}>4 Seats</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Step Free */}
-          <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between gap-2">
-            <div>
-              <strong className="text-purple-950 block">Step-Free / Accessible Request</strong>
-              <span className="text-[10px] text-purple-800 block">Require folding wheelchair boot space or ground-level seating</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={poolStepFreeInput}
-              onChange={(e) => setPoolStepFreeInput(e.target.checked)}
-              className="w-4 h-4 rounded text-purple-600 cursor-pointer"
-            />
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-1">
-            <label className="block font-bold text-neutral-800 uppercase text-[10px]">
-              Notes / Preferred Landmark
-            </label>
-            <input
-              type="text"
-              value={poolNotesInput}
-              onChange={(e) => setPoolNotesInput(e.target.value)}
-              placeholder="e.g. Can meet at main gate bus shelter"
-              className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:border-purple-600 focus:outline-none"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              type="button"
-              onClick={() => setShowRaisePoolModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button size="sm" type="submit" className="bg-purple-700 hover:bg-purple-800 text-white font-bold">
-              Broadcast Pool Request
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ========================================================================= */}
-      {/* CONFIRMED CARPOOL & COMMON MEETING POINT PASS MODAL */}
-      {/* ========================================================================= */}
-      {selectedCarpool && (
-        <Modal
-          open={showCarpoolConfirmedModal}
-          onClose={() => setShowCarpoolConfirmedModal(false)}
-          title="🤝 Carpool Matched & Meeting Point Pass"
-          size="md"
-        >
-          <div className="space-y-4 text-xs font-sans">
-            {/* Top Success Banner */}
-            <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between">
-              <div>
-                <strong className="text-emerald-950 block text-sm font-black">
-                  Carpool Match Confirmed 🎉
-                </strong>
-                <span className="text-[11px] text-emerald-800">
-                  You are paired with {selectedCarpool.hostName} ({selectedCarpool.hostVerification})
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-base font-black text-emerald-900 block">
-                  ₹{selectedCarpool.farePerSeat}
-                </span>
-                <span className="text-[10px] text-emerald-700">Split Fare</span>
-              </div>
-            </div>
-
-            {/* Optimal Meeting Point Details */}
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 bg-purple-100 px-2 py-0.5 rounded-md inline-block">
-                📍 Common Meeting Location & Time
-              </span>
-              <h3 className="text-sm font-bold text-neutral-900">
-                {selectedCarpool.optimalMeetingPoint.name}
-              </h3>
-              <p className="text-[11px] text-neutral-600">
-                {selectedCarpool.optimalMeetingPoint.landmark}
-              </p>
-
-              <div className="flex items-center justify-between pt-1 text-xs border-t border-purple-200/70">
-                <span className="font-bold text-neutral-900">
-                  🕒 Meet at: <span className="text-purple-900 font-black">{selectedCarpool.meetingTime}</span>
-                </span>
-                <span className="text-purple-800 font-semibold">
-                  ~{selectedCarpool.optimalMeetingPoint.distanceMeters}m walk ({selectedCarpool.optimalMeetingPoint.walkingMinutes} min)
-                </span>
-              </div>
-            </div>
-
-            {/* Co-Rider Vehicle Details */}
-            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between text-xs">
-              <div>
-                <span className="text-[10px] text-neutral-500 block uppercase font-bold">Vehicle Info</span>
-                <strong className="text-neutral-900 block">{selectedCarpool.vehicleModel}</strong>
-                <span className="text-[10px] text-neutral-600 block">Plate #{selectedCarpool.vehiclePlate}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-neutral-500 block uppercase font-bold">Co-Rider Rating</span>
-                <span className="font-bold text-amber-600 flex items-center justify-end gap-1">
-                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                  {selectedCarpool.hostRating}
-                </span>
-              </div>
-            </div>
-
-            {/* Direct Connect Buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <a
-                href={`tel:${selectedCarpool.hostPhone}`}
-                className="py-3 px-3 rounded-xl bg-neutral-900 hover:bg-black text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                <span>Call {selectedCarpool.hostName.split(' ')[0]}</span>
-              </a>
-
-              <a
-                href={`https://api.whatsapp.com/send?phone=${selectedCarpool.hostPhone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(
-                  `Hi ${selectedCarpool.hostName}, I matched your carpool on Maarg Darshan! Meeting you at ${selectedCarpool.optimalMeetingPoint.name} at ${selectedCarpool.meetingTime}.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>WhatsApp Co-Rider</span>
-              </a>
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowCarpoolConfirmedModal(false)}
-              >
-                Done
-              </Button>
-            </div>
+            )}
           </div>
         </Modal>
       )}
 
-      {/* Live Stop Board Timetable Modal */}
-      <Modal
-        open={showTimetableModal}
-        onClose={() => setShowTimetableModal(false)}
-        title={`🚏 Live Arrival Board — ${selectedTimetableStop?.name || activeBoardingStop.name}`}
-        size="lg"
-      >
-        <div className="space-y-3 text-xs font-sans">
-          <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-neutral-700 text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-neutral-900">
-                {selectedTimetableStop?.bayNumber || activeBoardingStop.bayNumber}
-              </span>
-              <span>•</span>
-              <span className="text-emerald-700 font-bold">♿ Low-Floor Ramp Certified</span>
-            </div>
-            <span className="text-neutral-500">
-              Live: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </div>
-
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-            {modalArrivals.map((bus, i) => (
-              <div
-                key={i}
-                className="p-3 bg-white border border-neutral-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:border-neutral-400 transition-colors"
-              >
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-black text-white rounded font-black text-xs">
-                      {bus.routeNumber}
-                    </span>
-                    <strong className="text-neutral-900 text-xs">To {bus.destination}</strong>
-                  </div>
-                  <span className="text-[11px] text-neutral-500 block">
-                    From {bus.originTerminus} • Vehicle #{bus.vehicleNumber}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 self-end sm:self-center">
-                  <div className="text-right">
-                    <span className="text-sm font-black text-neutral-900 block leading-tight">
-                      {bus.scheduledTime}
-                    </span>
-                    <span className="text-[10px] text-neutral-500">
-                      in {bus.minutesAway} mins
-                    </span>
-                  </div>
-
-                  <span
-                    className={`px-2 py-1 rounded-lg font-bold text-[10px] ${
-                      bus.status === 'ARRIVING_NOW'
-                        ? 'bg-emerald-100 text-emerald-800 animate-pulse'
-                        : bus.status === 'DELAYED'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-blue-50 text-blue-800 border border-blue-100'
-                    }`}
-                  >
-                    {bus.status === 'ARRIVING_NOW'
-                      ? '⚡ Arriving'
-                      : bus.status === 'DELAYED'
-                      ? `+${bus.delayMinutes}m`
-                      : 'On Time'}
-                  </span>
-                </div>
+      {/* =========================================================================
+          RAISE / OFFER CARPOOL REQUEST MODAL
+          ========================================================================= */}
+      {showRaisePoolModal && (
+        <Modal
+          open={showRaisePoolModal}
+          onClose={() => setShowRaisePoolModal(false)}
+          title="📢 Offer or Request a Carpool"
+        >
+          <form onSubmit={handleRaisePoolSubmit} className="space-y-3.5 font-sans">
+            {/* Role Selection */}
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block mb-1.5">
+                Your Role
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPoolRoleInput('passenger_split')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                    poolRoleInput === 'passenger_split'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  🙋 Passenger (Split Fare)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPoolRoleInput('driver')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                    poolRoleInput === 'driver'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  🚗 Driver (Offer Seats)
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
 
-          <div className="flex justify-end pt-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowTimetableModal(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Fare Compare Modal */}
-      <Modal
-        open={showCompareModal}
-        onClose={() => setShowCompareModal(false)}
-        title="Compare Routes & Fares"
-        size="md"
-      >
-        <div className="divide-y divide-neutral-100 text-xs">
-          {searchResults.map((r, rIdx) => (
-            <div
-              key={r.route.id || rIdx}
-              onClick={() => {
-                setSelectedIndex(rIdx);
-                setShowCompareModal(false);
-              }}
-              className="py-3 flex items-center justify-between cursor-pointer hover:bg-neutral-50 px-2 rounded-xl"
-            >
+            {/* Name & Phone */}
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <span className="font-bold text-sm text-neutral-900 block">{r.route.name}</span>
-                <span className="text-neutral-500 text-xs">
-                  {r.duration} min • {r.walkingDistance}m walking •{' '}
-                  {r.stairs === 0 ? '♿ Step-Free' : `${r.stairs} Stairs`}
-                </span>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Your Name</label>
+                <input
+                  type="text"
+                  value={poolNameInput}
+                  onChange={(e) => setPoolNameInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                  required
+                />
               </div>
-              <div className="text-right">
-                <span className="font-black text-base text-emerald-800 block">
-                  {r.fare?.type === 'exact'
-                    ? `₹${r.fare.exact}`
-                    : `₹${r.fare?.min || 15} - ₹${r.fare?.max || 25}`}
-                </span>
-                <span className="text-[10px] text-neutral-500">{r.scores.overall}% Match</span>
+              <div>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Phone Number</label>
+                <input
+                  type="text"
+                  value={poolPhoneInput}
+                  onChange={(e) => setPoolPhoneInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                  required
+                />
               </div>
             </div>
-          ))}
-        </div>
-      </Modal>
+
+            {/* Vehicle details if Driver */}
+            {poolRoleInput === 'driver' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Model</label>
+                  <input
+                    type="text"
+                    value={poolVehicleModelInput}
+                    onChange={(e) => setPoolVehicleModelInput(e.target.value)}
+                    placeholder="e.g. Tata Nexon EV"
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Plate</label>
+                  <input
+                    type="text"
+                    value={poolVehiclePlateInput}
+                    onChange={(e) => setPoolVehiclePlateInput(e.target.value)}
+                    placeholder="e.g. OD-02-AZ-8890"
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Departure Time & Seats */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Departure Time</label>
+                <input
+                  type="time"
+                  value={poolDepartTimeInput}
+                  onChange={(e) => setPoolDepartTimeInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                  {poolRoleInput === 'driver' ? 'Available Seats' : 'Seats Needed'}
+                </label>
+                <select
+                  value={poolSeatsInput}
+                  onChange={(e) => setPoolSeatsInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black cursor-pointer"
+                >
+                  <option value={1}>1 Seat</option>
+                  <option value={2}>2 Seats</option>
+                  <option value={3}>3 Seats</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Accessibility / Boot Space */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="stepFreeCheck"
+                checked={poolStepFreeInput}
+                onChange={(e) => setPoolStepFreeInput(e.target.checked)}
+                className="w-4 h-4 rounded text-purple-600 border-neutral-300 focus:ring-purple-500"
+              />
+              <label htmlFor="stepFreeCheck" className="text-xs font-medium text-neutral-700 cursor-pointer">
+                Space for folding wheelchair or large luggage
+              </label>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">Notes (Optional)</label>
+              <input
+                type="text"
+                value={poolNotesInput}
+                onChange={(e) => setPoolNotesInput(e.target.value)}
+                placeholder="e.g. Can meet at Campus Gate or KIIT Square"
+                className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRaisePoolModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-neutral-200 font-bold text-xs text-neutral-600 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors shadow-sm"
+              >
+                Broadcast to Corridor
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

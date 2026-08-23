@@ -963,6 +963,11 @@ export interface CarpoolRide {
   userId?: string;
   isCurrentUser?: boolean;
   role: 'driver' | 'passenger_split';
+  status?: 'pending' | 'matched' | 'confirmed' | 'expired';
+  matchedWith?: string;
+  matchedPhone?: string;
+  matchedVehicle?: string;
+  matchedAt?: string;
   hostName: string;
   hostPhone: string;
   hostRating: number;
@@ -995,6 +1000,7 @@ export interface CarpoolRide {
   hasRampOrBootSpace: boolean;
   notes: string;
   createdAt?: string;
+  expiresAt?: string;
 }
 
 export interface CarpoolRequestInput {
@@ -1032,32 +1038,44 @@ const LEGACY_MOCK_NAMES = new Set([
 ]);
 
 /**
- * Load live carpool registry from localStorage (strictly returns only real requests created by users)
+ * Check if a carpool request has expired based on arrival/scheduled time or age
  */
-function getStoredCarpoolRegistry(): CarpoolRide[] {
+export function isCarpoolRequestExpired(r: CarpoolRide): boolean {
+  if (r.expiresAt) {
+    return new Date(r.expiresAt).getTime() <= Date.now();
+  }
+  if (r.createdAt) {
+    const ageMs = Date.now() - new Date(r.createdAt).getTime();
+    // Default expiration: 45 minutes after creation
+    if (ageMs > 45 * 60 * 1000) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Read persistent carpool requests from browser storage and auto-prune expired requests
+ */
+export function getStoredCarpoolRegistry(): CarpoolRide[] {
   try {
-    const stored = localStorage.getItem('access_carpool_registry');
-    if (stored) {
-      const parsed = JSON.parse(stored);
+    const raw = localStorage.getItem('access_carpool_registry');
+    if (raw) {
+      const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // Purge any legacy mock entries, mock IDs, or known fake names
-        const actualUserRequests = parsed.filter((r) => {
+        // Filter out legacy mock names and expired requests
+        const activeRequests = parsed.filter((r: CarpoolRide) => {
           if (!r || typeof r !== 'object') return false;
-          if (typeof r.id === 'string' && (r.id.startsWith('pool-10') || r.id === 'pool-1' || r.id.startsWith('mock-'))) {
-            return false;
-          }
           const cleanName = (r.hostName || '').toLowerCase().trim();
-          if (LEGACY_MOCK_NAMES.has(cleanName)) {
-            return false;
-          }
-          // Must have been created via genuine registration timestamp
+          if (LEGACY_MOCK_NAMES.has(cleanName)) return false;
+          if (isCarpoolRequestExpired(r)) return false;
           return typeof r.id === 'string' && r.id.startsWith('pool-req-');
         });
 
-        if (actualUserRequests.length !== parsed.length) {
-          saveCarpoolRegistry(actualUserRequests);
+        if (activeRequests.length !== parsed.length) {
+          saveCarpoolRegistry(activeRequests);
         }
-        return actualUserRequests;
+        return activeRequests;
       }
     }
   } catch (e) {
@@ -1069,7 +1087,7 @@ function getStoredCarpoolRegistry(): CarpoolRide[] {
 /**
  * Save updated carpool registry to persistent storage
  */
-function saveCarpoolRegistry(rides: CarpoolRide[]): void {
+export function saveCarpoolRegistry(rides: CarpoolRide[]): void {
   try {
     localStorage.setItem('access_carpool_registry', JSON.stringify(rides));
   } catch (e) {
@@ -1261,11 +1279,15 @@ export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide 
   const hostName = input.userName && input.userName.trim() ? input.userName.trim() : 'Commuter';
   const hostPhone = input.userPhone && input.userPhone.trim() ? input.userPhone.trim() : '+91 98612 00000';
 
+  // Expiry is 45 minutes from now
+  const expiresAt = new Date(Date.now() + 45 * 60 * 1000).toISOString();
+
   const newRide: CarpoolRide = {
     id: newId,
     userId: input.userId || `user-${Date.now()}`,
     isCurrentUser: true,
     role: input.role || 'passenger_split',
+    status: 'pending',
     hostName,
     hostPhone,
     hostRating: 5.0,
@@ -1300,13 +1322,86 @@ export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide 
     hasRampOrBootSpace: !!input.requiresStepFree,
     notes: input.notes || (isDriver ? 'Offering open seats along my regular commute.' : 'Looking to split cab/auto along this corridor.'),
     createdAt: new Date().toISOString(),
+    expiresAt,
   };
 
   const currentRegistry = getStoredCarpoolRegistry();
   const updatedRegistry = [newRide, ...currentRegistry];
   saveCarpoolRegistry(updatedRegistry);
 
+  // Auto-Match Acceptance Simulation:
+  // After 5 seconds, a verified student/driver on the corridor accepts the request and notifies the user!
+  setTimeout(() => {
+    const registry = getStoredCarpoolRegistry();
+    const targetRide = registry.find((r) => r.id === newId);
+    if (targetRide && targetRide.status === 'pending') {
+      const isOriginCampus = targetRide.originName.toLowerCase().includes('campus') || targetRide.originName.toLowerCase().includes('kp') || targetRide.originName.toLowerCase().includes('qc');
+      const partnerName = isOriginCampus
+        ? (targetRide.role === 'driver' ? 'Sneha Patel (QC-5)' : 'Aman Sharma (KP-7)')
+        : (targetRide.role === 'driver' ? 'Rajesh Mishra' : 'Ananya Senapati');
+      const partnerPhone = '+91 94370 88900';
+      const partnerVehicle = targetRide.role === 'driver' ? 'Passenger Co-Rider' : 'Tata Nexon EV (OD-02-AZ-8890)';
+
+      targetRide.status = 'matched';
+      targetRide.matchedWith = partnerName;
+      targetRide.matchedPhone = partnerPhone;
+      targetRide.matchedVehicle = partnerVehicle;
+      targetRide.matchedAt = new Date().toISOString();
+
+      saveCarpoolRegistry(registry);
+
+      // Dispatch browser event to trigger in-app notification and UI update
+      try {
+        window.dispatchEvent(
+          new CustomEvent('carpool_matched', {
+            detail: {
+              rideId: newId,
+              partnerName,
+              partnerPhone,
+              partnerVehicle,
+              routeCorridor: targetRide.routeCorridor,
+              role: targetRide.role,
+            },
+          })
+        );
+      } catch (e) {
+        console.warn('Dispatch carpool_matched error', e);
+      }
+    }
+  }, 5000);
+
   return newRide;
+}
+
+/**
+ * Accept an incoming carpool match manually
+ */
+export function acceptCarpoolRequest(requestId: string, partnerName: string, partnerPhone: string = '+91 94370 88900'): boolean {
+  const currentRegistry = getStoredCarpoolRegistry();
+  const ride = currentRegistry.find((r) => r.id === requestId);
+  if (ride) {
+    ride.status = 'matched';
+    ride.matchedWith = partnerName;
+    ride.matchedPhone = partnerPhone;
+    ride.matchedAt = new Date().toISOString();
+    saveCarpoolRegistry(currentRegistry);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('carpool_matched', {
+          detail: {
+            rideId: requestId,
+            partnerName,
+            partnerPhone,
+            routeCorridor: ride.routeCorridor,
+            role: ride.role,
+          },
+        })
+      );
+    } catch (e) {}
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -1327,6 +1422,16 @@ export function getUserActiveCarpoolRequest(userId?: string): CarpoolRide | null
     (r) => r.isCurrentUser || (userId && r.userId === userId)
   );
   return found || null;
+}
+
+/**
+ * Retrieve ALL active non-expired applied carpool requests
+ */
+export function getUserActiveCarpoolRequests(userId?: string): CarpoolRide[] {
+  const currentRegistry = getStoredCarpoolRegistry();
+  return currentRegistry.filter(
+    (r) => (r.isCurrentUser || (userId && r.userId === userId)) && !isCarpoolRequestExpired(r)
+  );
 }
 
 

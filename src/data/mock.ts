@@ -10,7 +10,11 @@ import {
   interpolateCurvedPoints,
   interpolateGreatCirclePoints,
   MAJOR_AIRPORTS,
+  MAJOR_RAILWAY_STATIONS,
   findNearestAirport,
+  findNearestRailwayStation,
+  resolveExactTrainSchedule,
+  resolveExactFlightSchedule,
 } from '../utils/onlineRouting';
 
 import { OFFICIAL_STOPS, OFFICIAL_ROUTES, calculateOfficialBusFare, type OfficialBusLine, type TransitStopInfo } from './liveTimetable';
@@ -116,13 +120,85 @@ export const DEMO_USER: User = {
 // ============ FAMOUS SHARED TAXI & AUTO STANDS ============
 export const DEMO_TRANSPORT_STANDS = [
   {
+    id: 'ts-kp-hub',
+    name: 'Campus 12 & KP 7-11 / QC 7-9 Auto Stand',
+    type: 'AUTO_RICKSHAW',
+    latitude: 20.3568,
+    longitude: 85.8162,
+    address: 'Near KP-7 Gate, Campus 12 Complex',
+    operatingHours: '06:00 - 23:00',
+    typicalFareMin: 15,
+    typicalFareMax: 30,
+    currency: 'INR',
+  },
+  {
+    id: 'ts-c6-lib',
+    name: 'Campus 6 Library & QC 5-6 Auto Stand',
+    type: 'AUTO_RICKSHAW',
+    latitude: 20.3553,
+    longitude: 85.8185,
+    address: 'Central Library Avenue, Gate 3',
+    operatingHours: '06:00 - 23:30',
+    typicalFareMin: 15,
+    typicalFareMax: 30,
+    currency: 'INR',
+  },
+  {
+    id: 'ts-c15-cse',
+    name: 'Campus 15 CSE & KP 14-15 Auto Stand',
+    type: 'AUTO_RICKSHAW',
+    latitude: 20.3530,
+    longitude: 85.8245,
+    address: 'School of Computer Engineering Gate, Campus 15',
+    operatingHours: '06:30 - 22:30',
+    typicalFareMin: 15,
+    typicalFareMax: 35,
+    currency: 'INR',
+  },
+  {
+    id: 'ts-c3-aud',
+    name: 'Campus 3 Auditorium & KP 1-2 Stand',
+    type: 'AUTO_RICKSHAW',
+    latitude: 20.3510,
+    longitude: 85.8185,
+    address: 'KIIT Gate 2, Main Auditorium Road',
+    operatingHours: '06:00 - 23:00',
+    typicalFareMin: 15,
+    typicalFareMax: 30,
+    currency: 'INR',
+  },
+  {
+    id: 'ts-c16-law',
+    name: 'Campus 16 Law School & KP 16 Stand',
+    type: 'AUTO_RICKSHAW',
+    latitude: 20.3602,
+    longitude: 85.8242,
+    address: 'KIIT School of Law Main Gate, Campus 16',
+    operatingHours: '06:30 - 22:00',
+    typicalFareMin: 20,
+    typicalFareMax: 40,
+    currency: 'INR',
+  },
+  {
+    id: 'ts-kims-gate',
+    name: 'KIMS Hospital & Medical Gate Taxi Stand',
+    type: 'TAXI',
+    latitude: 20.3542,
+    longitude: 85.8145,
+    address: 'KIMS Hospital Emergency & OPD Gate',
+    operatingHours: '24 Hours',
+    typicalFareMin: 20,
+    typicalFareMax: 50,
+    currency: 'INR',
+  },
+  {
     id: 'ts-1',
     name: 'KIIT Square Shared Auto & Taxi Stand',
     type: 'AUTO_RICKSHAW',
     latitude: 20.3540,
     longitude: 85.8168,
     address: 'Near KIIT Gate 1, Chandaka Industrial Estate Road',
-    operatingHours: '06:00 - 22:30',
+    operatingHours: '06:00 - 23:00',
     typicalFareMin: 15,
     typicalFareMax: 30,
     currency: 'INR',
@@ -140,30 +216,6 @@ export const DEMO_TRANSPORT_STANDS = [
     currency: 'INR',
   },
   {
-    id: 'ts-3',
-    name: 'Jaydev Vihar Overbridge Taxi Junction',
-    type: 'SHARED_TAXI',
-    latitude: 20.2980,
-    longitude: 85.8210,
-    address: 'Under Jaydev Vihar Flyover, NH16',
-    operatingHours: '24 Hours',
-    typicalFareMin: 25,
-    typicalFareMax: 50,
-    currency: 'INR',
-  },
-  {
-    id: 'ts-4',
-    name: 'Master Canteen Railway Station Taxi Hub',
-    type: 'SHARED_TAXI',
-    latitude: 20.2644,
-    longitude: 85.8398,
-    address: 'Bhubaneswar Railway Station Platform 1 Exit',
-    operatingHours: '24 Hours',
-    typicalFareMin: 30,
-    typicalFareMax: 60,
-    currency: 'INR',
-  },
-  {
     id: 'ts-5',
     name: 'Infocity Square Shared Cab Point',
     type: 'AUTO_RICKSHAW',
@@ -176,15 +228,15 @@ export const DEMO_TRANSPORT_STANDS = [
     currency: 'INR',
   },
   {
-    id: 'ts-6',
-    name: 'Barmunda ISBT Terminal Shared Stand',
-    type: 'AUTO_RICKSHAW',
-    latitude: 20.2810,
-    longitude: 85.7950,
-    address: 'Barmunda Bus Terminal Outer Bay',
+    id: 'ts-4',
+    name: 'Master Canteen Railway Station Taxi Hub',
+    type: 'SHARED_TAXI',
+    latitude: 20.2644,
+    longitude: 85.8398,
+    address: 'Bhubaneswar Railway Station Platform 1 Exit',
     operatingHours: '24 Hours',
-    typicalFareMin: 25,
-    typicalFareMax: 50,
+    typicalFareMin: 30,
+    typicalFareMax: 60,
     currency: 'INR',
   },
   {
@@ -203,11 +255,11 @@ export const DEMO_TRANSPORT_STANDS = [
 
 /**
  * High-precision Real-World Multi-Tier Transit Chaining Engine
- * Dynamically recognizes:
- * 1. Local Urban (CRUT Mo Bus, Direct Auto, Shared Stand, Bike Taxi - Distance <= 45km)
- * 2. Regional Intercity (Indian Railways Intercity / Vande Bharat, OSRTC Deluxe Buses - 45km < D <= 600km)
- * 3. Domestic Long-Distance (Domestic Flight Chains via BBI, Rajdhani Superfast Express - 600km < D <= 3500km)
- * 4. International Global (International Airline Chains BBI -> Hub -> Destination Airport + Airport Express Metro)
+ * Dynamically connects combinations of transport:
+ * 1. Local Urban (City Bus, Direct Auto, Shared Stand, Bike Taxi - Distance <= 45km)
+ * 2. Regional Intercity (Vande Bharat / Intercity Train + Local Cabs, Deluxe Buses - 45km < D <= 500km)
+ * 3. Domestic Long-Distance (Domestic Flight + Airport Cabs, Rajdhani Superfast Train - 500km < D <= 2500km)
+ * 4. International Global (Multi-hop Airline Chains via Global Hubs + Airport Express)
  */
 export async function generateDynamicSearchResults(
   origin: { lat: number; lng: number; name: string },
@@ -228,7 +280,7 @@ export async function generateDynamicSearchResults(
   let travelScope: 'local' | 'regional' | 'domestic' | 'international' = 'local';
   if (!isDestInIndia || !isOriginInIndia || directDistanceKm > 2200) {
     travelScope = 'international';
-  } else if (directDistanceKm > 600) {
+  } else if (directDistanceKm > 500) {
     travelScope = 'domestic';
   } else if (directDistanceKm > 45) {
     travelScope = 'regional';
@@ -237,42 +289,64 @@ export async function generateDynamicSearchResults(
   }
 
   // =========================================================================
-  // TIER 4: INTERNATIONAL GLOBAL MULTI-HOP FLIGHT CHAIN
+  // TIER 4: INTERNATIONAL GLOBAL MULTI-HOP FLIGHT COMBINATION
   // =========================================================================
   if (travelScope === 'international') {
-    const originAirport = MAJOR_AIRPORTS.BBI;
+    const originAirport = findNearestAirport(origin.lat, origin.lng);
     const destAirport = findNearestAirport(destination.lat, destination.lng);
-    const layoverHub = directDistanceKm > 4500 ? MAJOR_AIRPORTS.DEL : MAJOR_AIRPORTS.SIN;
+
+    // Pick realistic intermediate transit hub
+    let layoverHub = MAJOR_AIRPORTS.DXB;
+    if (origin.lng > 95 || destination.lng > 95) {
+      layoverHub = MAJOR_AIRPORTS.SIN;
+    } else if (origin.lat > 40 && destination.lat > 40) {
+      layoverHub = MAJOR_AIRPORTS.LHR;
+    } else if (isOriginInIndia) {
+      layoverHub = directDistanceKm > 4500 ? MAJOR_AIRPORTS.DEL : MAJOR_AIRPORTS.DXB;
+    }
 
     // Flight block hours & realistic international pricing
-    const flightHours = Math.max(4, Math.round((directDistanceKm / 850) * 10) / 10);
+    const flightHours = Math.max(3.5, Math.round((directDistanceKm / 800) * 10) / 10);
     const layoverHours = 2.5;
     const localEgressHours = 1.5;
     const totalTripDurationMin = Math.round((flightHours + layoverHours + localEgressHours) * 60);
 
     // Geodesic Flight Paths
-    const leg1FlightArc = interpolateGreatCirclePoints(originAirport.lat, originAirport.lng, layoverHub.lat, layoverHub.lng, 16);
-    const leg2FlightArc = interpolateGreatCirclePoints(layoverHub.lat, layoverHub.lng, destAirport.lat, destAirport.lng, 24);
-    const fullFlightPath = [...leg1FlightArc, ...leg2FlightArc];
+    const leg1FlightArc = interpolateGreatCirclePoints(originAirport.lat, originAirport.lng, layoverHub.lat, layoverHub.lng, 18);
+    const leg2FlightArc = interpolateGreatCirclePoints(layoverHub.lat, layoverHub.lng, destAirport.lat, destAirport.lng, 22);
+    const flightPath = [...leg1FlightArc, ...leg2FlightArc];
 
-    // Standard IATA Benchmark Economy Fare (Distance-scaled)
-    const baseFareInr = Math.round(28000 + directDistanceKm * 4.8);
-    const premiumFareInr = Math.round(baseFareInr * 1.35);
+    // Local road connections
+    const [origRoadRes, destRoadRes] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 'driving'),
+      fetchRoadGeometryLive(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 'driving'),
+    ]);
+
+    const origRoad = origRoadRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8);
+    const destRoad = destRoadRes?.coordinates || interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8);
+    const fullCombinedRoute = [...origRoad, ...flightPath, ...destRoad];
+
+    const flightSched = resolveExactFlightSchedule(originAirport.code, destAirport.code, originAirport.city, destAirport.city, directDistanceKm);
+    const origCabFare = Math.round(350 + (origRoadRes?.distanceM ? (origRoadRes.distanceM / 1000) * 14 : 120));
+    const destCabFare = Math.round(450 + (destRoadRes?.distanceM ? (destRoadRes.distanceM / 1000) * 16 : 180));
+    const mainFlightFare = Math.max(flightSched.baseFare, Math.round(24000 + directDistanceKm * 4.2));
+    const totalIntlTripFare = origCabFare + mainFlightFare + destCabFare;
+    const premiumFareInr = Math.round(totalIntlTripFare * 1.35);
 
     const intlCarrierOption: RouteSearchResult = {
       route: {
         id: 'INTL_FLIGHT_CHAIN',
-        name: `Air India / Partner Carrier (${originAirport.code} ➔ ${destAirport.code})`,
-        shortName: `✈️ ${destAirport.code}`,
+        name: `${flightSched.airline} (${flightSched.flightNumber}) + Airport Cabs`,
+        shortName: `✈️ ${destAirport.code} Flight`,
         vehicleType: 'flight',
         color: '#dc2626',
-        description: `Scheduled International Air Chain via ${layoverHub.city} (${layoverHub.code}) • Widebody Aircraft • Certified Special Assistance`,
+        description: `Door-to-door: Cab to ${originAirport.name} ➔ ${flightSched.airline} via ${layoverHub.city} (${layoverHub.code}) ➔ Cab to Destination`,
         active: true,
         stops: [],
       },
       eta: totalTripDurationMin,
       duration: totalTripDurationMin,
-      walkingDistance: 450,
+      walkingDistance: 350,
       transfers: 2,
       stairs: 0,
       crowding: 'LOW',
@@ -280,18 +354,18 @@ export async function generateDynamicSearchResults(
       delay: 0,
       travelScope: 'international',
       transitChainInfo: {
-        carrierName: 'Air India / Star Alliance Network',
-        carrierCode: 'AI',
-        flightOrTrainNumber: 'AI-474 / AI-161 (Boeing 787 Dreamliner)',
+        carrierName: `${flightSched.airline} (${flightSched.airlineCode})`,
+        carrierCode: flightSched.airlineCode,
+        flightOrTrainNumber: flightSched.flightNumber,
         originHubName: `${originAirport.name} (${originAirport.code})`,
         originHubCode: originAirport.code,
         destHubName: `${destAirport.name} (${destAirport.code})`,
         destHubCode: destAirport.code,
         layoverHubName: `${layoverHub.name} (${layoverHub.code})`,
         layoverHubCode: layoverHub.code,
-        bookingService: 'IATA Global GDS / Official Airline Portal',
-        bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${originAirport.code}+to+${destAirport.code}`,
-        wheelchairAssistanceCode: 'WCHR / WCHC / DPNA (Certified Aisle Chair & Ramp Boarding)',
+        bookingService: `${flightSched.airline} / Google Flights`,
+        bookingUrl: flightSched.bookingUrl,
+        wheelchairAssistanceCode: 'WCHR / WCHC (Full Special Assistance Included)',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
@@ -300,54 +374,65 @@ export async function generateDynamicSearchResults(
       scores: {
         accessibility: 98,
         safety: 96,
-        reliability: 94,
+        reliability: 95,
         comfort: 95,
         overall: 96,
       },
       fare: {
         type: 'exact',
-        exact: baseFareInr,
+        exact: totalIntlTripFare,
         currency: 'INR',
         confidence: 0.94,
-        source: `IATA Standard International Air Tariff (${originAirport.code} ➔ ${layoverHub.code} ➔ ${destAirport.code})`,
+        source: `Total Journey: Cab (₹${origCabFare}) + Flight (₹${mainFlightFare.toLocaleString()}) + Cab (₹${destCabFare})`,
         status: 'estimated',
-        notes: `Estimated standard economy return/onward fare • Includes 2x 23kg check-in baggage & complimentary WCHR/DPNA assistance`,
+        notes: `Total combined door-to-door fare for ${directDistanceKm.toLocaleString()} km trip`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origCabFare,
+        mainTicketFare: mainFlightFare,
+        egressTaxiFare: destCabFare,
+        totalPrice: totalIntlTripFare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Cab to ${originAirport.name}`, from: origin.name, to: originAirport.name, fare: origCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${originAirport.lat}&dropoff[longitude]=${originAirport.lng}` },
+          { mode: 'flight', title: `${flightSched.airline} ${flightSched.flightNumber}`, from: `${originAirport.name} (${originAirport.code})`, to: `${destAirport.name} (${destAirport.code})`, fare: mainFlightFare, bookingUrl: flightSched.bookingUrl, bookingLabel: 'Book Flight Ticket' },
+          { mode: 'taxi', title: `Cab from ${destAirport.name} to Destination`, from: destAirport.name, to: destination.name, fare: destCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destAirport.lat}&pickup[longitude]=${destAirport.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}` },
+        ],
       },
       recommendation: {
         recommended: true,
         rank: 1,
         reasons: [
-          `Fastest transcontinental transit across ${directDistanceKm.toLocaleString()} km`,
-          `Guaranteed wheelchair ramp / ambulift & dedicated airline escort assistance`,
-          `Connection via ${layoverHub.name} (${layoverHub.code})`,
-          'Direct terminal transfer with checked-through baggage',
+          `Full multi-modal route across ${directDistanceKm.toLocaleString()} km`,
+          `Includes local cab to ${originAirport.name} (${originAirport.code})`,
+          `${flightSched.airline} (${flightSched.flightNumber}) connecting via ${layoverHub.city}`,
+          'Certified wheelchair & step-free assistance throughout',
         ],
-        tradeoff: 'International passport, visa and customs clearance required at transit hub.',
+        tradeoff: 'Passport and valid visa required for transit hub and destination.',
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8),
-        transitPath: fullFlightPath,
-        alightToDestWalk: interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8),
-        fullRoute: fullFlightPath,
+        originToBoardWalk: origRoad,
+        transitPath: flightPath,
+        alightToDestWalk: destRoad,
+        fullRoute: fullCombinedRoute,
       },
       intermediateStops: [
-        { id: originAirport.code, name: `${originAirport.name} (T1 Departure)`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
-        { id: layoverHub.code, name: `${layoverHub.name} (Transit Gate)`, latitude: layoverHub.lat, longitude: layoverHub.lng, sequence: 2, hasRamp: true },
-        { id: destAirport.code, name: `${destAirport.name} (International Arrivals)`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 3, hasRamp: true },
+        { id: originAirport.code, name: `${originAirport.name} (${originAirport.code})`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
+        { id: layoverHub.code, name: `${layoverHub.name} (${layoverHub.code})`, latitude: layoverHub.lat, longitude: layoverHub.lng, sequence: 2, hasRamp: true },
+        { id: destAirport.code, name: `${destAirport.name} (${destAirport.code})`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 3, hasRamp: true },
       ],
       turnByTurn: [
-        `Local transfer to ${originAirport.name} (${originAirport.code})`,
-        `Check-in at Terminal 1 with priority accessibility assistance (WCHR / DPNA)`,
-        `Flight Leg 1: ${originAirport.code} ➔ ${layoverHub.code} (~2h 15m, Airbus A320neo)`,
-        `Transit & Layover at ${layoverHub.name} Terminal (${layoverHours}h layover)`,
-        `Flight Leg 2: ${layoverHub.code} ➔ ${destAirport.code} (~${flightHours - 2.5}h, Boeing 787-8 Widebody)`,
-        `Arrival at ${destAirport.name} & accessible express connection to ${destination.name}`,
+        `Cab transfer from ${origin.name} to ${originAirport.name} (Fare: ₹${origCabFare})`,
+        `Depart on ${flightSched.airline} (${flightSched.flightNumber}): ${originAirport.code} ➔ ${layoverHub.code}`,
+        `Layover and aircraft transfer at ${layoverHub.name} (${layoverHub.code})`,
+        `Depart on Flight Leg 2: ${layoverHub.code} ➔ ${destAirport.code}`,
+        `Arrive at ${destAirport.name} & transfer via Cab to ${destination.name} (Fare: ₹${destCabFare})`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: originAirport.name, distance: 350, duration: 25, accessible: true, stairs: 0, notes: 'Airport access drop-off' },
-        { type: 'ride', from: originAirport.name, to: layoverHub.name, duration: 135, accessible: true, stairs: 0, routeId: 'FLIGHT_LEG_1', routeName: `Flight to ${layoverHub.code}`, crowding: 'LOW' },
-        { type: 'ride', from: layoverHub.name, to: destAirport.name, duration: Math.round((flightHours - 2) * 60), accessible: true, stairs: 0, routeId: 'FLIGHT_LEG_2', routeName: `Flight to ${destAirport.code}`, crowding: 'LOW' },
-        { type: 'walk', from: destAirport.name, to: destination.name, distance: 300, duration: 30, accessible: true, stairs: 0, notes: 'Airport Express Metro / Cab' },
+        { type: 'ride', from: origin.name, to: originAirport.name, duration: origRoadRes?.durationMin || 35, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_1', routeName: 'Airport Cab Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originAirport.name, to: layoverHub.name, duration: Math.round(flightHours * 28), accessible: true, stairs: 0, routeId: 'FLIGHT_LEG_1', routeName: `${flightSched.airline} ${flightSched.flightNumber}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: layoverHub.name, to: destAirport.name, duration: Math.round(flightHours * 32), accessible: true, stairs: 0, routeId: 'FLIGHT_LEG_2', routeName: `Connecting Flight to ${destAirport.code}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: destAirport.name, to: destination.name, duration: destRoadRes?.durationMin || 40, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_2', routeName: 'Destination Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
@@ -356,15 +441,15 @@ export async function generateDynamicSearchResults(
       route: {
         id: 'INTL_PREMIER_HUB',
         name: `Emirates / Qatar Airways (${originAirport.code} ➔ ${destAirport.code})`,
-        shortName: `✈️ Global Hub`,
+        shortName: '✈️ Premier Flight',
         vehicleType: 'flight',
         color: '#9333ea',
         description: `Premium Full-Service Carrier via Dubai / Doha Hub • Dedicated Special Assistance Escort`,
         active: true,
         stops: [],
       },
-      eta: totalTripDurationMin + 45,
-      duration: totalTripDurationMin + 45,
+      eta: totalTripDurationMin + 30,
+      duration: totalTripDurationMin + 30,
       walkingDistance: 300,
       transfers: 1,
       stairs: 0,
@@ -373,18 +458,18 @@ export async function generateDynamicSearchResults(
       delay: 0,
       travelScope: 'international',
       transitChainInfo: {
-        carrierName: 'Emirates / Gulf Carrier Network',
+        carrierName: 'Emirates / Premier Gulf Network',
         carrierCode: 'EK',
-        flightOrTrainNumber: 'EK-511 / EK-001 (Airbus A380-800)',
+        flightOrTrainNumber: 'EK-511 / EK-Connected',
         originHubName: `${originAirport.name} (${originAirport.code})`,
         originHubCode: originAirport.code,
         destHubName: `${destAirport.name} (${destAirport.code})`,
         destHubCode: destAirport.code,
-        layoverHubName: 'Dubai International Airport (DXB T3)',
-        layoverHubCode: 'DXB',
-        bookingService: 'Emirates Official / Global Travel Portals',
+        layoverHubName: `${layoverHub.name} (${layoverHub.code})`,
+        layoverHubCode: layoverHub.code,
+        bookingService: 'Emirates / Google Flights',
         bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${originAirport.code}+to+${destAirport.code}`,
-        wheelchairAssistanceCode: 'WCHR / WCHC / Full DPNA Concierge Escort',
+        wheelchairAssistanceCode: 'WCHR / Full Escort Concierge',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
@@ -402,44 +487,55 @@ export async function generateDynamicSearchResults(
         exact: premiumFareInr,
         currency: 'INR',
         confidence: 0.92,
-        source: 'Premium International Carrier Benchmark Fare',
+        source: 'Premium International Carrier Tariff',
         status: 'estimated',
-        notes: `Full-service fare with complimentary baggage allowance & wheelchair meet-and-assist`,
+        notes: `Full-service flight with baggage allowance & priority special assistance`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origCabFare,
+        mainTicketFare: premiumFareInr - origCabFare - destCabFare,
+        egressTaxiFare: destCabFare,
+        totalPrice: premiumFareInr,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Premium Cab to ${originAirport.name}`, from: origin.name, to: originAirport.name, fare: origCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${originAirport.lat}&dropoff[longitude]=${originAirport.lng}` },
+          { mode: 'flight', title: `Emirates EK-511 (Widebody Boeing 777)`, from: `${originAirport.name} (${originAirport.code})`, to: `${destAirport.name} (${destAirport.code})`, fare: premiumFareInr - origCabFare - destCabFare, bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${originAirport.code}+to+${destAirport.code}`, bookingLabel: 'Book Emirates Ticket' },
+          { mode: 'taxi', title: `Chauffeur Transfer from ${destAirport.name}`, from: destAirport.name, to: destination.name, fare: destCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destAirport.lat}&pickup[longitude]=${destAirport.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}` },
+        ],
       },
       recommendation: {
         recommended: false,
         rank: 2,
         reasons: [
-          'World-class step-free assistance with electric buggy terminal transfers',
-          'Premium widebody aircraft comfort (Airbus A380 / Boeing 777)',
-          'High luggage allowance (30kg included)',
+          'Full-service premium widebody airline',
+          'Dedicated buggy escort and priority ramp boarding',
+          'Seamless connection at major hub airport',
         ],
-        tradeoff: 'Higher premium international fare tier.',
+        tradeoff: 'Higher fare tier.',
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8),
-        transitPath: fullFlightPath,
-        alightToDestWalk: interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8),
-        fullRoute: fullFlightPath,
+        originToBoardWalk: origRoad,
+        transitPath: flightPath,
+        alightToDestWalk: destRoad,
+        fullRoute: fullCombinedRoute,
       },
       intermediateStops: [
         { id: originAirport.code, name: `${originAirport.name}`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
-        { id: 'DXB', name: 'Dubai International Airport (DXB T3)', latitude: 25.2532, longitude: 55.3657, sequence: 2, hasRamp: true },
+        { id: layoverHub.code, name: `${layoverHub.name}`, latitude: layoverHub.lat, longitude: layoverHub.lng, sequence: 2, hasRamp: true },
         { id: destAirport.code, name: `${destAirport.name}`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 3, hasRamp: true },
       ],
       turnByTurn: [
         `Local transfer to ${originAirport.name}`,
-        `International Departure Check-in & Fast-track assistance`,
-        `Flight Leg 1: ${originAirport.code} ➔ DXB (~4h 10m)`,
-        `Transit at Dubai International Terminal 3 (Dedicated buggy escort)`,
-        `Flight Leg 2: DXB ➔ ${destAirport.code} (~${flightHours - 1.5}h, Airbus A380)`,
-        `Arrive smoothly at ${destination.name}`,
+        `Flight Leg 1 to ${layoverHub.name}`,
+        `Transit at ${layoverHub.name}`,
+        `Flight Leg 2 to ${destAirport.name}`,
+        `Arrive at ${destination.name}`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: originAirport.name, distance: 300, duration: 25, accessible: true, stairs: 0 },
-        { type: 'ride', from: originAirport.name, to: 'Dubai International (DXB)', duration: 250, accessible: true, stairs: 0, routeId: 'FLIGHT_DXB_1', routeName: 'Flight to DXB', crowding: 'LOW' },
-        { type: 'ride', from: 'Dubai International (DXB)', to: destAirport.name, duration: Math.round(flightHours * 50), accessible: true, stairs: 0, routeId: 'FLIGHT_DXB_2', routeName: `Flight to ${destAirport.code}`, crowding: 'LOW' },
-        { type: 'walk', from: destAirport.name, to: destination.name, distance: 300, duration: 30, accessible: true, stairs: 0 },
+        { type: 'ride', from: origin.name, to: originAirport.name, duration: origRoadRes?.durationMin || 35, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_1', routeName: 'Airport Cab Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originAirport.name, to: layoverHub.name, duration: Math.round(flightHours * 30), accessible: true, stairs: 0, routeId: 'FLIGHT_DXB_1', routeName: `Flight to ${layoverHub.code}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: layoverHub.name, to: destAirport.name, duration: Math.round(flightHours * 30), accessible: true, stairs: 0, routeId: 'FLIGHT_DXB_2', routeName: `Flight to ${destAirport.code}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: destAirport.name, to: destination.name, duration: destRoadRes?.durationMin || 40, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_2', routeName: 'Destination Egress Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
@@ -448,39 +544,70 @@ export async function generateDynamicSearchResults(
   }
 
   // =========================================================================
-  // TIER 3: DOMESTIC LONG-DISTANCE (DOMESTIC FLIGHT & RAJDHANI EXPRESS)
+  // TIER 3: DOMESTIC LONG-DISTANCE (DOMESTIC FLIGHT & RAJDHANI EXPRESS RAIL)
   // =========================================================================
   if (travelScope === 'domestic') {
-    const originAirport = MAJOR_AIRPORTS.BBI;
+    const originAirport = findNearestAirport(origin.lat, origin.lng);
     const destAirport = findNearestAirport(destination.lat, destination.lng);
+    const originStation = findNearestRailwayStation(origin.lat, origin.lng, origin.name.split(',')[0]);
+    const destStation = findNearestRailwayStation(destination.lat, destination.lng, destination.name.split(',')[0]);
 
-    // Domestic flight time: ~2h 10m + 2h local checkin/egress
-    const flightTimeMin = Math.round(Math.max(80, (directDistanceKm / 750) * 60));
-    const totalFlightChainDuration = flightTimeMin + 140; // 4h 20m total
-    const domesticFlightArc = interpolateGreatCirclePoints(originAirport.lat, originAirport.lng, destAirport.lat, destAirport.lng, 24);
+    // Domestic flight calculation (~750 km/h flight speed + local ingress/egress)
+    const flightTimeMin = Math.round(Math.max(65, (directDistanceKm / 750) * 60));
+    const [origToAirportRes, destAirportToDestRes] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 'driving'),
+      fetchRoadGeometryLive(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 'driving'),
+    ]);
 
-    // Domestic flight benchmark fare
-    const domesticFlightFare = Math.round(3800 + directDistanceKm * 1.85);
+    const origToAirportPath = origToAirportRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8);
+    const destAirportToDestPath = destAirportToDestRes?.coordinates || interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8);
+    const flightArc = interpolateGreatCirclePoints(originAirport.lat, originAirport.lng, destAirport.lat, destAirport.lng, 22);
 
-    // Train calculation (Rajdhani Express ~75 km/h avg)
+    const fullFlightChainRoute = [...origToAirportPath, ...flightArc, ...destAirportToDestPath];
+    const totalFlightDurationMin = (origToAirportRes?.durationMin || 30) + flightTimeMin + 60 + (destAirportToDestRes?.durationMin || 30);
+
+    // Exact Flight Schedule & Total Price Breakdown
+    const flightSched = resolveExactFlightSchedule(originAirport.code, destAirport.code, originAirport.city, destAirport.city, directDistanceKm);
+    const origFlightCabFare = Math.round(250 + (origToAirportRes?.distanceM ? (origToAirportRes.distanceM / 1000) * 13 : 80));
+    const destFlightCabFare = Math.round(300 + (destAirportToDestRes?.distanceM ? (destAirportToDestRes.distanceM / 1000) * 14 : 110));
+    const flightTicketFare = flightSched.baseFare;
+    const totalAirJourneyPrice = origFlightCabFare + flightTicketFare + destFlightCabFare;
+
+    // Train calculation (Superfast Express ~75 km/h avg)
     const trainHours = Math.round((directDistanceKm / 75) * 10) / 10;
-    const totalTrainDurationMin = Math.round(trainHours * 60);
-    const rail3AFare = Math.round(850 + directDistanceKm * 1.35);
+    const [origToStationRes, destStationToDestRes] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, originStation.lat, originStation.lng, 'driving'),
+      fetchRoadGeometryLive(destStation.lat, destStation.lng, destination.lat, destination.lng, 'driving'),
+    ]);
+
+    const origToStationPath = origToStationRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originStation.lat, originStation.lng, 8);
+    const destStationToDestPath = destStationToDestRes?.coordinates || interpolateCurvedPoints(destStation.lat, destStation.lng, destination.lat, destination.lng, 8);
+    const railTrackPath = interpolateCurvedPoints(originStation.lat, originStation.lng, destStation.lat, destStation.lng, 24);
+
+    const fullRailChainRoute = [...origToStationPath, ...railTrackPath, ...destStationToDestPath];
+    const totalTrainDurationMin = (origToStationRes?.durationMin || 20) + Math.round(trainHours * 60) + (destStationToDestRes?.durationMin || 20);
+
+    // Exact Train Schedule & Total Price Breakdown
+    const trainSched = resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm);
+    const origTrainCabFare = Math.round(100 + (origToStationRes?.distanceM ? (origToStationRes.distanceM / 1000) * 11 : 40));
+    const destTrainCabFare = Math.round(140 + (destStationToDestRes?.distanceM ? (destStationToDestRes.distanceM / 1000) * 12 : 60));
+    const trainTicketFare = trainSched.classes[0]?.fare || Math.round(750 + directDistanceKm * 1.25);
+    const totalTrainJourneyPrice = origTrainCabFare + trainTicketFare + destTrainCabFare;
 
     const domesticAirOption: RouteSearchResult = {
       route: {
-        id: 'DOMESTIC_AIR_EXPRESS',
-        name: `IndiGo / Air India Direct (${originAirport.code} ➔ ${destAirport.code})`,
-        shortName: `✈️ ${destAirport.code} Flight`,
+        id: 'DOMESTIC_AIR_CHAIN',
+        name: `${flightSched.airline} (${flightSched.flightNumber}) + Airport Cabs`,
+        shortName: `✈️ ${flightSched.flightNumber}`,
         vehicleType: 'flight',
         color: '#0284c7',
-        description: `Direct Scheduled Flight (${originAirport.code} ➔ ${destAirport.code}) • Terminal Accessibility Ramp & Wheelchair Support`,
+        description: `Door-to-door: Cab to ${originAirport.name} ➔ ${flightSched.airline} ${flightSched.flightNumber} ➔ Cab to ${destination.name.split(',')[0]}`,
         active: true,
         stops: [],
       },
-      eta: totalFlightChainDuration,
-      duration: totalFlightChainDuration,
-      walkingDistance: 350,
+      eta: totalFlightDurationMin,
+      duration: totalFlightDurationMin,
+      walkingDistance: 250,
       transfers: 1,
       stairs: 0,
       crowding: 'LOW',
@@ -488,16 +615,16 @@ export async function generateDynamicSearchResults(
       delay: 0,
       travelScope: 'domestic',
       transitChainInfo: {
-        carrierName: 'IndiGo / Air India Direct Service',
-        carrierCode: '6E / AI',
-        flightOrTrainNumber: `6E-512 (${originAirport.code} ➔ ${destAirport.code})`,
+        carrierName: flightSched.airline,
+        carrierCode: flightSched.airlineCode,
+        flightOrTrainNumber: flightSched.flightNumber,
         originHubName: `${originAirport.name} (${originAirport.code})`,
         originHubCode: originAirport.code,
         destHubName: `${destAirport.name} (${destAirport.code})`,
         destHubCode: destAirport.code,
-        bookingService: 'IndiGo / MakeMyTrip / Official Airline',
-        bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${originAirport.code}+to+${destAirport.code}`,
-        wheelchairAssistanceCode: 'WCHR (Step-Free Ambulift / Boarding Ramp Confirmed)',
+        bookingService: `${flightSched.airline} / MakeMyTrip`,
+        bookingUrl: flightSched.bookingUrl,
+        wheelchairAssistanceCode: 'WCHR (Step-Free Boarding Ramp & Escort)',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
@@ -507,66 +634,77 @@ export async function generateDynamicSearchResults(
         accessibility: 96,
         safety: 95,
         reliability: 94,
-        comfort: 92,
+        comfort: 93,
         overall: 95,
       },
       fare: {
         type: 'exact',
-        exact: domesticFlightFare,
+        exact: totalAirJourneyPrice,
         currency: 'INR',
         confidence: 0.96,
-        source: `DGCA Regulated Domestic Aviation Benchmark (${originAirport.code} ➔ ${destAirport.code})`,
+        source: `Total Trip: Cab (₹${origFlightCabFare}) + Flight (₹${flightTicketFare}) + Cab (₹${destFlightCabFare})`,
         status: 'estimated',
-        notes: `Standard domestic economy fare for ${directDistanceKm.toFixed(0)} km corridor • Includes 15kg check-in baggage`,
+        notes: `Total combined door-to-door fare for ${directDistanceKm.toFixed(0)} km corridor (Includes check-in baggage & cabs)`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origFlightCabFare,
+        mainTicketFare: flightTicketFare,
+        egressTaxiFare: destFlightCabFare,
+        totalPrice: totalAirJourneyPrice,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Cab to ${originAirport.name}`, from: origin.name, to: originAirport.name, fare: origFlightCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${originAirport.lat}&dropoff[longitude]=${originAirport.lng}`, bookingLabel: 'Book Uber to Airport' },
+          { mode: 'flight', title: `${flightSched.airline} ${flightSched.flightNumber} (${flightSched.aircraftModel})`, from: `${originAirport.name} (${originAirport.code})`, to: `${destAirport.name} (${destAirport.code})`, fare: flightTicketFare, bookingUrl: flightSched.bookingUrl, bookingLabel: `Book ${flightSched.flightNumber} Ticket` },
+          { mode: 'taxi', title: `Cab from ${destAirport.name} to Destination`, from: destAirport.name, to: destination.name, fare: destFlightCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destAirport.lat}&pickup[longitude]=${destAirport.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Arrival Cab' },
+        ],
       },
       recommendation: {
         recommended: true,
         rank: 1,
         reasons: [
-          `Fastest travel time: ~${(totalFlightChainDuration / 60).toFixed(1)} hours door-to-door`,
-          `Direct flight corridor (${originAirport.code} ➔ ${destAirport.code})`,
+          `Fastest travel time: ~${(totalFlightDurationMin / 60).toFixed(1)} hrs door-to-door`,
+          `Real daily flight: ${flightSched.airline} ${flightSched.flightNumber} (${flightSched.departureTime})`,
           'Certified wheelchair boarding ramp & ambulift assistance available',
         ],
-        tradeoff: 'Airport security and luggage check-in required 75 min before departure.',
+        tradeoff: 'Airport security and baggage check-in required 60 min before departure.',
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8),
-        transitPath: domesticFlightArc,
-        alightToDestWalk: interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8),
-        fullRoute: domesticFlightArc,
+        originToBoardWalk: origToAirportPath,
+        transitPath: flightArc,
+        alightToDestWalk: destAirportToDestPath,
+        fullRoute: fullFlightChainRoute,
       },
       intermediateStops: [
-        { id: originAirport.code, name: `${originAirport.name} (T1 Departure Gate)`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
-        { id: destAirport.code, name: `${destAirport.name} (Arrivals Terminal)`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 2, hasRamp: true },
+        { id: originAirport.code, name: `${originAirport.name} (${originAirport.code})`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
+        { id: destAirport.code, name: `${destAirport.name} (${destAirport.code})`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 2, hasRamp: true },
       ],
       turnByTurn: [
-        `Local transfer from ${origin.name} to ${originAirport.name} (~25 min)`,
-        `Check-in at BBI Terminal 1 with free WCHR assistance`,
-        `Direct Flight: ${originAirport.code} ➔ ${destAirport.code} (~${(flightTimeMin / 60).toFixed(1)} hrs)`,
-        `Arrive at ${destAirport.name} & take accessible Airport Metro/Cab to ${destination.name}`,
+        `Cab transfer from ${origin.name} to ${originAirport.name} (Fare: ₹${origFlightCabFare}, ${origToAirportRes?.durationMin || 25} min)`,
+        `Depart on ${flightSched.airline} (${flightSched.flightNumber}) at ${flightSched.departureTime}: ${originAirport.code} ➔ ${destAirport.code} (~${(flightTimeMin / 60).toFixed(1)} hrs)`,
+        `Arrive at ${destAirport.name} & transfer via Cab to ${destination.name} (Fare: ₹${destFlightCabFare})`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: originAirport.name, distance: 300, duration: 25, accessible: true, stairs: 0 },
-        { type: 'ride', from: originAirport.name, to: destAirport.name, duration: flightTimeMin, accessible: true, stairs: 0, routeId: 'DOMESTIC_FLIGHT', routeName: `Flight to ${destAirport.code}`, crowding: 'LOW' },
-        { type: 'walk', from: destAirport.name, to: destination.name, distance: 350, duration: 35, accessible: true, stairs: 0 },
+        { type: 'ride', from: origin.name, to: originAirport.name, duration: origToAirportRes?.durationMin || 25, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_1', routeName: 'Airport Cab Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originAirport.name, to: destAirport.name, duration: flightTimeMin, accessible: true, stairs: 0, routeId: 'DOMESTIC_FLIGHT', routeName: `${flightSched.airline} ${flightSched.flightNumber}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: destAirport.name, to: destination.name, duration: destAirportToDestRes?.durationMin || 30, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_2', routeName: 'Destination Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
 
     const superfastRailOption: RouteSearchResult = {
       route: {
-        id: 'IRCTC_RAJDHANI_EXPRESS',
-        name: `Bhubaneswar Rajdhani / Superfast Express (IRCTC Rail)`,
-        shortName: '🚆 Superfast Rail',
+        id: 'IRCTC_SUPERFAST_CHAIN',
+        name: `${trainSched.trainName} (${trainSched.trainNumber}) + Station Cabs`,
+        shortName: `🚆 ${trainSched.trainNumber}`,
         vehicleType: 'train',
         color: '#b91c1c',
-        description: `Indian Railways Superfast Corridor via BBS Central • Reserved AC Berths & Platform Ramp Access`,
+        description: `Door-to-door: Cab to ${originStation.name} ➔ Train ${trainSched.trainNumber} ➔ Cab to Destination`,
         active: true,
         stops: [],
       },
       eta: totalTrainDurationMin,
       duration: totalTrainDurationMin,
-      walkingDistance: 400,
+      walkingDistance: 250,
       transfers: 1,
       stairs: 0,
       crowding: 'MEDIUM',
@@ -574,121 +712,259 @@ export async function generateDynamicSearchResults(
       delay: 5,
       travelScope: 'domestic',
       transitChainInfo: {
-        carrierName: 'Indian Railways (East Coast Railway)',
+        carrierName: 'Indian Railways (IRCTC)',
         carrierCode: 'IRCTC',
-        flightOrTrainNumber: '20817 BBS Rajdhani Express (BBS ➔ NDLS)',
-        originHubName: 'Bhubaneswar Central Railway Station (BBS)',
-        originHubCode: 'BBS',
-        destHubName: `Destination Central Railway Station`,
-        bookingService: 'IRCTC Official eTicketing / RailConnect',
-        bookingUrl: 'https://www.irctc.co.in/',
-        wheelchairAssistanceCode: 'IRCTC Divyangjan Sahayak / Battery Car Platform Service',
+        flightOrTrainNumber: `Train ${trainSched.trainNumber} (${trainSched.trainName})`,
+        originHubName: `${originStation.name} (${originStation.code})`,
+        originHubCode: originStation.code,
+        destHubName: `${destStation.name} (${destStation.code})`,
+        destHubCode: destStation.code,
+        bookingService: 'IRCTC / ConfirmTkt eTicketing',
+        bookingUrl: trainSched.bookingUrl,
+        wheelchairAssistanceCode: 'IRCTC Divyangjan Sahayak / Platform Ramp Support',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
       originName: origin.name,
       destinationName: destination.name,
       scores: {
-        accessibility: 90,
-        safety: 92,
+        accessibility: 91,
+        safety: 93,
         reliability: 90,
         comfort: 90,
         overall: 91,
       },
       fare: {
         type: 'exact',
-        exact: rail3AFare,
+        exact: totalTrainJourneyPrice,
         currency: 'INR',
         confidence: 0.98,
-        source: 'Indian Railways Gazette Fare Tariff (3rd AC / Chair Car)',
+        source: `Total Trip: Cab (₹${origTrainCabFare}) + Train ${trainSched.trainNumber} (₹${trainTicketFare}) + Cab (₹${destTrainCabFare})`,
         status: 'confirmed',
-        notes: `Official IRCTC regulated railway fare for ${directDistanceKm.toFixed(0)} km (3A / CC class)`,
+        notes: `Total combined fare for ${directDistanceKm.toFixed(0)} km corridor (Includes station cabs & reserved berth)`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origTrainCabFare,
+        mainTicketFare: trainTicketFare,
+        egressTaxiFare: destTrainCabFare,
+        totalPrice: totalTrainJourneyPrice,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Cab to ${originStation.name}`, from: origin.name, to: originStation.name, fare: origTrainCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${originStation.lat}&dropoff[longitude]=${originStation.lng}`, bookingLabel: 'Book Cab to Station' },
+          { mode: 'train', title: `${trainSched.trainName} (${trainSched.trainNumber})`, from: `${originStation.name} (${originStation.code})`, to: `${destStation.name} (${destStation.code})`, fare: trainTicketFare, bookingUrl: trainSched.bookingUrl, bookingLabel: `Book IRCTC Train ${trainSched.trainNumber}` },
+          { mode: 'taxi', title: `Cab from ${destStation.name} to Destination`, from: destStation.name, to: destination.name, fare: destTrainCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destStation.lat}&pickup[longitude]=${destStation.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Arrival Cab' },
+        ],
       },
       recommendation: {
         recommended: false,
         rank: 2,
         reasons: [
-          'Direct trunk railway link with comfortable overnight sleeping berths',
-          'Official government subsidized fare with Divyangjan concession',
-          'Free wheelchair / battery buggy assistance at BBS Central Station',
+          `Direct trunk railway link: Train ${trainSched.trainNumber} with reserved sleeping berths`,
+          'Official IRCTC government regulated fare with Divyangjan concession',
+          `Wheelchair & elevator access at ${originStation.name}`,
         ],
         tradeoff: `Longer travel duration (~${trainHours} hours) compared to flight.`,
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, 20.2666, 85.8436, 8),
-        transitPath: interpolateCurvedPoints(20.2666, 85.8436, destination.lat, destination.lng, 20),
-        alightToDestWalk: [],
-        fullRoute: interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 24),
+        originToBoardWalk: origToStationPath,
+        transitPath: railTrackPath,
+        alightToDestWalk: destStationToDestPath,
+        fullRoute: fullRailChainRoute,
       },
       intermediateStops: [
-        { id: 'BBS', name: 'Bhubaneswar Railway Station (PF 1)', latitude: 20.2666, longitude: 85.8436, sequence: 1, hasRamp: true },
-        { id: 'DEST_STATION', name: `${destination.name} Central Terminal`, latitude: destination.lat, longitude: destination.lng, sequence: 2, hasRamp: true },
+        { id: originStation.code, name: `${originStation.name} (${originStation.code})`, latitude: originStation.lat, longitude: originStation.lng, sequence: 1, hasRamp: true },
+        { id: destStation.code, name: `${destStation.name} (${destStation.code})`, latitude: destStation.lat, longitude: destStation.lng, sequence: 2, hasRamp: true },
       ],
       turnByTurn: [
-        `Local transit to Master Canteen Central Railway Station (BBS)`,
-        `Board train via Platform 1 elevator & accessible tactile foot-over-bridge`,
-        `Ride Superfast Express for ${directDistanceKm.toFixed(0)} km (~${trainHours} hrs)`,
-        `Alight at destination railway station with ramp support`,
+        `Cab from ${origin.name} to ${originStation.name} (Fare: ₹${origTrainCabFare}, ${origToStationRes?.durationMin || 15} min)`,
+        `Board ${trainSched.trainName} (${trainSched.trainNumber}) at Platform at ${trainSched.departureTime}`,
+        `Ride train for ${directDistanceKm.toFixed(0)} km (~${trainHours} hrs)`,
+        `Alight at ${destStation.name} and take cab to ${destination.name} (Fare: ₹${destTrainCabFare})`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: 'BBS Central Station', distance: 400, duration: 20, accessible: true, stairs: 0 },
-        { type: 'ride', from: 'BBS Central Station', to: destination.name, duration: totalTrainDurationMin - 40, accessible: true, stairs: 0, routeId: 'SUPERFAST_RAIL', routeName: 'Superfast Express', crowding: 'MEDIUM' },
+        { type: 'ride', from: origin.name, to: originStation.name, duration: origToStationRes?.durationMin || 15, accessible: true, stairs: 0, routeId: 'STATION_CAB_1', routeName: 'Station Cab Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originStation.name, to: destStation.name, duration: Math.round(trainHours * 60), accessible: true, stairs: 0, routeId: 'SUPERFAST_RAIL', routeName: `${trainSched.trainName} (${trainSched.trainNumber})`, vehicleType: 'train', crowding: 'MEDIUM' },
+        { type: 'ride', from: destStation.name, to: destination.name, duration: destStationToDestRes?.durationMin || 20, accessible: true, stairs: 0, routeId: 'STATION_CAB_2', routeName: 'Destination Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
 
-    return [domesticAirOption, superfastRailOption];
+    const origCarpoolAirFare = Math.round(origFlightCabFare * 0.4);
+    const totalCarpoolAirJourneyPrice = origCarpoolAirFare + flightTicketFare + destFlightCabFare;
+
+    const carpoolAirOption: RouteSearchResult = {
+      route: {
+        id: 'CARPOOL_AIR_CHAIN',
+        name: `Carpool to ${originAirport.code} + ${flightSched.airline} (${flightSched.flightNumber}) + Cab`,
+        shortName: '🚗✈️ Carpool + Flight',
+        vehicleType: 'flight',
+        color: '#9333ea',
+        description: `Split ride with co-riders to ${originAirport.name} ➔ ${flightSched.airline} ${flightSched.flightNumber} ➔ Airport Cab`,
+        active: true,
+        stops: [],
+      },
+      eta: totalFlightDurationMin + 5,
+      duration: totalFlightDurationMin + 5,
+      walkingDistance: 150,
+      transfers: 2,
+      stairs: 0,
+      crowding: 'LOW',
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'domestic',
+      transitChainInfo: {
+        carrierName: `Carpool Split + ${flightSched.airline}`,
+        carrierCode: flightSched.airlineCode,
+        flightOrTrainNumber: flightSched.flightNumber,
+        originHubName: `${originAirport.name} (${originAirport.code})`,
+        originHubCode: originAirport.code,
+        destHubName: `${destAirport.name} (${destAirport.code})`,
+        destHubCode: destAirport.code,
+        bookingService: `${flightSched.airline} / Google Flights`,
+        bookingUrl: flightSched.bookingUrl,
+        wheelchairAssistanceCode: 'WCHR Assistance & Luggage Space Available',
+      },
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 95,
+        safety: 96,
+        reliability: 94,
+        comfort: 94,
+        overall: 95,
+      },
+      fare: {
+        type: 'exact',
+        exact: totalCarpoolAirJourneyPrice,
+        currency: 'INR',
+        confidence: 0.96,
+        source: `Total Trip: Carpool Split (₹${origCarpoolAirFare}) + Flight (₹${flightTicketFare}) + Cab (₹${destFlightCabFare})`,
+        status: 'estimated',
+        notes: `Save ₹${origFlightCabFare - origCarpoolAirFare} by sharing airport ride with nearby corridor co-riders`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origCarpoolAirFare,
+        mainTicketFare: flightTicketFare,
+        egressTaxiFare: destFlightCabFare,
+        carpoolSplitSavings: origFlightCabFare - origCarpoolAirFare,
+        totalPrice: totalCarpoolAirJourneyPrice,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'carpool', title: `Carpool Split to ${originAirport.name}`, from: origin.name, to: originAirport.name, fare: origCarpoolAirFare, bookingLabel: 'View Co-Riders' },
+          { mode: 'flight', title: `${flightSched.airline} ${flightSched.flightNumber}`, from: `${originAirport.name} (${originAirport.code})`, to: `${destAirport.name} (${destAirport.code})`, fare: flightTicketFare, bookingUrl: flightSched.bookingUrl, bookingLabel: `Book Flight ${flightSched.flightNumber}` },
+          { mode: 'taxi', title: `Cab from ${destAirport.name} to Destination`, from: destAirport.name, to: destination.name, fare: destFlightCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destAirport.lat}&pickup[longitude]=${destAirport.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Arrival Cab' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 3,
+        reasons: [
+          `Save ₹${origFlightCabFare - origCarpoolAirFare} by sharing airport cab with verified commuters`,
+          `Fast direct flight: ${flightSched.airline} (${flightSched.flightNumber})`,
+          'Eco-friendly shared travel reduction in carbon emissions',
+        ],
+        tradeoff: 'Meet co-rider at designated pickup meeting point.',
+      },
+      geometry: {
+        originToBoardWalk: origToAirportPath,
+        transitPath: flightArc,
+        alightToDestWalk: destAirportToDestPath,
+        fullRoute: fullFlightChainRoute,
+      },
+      intermediateStops: [
+        { id: originAirport.code, name: `${originAirport.name} (${originAirport.code})`, latitude: originAirport.lat, longitude: originAirport.lng, sequence: 1, hasRamp: true },
+        { id: destAirport.code, name: `${destAirport.name} (${destAirport.code})`, latitude: destAirport.lat, longitude: destAirport.lng, sequence: 2, hasRamp: true },
+      ],
+      turnByTurn: [
+        `Meet verified co-rider and Carpool to ${originAirport.name} (Split fare: ₹${origCarpoolAirFare})`,
+        `Security check-in at ${originAirport.code} Departure Terminal`,
+        `Direct Flight: ${flightSched.flightNumber} at ${flightSched.departureTime} (~${(flightTimeMin / 60).toFixed(1)} hrs)`,
+        `Arrive at ${destAirport.name} & transfer via Cab to ${destination.name} (Fare: ₹${destFlightCabFare})`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: originAirport.name, duration: origToAirportRes?.durationMin || 25, accessible: true, stairs: 0, routeId: 'CARPOOL_AIRPORT', routeName: 'Carpool Ride to Airport', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originAirport.name, to: destAirport.name, duration: flightTimeMin, accessible: true, stairs: 0, routeId: 'DOMESTIC_FLIGHT', routeName: `${flightSched.airline} ${flightSched.flightNumber}`, vehicleType: 'flight', crowding: 'LOW' },
+        { type: 'ride', from: destAirport.name, to: destination.name, duration: destAirportToDestRes?.durationMin || 30, accessible: true, stairs: 0, routeId: 'AIRPORT_CAB_2', routeName: 'Destination Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.C3,
+    };
+
+    return [domesticAirOption, superfastRailOption, carpoolAirOption];
   }
 
   // =========================================================================
-  // TIER 2: REGIONAL INTERCITY (VANDE BHARAT / INTERCITY RAIL & OSRTC BUS)
+  // TIER 2: REGIONAL INTERCITY (VANDE BHARAT / INTERCITY RAIL COMBINATION)
   // =========================================================================
   if (travelScope === 'regional') {
-    // Intercity Rail (e.g. Vande Bharat / Jan Shatabdi / Howrah Express)
-    const trainHours = Math.round((directDistanceKm / 70) * 10) / 10;
-    const trainDurationMin = Math.round(trainHours * 60) + 25;
-    const railFareCC = Math.round(140 + directDistanceKm * 1.55);
-    const railFare2S = Math.round(60 + directDistanceKm * 0.45);
+    const originStation = findNearestRailwayStation(origin.lat, origin.lng, origin.name.split(',')[0]);
+    const destStation = findNearestRailwayStation(destination.lat, destination.lng, destination.name.split(',')[0]);
 
-    // OSRTC Deluxe Bus
+    // Intercity Rail Calculation (~75 km/h avg)
+    const trainHours = Math.round((directDistanceKm / 75) * 10) / 10;
+    const [origToStationRes, destStationToDestRes, directRoadRes] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, originStation.lat, originStation.lng, 'driving'),
+      fetchRoadGeometryLive(destStation.lat, destStation.lng, destination.lat, destination.lng, 'driving'),
+      fetchRoadGeometryLive(origin.lat, origin.lng, destination.lat, destination.lng, 'driving'),
+    ]);
+
+    const origToStationPath = origToStationRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originStation.lat, originStation.lng, 8);
+    const destStationToDestPath = destStationToDestRes?.coordinates || interpolateCurvedPoints(destStation.lat, destStation.lng, destination.lat, destination.lng, 8);
+    const railTrackPath = interpolateCurvedPoints(originStation.lat, originStation.lng, destStation.lat, destStation.lng, 20);
+
+    const fullTrainRoute = [...origToStationPath, ...railTrackPath, ...destStationToDestPath];
+    const totalTrainDurationMin = (origToStationRes?.durationMin || 15) + Math.round(trainHours * 60) + (destStationToDestRes?.durationMin || 15);
+
+    // Exact Train Schedule & Itemized Fare Breakdown
+    const trainSched = resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm);
+    const origRegCabFare = Math.round(60 + (origToStationRes?.distanceM ? (origToStationRes.distanceM / 1000) * 11 : 30));
+    const destRegCabFare = Math.round(80 + (destStationToDestRes?.distanceM ? (destStationToDestRes.distanceM / 1000) * 12 : 40));
+    const trainRegTicketFare = trainSched.classes[0]?.fare || Math.round(120 + directDistanceKm * 1.45);
+    const totalRegionalTrainPrice = origRegCabFare + trainRegTicketFare + destRegCabFare;
+
+    // OSRTC / Regional Highway Bus
+    const directRoadPath = directRoadRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 20);
     const busHours = Math.round((directDistanceKm / 48) * 10) / 10;
-    const busDurationMin = Math.round(busHours * 60) + 20;
-    const osrtcBusFare = Math.round(75 + directDistanceKm * 1.45);
+    const busDurationMin = Math.round(busHours * 60) + 15;
+    const intercityBusFare = Math.round(65 + directDistanceKm * 1.35);
 
-    // Outstation Cab
-    const outstationCabFare = Math.round(400 + directDistanceKm * 14.5);
-    const cabDurationMin = Math.round((directDistanceKm / 55) * 60);
+    // Outstation Cab & Carpool
+    const outstationCabFare = Math.round(350 + directDistanceKm * 13.5);
+    const outstationCarpoolFare = Math.round(outstationCabFare * 0.35);
+    const cabDurationMin = directRoadRes?.durationMin || Math.round((directDistanceKm / 55) * 60);
 
     const intercityRailOption: RouteSearchResult = {
       route: {
         id: 'IRCTC_VANDE_BHARAT_INTERCITY',
-        name: `Vande Bharat / Intercity Superfast (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`,
-        shortName: '🚆 Intercity Rail',
+        name: `${trainSched.trainName} (${trainSched.trainNumber}) + Station Cabs`,
+        shortName: `🚆 ${trainSched.trainNumber}`,
         vehicleType: 'train',
         color: '#2563eb',
-        description: 'High-speed Indian Railways Intercity Express • Automatic Sliding Doors & Wheelchair Space',
+        description: `Door-to-door: Cab to ${originStation.name} ➔ ${trainSched.trainName} ➔ Cab to Destination`,
         active: true,
         stops: [],
       },
-      eta: trainDurationMin,
-      duration: trainDurationMin,
-      walkingDistance: 250,
-      transfers: 0,
+      eta: totalTrainDurationMin,
+      duration: totalTrainDurationMin,
+      walkingDistance: 200,
+      transfers: 1,
       stairs: 0,
       crowding: 'LOW',
       vehicleAccessible: true,
       delay: 0,
       travelScope: 'regional',
       transitChainInfo: {
-        carrierName: 'Indian Railways (ECoR)',
+        carrierName: 'Indian Railways (IRCTC)',
         carrierCode: 'IRCTC',
-        flightOrTrainNumber: '20836 Vande Bharat Express (BBS ➔ Destination)',
-        originHubName: 'Bhubaneswar Central Railway Station (BBS)',
-        originHubCode: 'BBS',
-        destHubName: `${destination.name.split(',')[0]} Junction`,
-        bookingService: 'IRCTC Official / UTS App',
-        bookingUrl: 'https://www.irctc.co.in/',
-        wheelchairAssistanceCode: 'Divyangjan Platform Ramp & Dedicated Wheelchair Bay',
+        flightOrTrainNumber: `Train ${trainSched.trainNumber} (${trainSched.trainName})`,
+        originHubName: `${originStation.name} (${originStation.code})`,
+        originHubCode: originStation.code,
+        destHubName: `${destStation.name} (${destStation.code})`,
+        destHubCode: destStation.code,
+        bookingService: 'IRCTC Official / ConfirmTkt',
+        bookingUrl: trainSched.bookingUrl,
+        wheelchairAssistanceCode: 'Step-Free Station Elevator & Automatic Sliding Doors',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
@@ -696,85 +972,163 @@ export async function generateDynamicSearchResults(
       destinationName: destination.name,
       scores: {
         accessibility: 96,
-        safety: 94,
+        safety: 95,
         reliability: 95,
-        comfort: 94,
+        comfort: 95,
         overall: 95,
       },
       fare: {
-        type: 'range',
-        min: railFare2S,
-        max: railFareCC,
+        type: 'exact',
+        exact: totalRegionalTrainPrice,
         currency: 'INR',
         confidence: 0.98,
-        source: 'Official Indian Railways Gazette Distance Fare Table',
+        source: `Total Trip: Cab (₹${origRegCabFare}) + Train ${trainSched.trainNumber} (₹${trainRegTicketFare}) + Cab (₹${destRegCabFare})`,
         status: 'confirmed',
-        notes: `₹${railFare2S} (2S Second Class) / ₹${railFareCC} (AC Chair Car) for ${directDistanceKm.toFixed(1)} km`,
+        notes: `Total combined fare for ${directDistanceKm.toFixed(1)} km corridor (Includes station transfers & train ticket)`,
+      },
+      priceBreakdown: {
+        ingressTaxiFare: origRegCabFare,
+        mainTicketFare: trainRegTicketFare,
+        egressTaxiFare: destRegCabFare,
+        totalPrice: totalRegionalTrainPrice,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Cab to ${originStation.name}`, from: origin.name, to: originStation.name, fare: origRegCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${originStation.lat}&dropoff[longitude]=${originStation.lng}`, bookingLabel: 'Book Cab to Station' },
+          { mode: 'train', title: `${trainSched.trainName} (${trainSched.trainNumber})`, from: `${originStation.name} (${originStation.code})`, to: `${destStation.name} (${destStation.code})`, fare: trainRegTicketFare, bookingUrl: trainSched.bookingUrl, bookingLabel: `Book IRCTC Train ${trainSched.trainNumber}` },
+          { mode: 'taxi', title: `Cab from ${destStation.name} to Destination`, from: destStation.name, to: destination.name, fare: destRegCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${destStation.lat}&pickup[longitude]=${destStation.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Arrival Cab' },
+        ],
       },
       recommendation: {
         recommended: true,
         rank: 1,
         reasons: [
-          `Fastest regional corridor transit (${trainHours} hours)`,
-          '100% Step-free station elevator & wide coach automatic doors',
-          `Regulated government fare (₹${railFare2S} - ₹${railFareCC})`,
+          `Fastest regional corridor transit: Train ${trainSched.trainNumber} (${trainSched.departureTime})`,
+          `100% Step-free station elevator & level platform access at ${originStation.name}`,
+          'Government regulated fare with confirmed reservation',
         ],
-        tradeoff: 'Boarding from central railway station platform.',
+        tradeoff: `Short local transfer to ${originStation.name}.`,
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, 20.2666, 85.8436, 8),
-        transitPath: interpolateCurvedPoints(20.2666, 85.8436, destination.lat, destination.lng, 20),
-        alightToDestWalk: [],
-        fullRoute: interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 24),
+        originToBoardWalk: origToStationPath,
+        transitPath: railTrackPath,
+        alightToDestWalk: destStationToDestPath,
+        fullRoute: fullTrainRoute,
       },
       intermediateStops: [
-        { id: 'BBS', name: 'Bhubaneswar Central Railway Station (PF 1)', latitude: 20.2666, longitude: 85.8436, sequence: 1, hasRamp: true },
-        { id: 'DEST_REGIONAL', name: `${destination.name.split(',')[0]} Railway Station`, latitude: destination.lat, longitude: destination.lng, sequence: 2, hasRamp: true },
+        { id: originStation.code, name: `${originStation.name} (${originStation.code})`, latitude: originStation.lat, longitude: originStation.lng, sequence: 1, hasRamp: true },
+        { id: destStation.code, name: `${destStation.name} (${destStation.code})`, latitude: destStation.lat, longitude: destStation.lng, sequence: 2, hasRamp: true },
       ],
       turnByTurn: [
-        `Local transfer from ${origin.name} to Bhubaneswar Railway Station (BBS)`,
-        `Board Vande Bharat / Intercity Express via ramp entrance`,
-        `High-speed arterial rail journey for ${directDistanceKm.toFixed(1)} km (~${trainHours} hrs)`,
-        `Arrive at ${destination.name} terminal station`,
+        `Local transfer (Cab) from ${origin.name} to ${originStation.name} (Fare: ₹${origRegCabFare})`,
+        `Board ${trainSched.trainName} (${trainSched.trainNumber}) at ${trainSched.departureTime}`,
+        `Comfortable rail journey for ${directDistanceKm.toFixed(1)} km (~${trainHours} hrs)`,
+        `Alight at ${destStation.name} & transfer via Cab to ${destination.name} (Fare: ₹${destRegCabFare})`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: 'BBS Central Station', distance: 250, duration: 15, accessible: true, stairs: 0 },
-        { type: 'ride', from: 'BBS Central Station', to: destination.name, duration: trainDurationMin - 20, accessible: true, stairs: 0, routeId: 'INTERCITY_RAIL', routeName: 'Vande Bharat Express', crowding: 'LOW' },
+        { type: 'ride', from: origin.name, to: originStation.name, duration: origToStationRes?.durationMin || 15, accessible: true, stairs: 0, routeId: 'LOCAL_CAB_1', routeName: 'Station Cab Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
+        { type: 'ride', from: originStation.name, to: destStation.name, duration: Math.round(trainHours * 60), accessible: true, stairs: 0, routeId: 'INTERCITY_RAIL', routeName: `${trainSched.trainName} (${trainSched.trainNumber})`, vehicleType: 'train', crowding: 'LOW' },
+        { type: 'ride', from: destStation.name, to: destination.name, duration: destStationToDestRes?.durationMin || 15, accessible: true, stairs: 0, routeId: 'LOCAL_CAB_2', routeName: 'Destination Transfer', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
 
-    const osrtcBusOption: RouteSearchResult = {
+    const intercityCarpoolOption: RouteSearchResult = {
       route: {
-        id: 'OSRTC_DELUXE_BUS',
-        name: `OSRTC AC Deluxe Coach (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`,
-        shortName: '🚌 OSRTC Bus',
+        id: 'INTERCITY_CARPOOL',
+        name: `Intercity Carpool Corridor (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`,
+        shortName: '🚗 Intercity Pool',
+        vehicleType: 'shared-transport',
+        color: '#9333ea',
+        description: 'Verified commuter carpool sharing sedan/SUV ride along intercity highway corridor',
+        active: true,
+        stops: [],
+      },
+      eta: cabDurationMin,
+      duration: cabDurationMin,
+      walkingDistance: 40,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW',
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'regional',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 94,
+        safety: 95,
+        reliability: 94,
+        comfort: 94,
+        overall: 95,
+      },
+      fare: {
+        type: 'exact',
+        exact: outstationCarpoolFare,
+        currency: 'INR',
+        confidence: 0.95,
+        source: 'Shared Highway Corridor Fare (65% Savings vs Solo Cab)',
+        status: 'estimated',
+        notes: `₹${outstationCarpoolFare} per seat shared rate (Standard Solo Cab is ₹${outstationCabFare})`,
+      },
+      priceBreakdown: {
+        mainTicketFare: outstationCarpoolFare,
+        carpoolSplitSavings: outstationCabFare - outstationCarpoolFare,
+        totalPrice: outstationCarpoolFare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'carpool', title: `Intercity Carpool (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: outstationCarpoolFare, bookingLabel: 'Match Co-Riders' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 2,
+        reasons: [
+          `Save ₹${outstationCabFare - outstationCarpoolFare} compared to solo private outstation cab`,
+          'Direct highway ride from designated pickup point',
+          'Verified co-riders with emergency tracking',
+        ],
+        tradeoff: 'Shared ride with up to 3 co-passengers.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directRoadPath,
+        alightToDestWalk: [],
+        fullRoute: directRoadPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Meet host at designated accessible pickup point near ${origin.name}`,
+        `Highway carpool journey for ${directDistanceKm.toFixed(1)} km (~${cabDurationMin} mins)`,
+        `Direct drop-off at destination (${destination.name})`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: cabDurationMin, accessible: true, stairs: 0, routeId: 'INTERCITY_CARPOOL', routeName: 'Intercity Carpool Ride', vehicleType: 'shared-transport', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    const regionalBusOption: RouteSearchResult = {
+      route: {
+        id: 'REGIONAL_DELUXE_BUS',
+        name: `Intercity AC Deluxe Bus (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`,
+        shortName: '🚌 Intercity Bus',
         vehicleType: 'bus',
         color: '#059669',
-        description: 'Odisha State Road Transport Corporation AC Volvo/Deluxe State Bus from Baramunda ISBT',
+        description: 'State Roadways AC Volvo/Deluxe Coach along major highway corridor',
         active: true,
         stops: [],
       },
       eta: busDurationMin,
       duration: busDurationMin,
-      walkingDistance: 200,
+      walkingDistance: 150,
       transfers: 0,
       stairs: 1,
       crowding: 'LOW',
       vehicleAccessible: true,
       delay: 0,
       travelScope: 'regional',
-      transitChainInfo: {
-        carrierName: 'OSRTC (Odisha State Road Transport Corporation)',
-        carrierCode: 'OSRTC',
-        flightOrTrainNumber: 'OSRTC Rajdhani AC Coach',
-        originHubName: 'Baramunda ISBT Bus Terminal',
-        originHubCode: 'ISBT',
-        destHubName: `${destination.name.split(',')[0]} Bus Stand`,
-        bookingService: 'OSRTC Official / RedBus Odisha',
-        bookingUrl: 'https://osrtc.in/',
-        wheelchairAssistanceCode: 'Standard Coach Entry with Driver Assistance',
-      },
       originCoords: { lat: origin.lat, lng: origin.lng },
       destinationCoords: { lat: destination.lat, lng: destination.lng },
       originName: origin.name,
@@ -788,42 +1142,45 @@ export async function generateDynamicSearchResults(
       },
       fare: {
         type: 'exact',
-        exact: osrtcBusFare,
+        exact: intercityBusFare,
         currency: 'INR',
         confidence: 0.98,
-        source: 'Official OSRTC Interstate Bus Tariff Matrix',
+        source: 'Official Interstate Bus Tariff Matrix',
         status: 'confirmed',
         notes: `Regulated state bus fare for ${directDistanceKm.toFixed(1)} km`,
       },
+      priceBreakdown: {
+        mainTicketFare: intercityBusFare,
+        totalPrice: intercityBusFare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'bus', title: `State Roadways AC Bus (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: intercityBusFare, bookingUrl: 'https://osrtc.in/', bookingLabel: 'Book Bus Ticket' },
+        ],
+      },
       recommendation: {
         recommended: false,
-        rank: 2,
+        rank: 3,
         reasons: [
-          'Direct highway interstate service with regular departures',
-          'Air-conditioned Volvo/Scania high-deck coach',
-          'Departures from central Baramunda ISBT Bus Terminal',
+          'Direct highway service with regular departures',
+          'Air-conditioned comfortable coach seating',
+          'Accessible main bus terminal departure',
         ],
-        tradeoff: 'Highway bus ride subject to traffic conditions.',
+        tradeoff: 'Subject to highway traffic conditions.',
       },
       geometry: {
-        originToBoardWalk: interpolateCurvedPoints(origin.lat, origin.lng, 20.2780, 85.7950, 8),
-        transitPath: interpolateCurvedPoints(20.2780, 85.7950, destination.lat, destination.lng, 20),
+        originToBoardWalk: [],
+        transitPath: directRoadPath,
         alightToDestWalk: [],
-        fullRoute: interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 24),
+        fullRoute: directRoadPath,
       },
-      intermediateStops: [
-        { id: 'ISBT', name: 'Baramunda ISBT Interstate Bus Terminal', latitude: 20.2780, longitude: 85.7950, sequence: 1, hasRamp: true },
-        { id: 'DEST_BUS', name: `${destination.name.split(',')[0]} Main Bus Stand`, latitude: destination.lat, longitude: destination.lng, sequence: 2, hasRamp: true },
-      ],
+      intermediateStops: [],
       turnByTurn: [
-        `Local transfer to Baramunda ISBT Bus Terminal`,
-        `Board OSRTC Deluxe Coach at designated bay`,
+        `Board Intercity Deluxe Bus at pickup bus terminal`,
         `Highway transit for ${directDistanceKm.toFixed(1)} km (~${busHours} hrs)`,
-        `Alight at destination bus terminal (${destination.name})`,
+        `Alight at destination terminal (${destination.name})`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: 'Baramunda ISBT', distance: 200, duration: 15, accessible: true, stairs: 0 },
-        { type: 'ride', from: 'Baramunda ISBT', to: destination.name, duration: busDurationMin - 20, accessible: true, stairs: 0, routeId: 'OSRTC_BUS', routeName: 'OSRTC Deluxe Bus', crowding: 'LOW' },
+        { type: 'ride', from: origin.name, to: destination.name, duration: busDurationMin, accessible: true, stairs: 0, routeId: 'INTERCITY_BUS', routeName: 'Intercity AC Bus', vehicleType: 'bus', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.C3,
     };
@@ -831,7 +1188,7 @@ export async function generateDynamicSearchResults(
     const outstationCabOption: RouteSearchResult = {
       route: {
         id: 'OUTSTATION_CAB',
-        name: 'Direct Outstation Highway Cab (Door-to-Door)',
+        name: 'Direct Outstation Cab (Door-to-Door)',
         shortName: '🚖 Outstation Cab',
         vehicleType: 'shared-transport',
         color: '#f59e0b',
@@ -864,13 +1221,21 @@ export async function generateDynamicSearchResults(
         exact: outstationCabFare,
         currency: 'INR',
         confidence: 0.95,
-        source: 'Outstation Highway Tariff (Base ₹400 + ₹14.50/km)',
+        source: 'Outstation Highway Tariff (Base ₹350 + ₹13.50/km)',
         status: 'estimated',
         notes: `Door-to-door private cab for ${directDistanceKm.toFixed(1)} km`,
       },
+      priceBreakdown: {
+        mainTicketFare: outstationCabFare,
+        totalPrice: outstationCabFare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: 'Direct Door-to-Door Private AC Cab', from: origin.name, to: destination.name, fare: outstationCabFare, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Outstation Uber' },
+        ],
+      },
       recommendation: {
         recommended: false,
-        rank: 3,
+        rank: 4,
         reasons: [
           'Zero walking & zero transfers (Doorstep pickup to destination entrance)',
           'Flexible schedule & instant departure',
@@ -880,9 +1245,9 @@ export async function generateDynamicSearchResults(
       },
       geometry: {
         originToBoardWalk: [],
-        transitPath: interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 20),
+        transitPath: directRoadPath,
         alightToDestWalk: [],
-        fullRoute: interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 20),
+        fullRoute: directRoadPath,
       },
       intermediateStops: [],
       turnByTurn: [
@@ -891,12 +1256,12 @@ export async function generateDynamicSearchResults(
         `Arrive at destination entrance (${destination.name})`,
       ],
       segments: [
-        { type: 'ride', from: origin.name, to: destination.name, duration: cabDurationMin, accessible: true, stairs: 0, routeId: 'OUTSTATION_CAB', routeName: 'Outstation Highway Cab', crowding: 'LOW' },
+        { type: 'ride', from: origin.name, to: destination.name, duration: cabDurationMin, accessible: true, stairs: 0, routeId: 'OUTSTATION_CAB', routeName: 'Outstation Highway Cab', vehicleType: 'shared-transport', crowding: 'LOW' },
       ],
       condition: DEMO_CONDITIONS.S1,
     };
 
-    return [intercityRailOption, osrtcBusOption, outstationCabOption];
+    return [intercityRailOption, intercityCarpoolOption, regionalBusOption, outstationCabOption];
   }
 
   // =========================================================================
@@ -1115,6 +1480,7 @@ export async function generateDynamicSearchResults(
 
   // Dynamic Auto, Shared, and Bike Fares
   const autoFareExact = Math.round(30 + Math.max(0, (directDistanceKm - 1.5) * 12));
+  const carpoolSplitFare = Math.max(15, Math.round(autoFareExact * 0.35));
   const sharedAutoMin = directDistanceKm <= 4 ? 15 : directDistanceKm <= 10 ? 25 : 35;
   const sharedAutoMax = sharedAutoMin + 10;
   const bikeTaxiFare = Math.round(20 + directDistanceKm * 8);
@@ -1133,6 +1499,678 @@ export async function generateDynamicSearchResults(
     typicalFareMax: s.typicalFareMax,
     currency: s.currency,
   })).sort((a, b) => a.distanceM - b.distanceM).slice(0, 3);
+
+  // Check if this is a Campus / Hostel / Local Intra-University Trip
+  const isCampusTrip = directDistanceKm <= 4.5 && (
+    origin.name.toLowerCase().includes('campus') ||
+    origin.name.toLowerCase().includes('kp') ||
+    origin.name.toLowerCase().includes('qc') ||
+    origin.name.toLowerCase().includes('kiit') ||
+    origin.name.toLowerCase().includes('hostel') ||
+    origin.name.toLowerCase().includes('palace') ||
+    origin.name.toLowerCase().includes('castle') ||
+    destination.name.toLowerCase().includes('campus') ||
+    destination.name.toLowerCase().includes('kp') ||
+    destination.name.toLowerCase().includes('qc') ||
+    destination.name.toLowerCase().includes('kiit') ||
+    destination.name.toLowerCase().includes('hostel') ||
+    destination.name.toLowerCase().includes('palace') ||
+    destination.name.toLowerCase().includes('castle')
+  );
+
+  // Dedicated Campus & Hostel Commute Options
+  if (isCampusTrip) {
+    const nearestCampusStand = nearbyStandsList[0] || {
+      id: 'stand_campus_hub',
+      name: 'KIIT Campus Hub Stand',
+      latitude: 20.3540,
+      longitude: 85.8168,
+      distanceM: 60,
+    };
+
+    // =========================================================================
+    // OFFICIAL KIIT ECO EV CAMPUS SHUTTLE FLEET (EV Loop 0, EV-1, EV-2, EV-3, EV-4, EV-5)
+    // =========================================================================
+    const ALL_CAMPUS_EV_LINES = [
+      {
+        id: 'KIIT_EV_LOOP_0',
+        lineName: 'KIIT Eco EV Main Campus Loop',
+        shortName: '⚡ Eco EV Loop',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'Origin EV Starting Stand' },
+          { id: 'ev_stop_c17_qc5', name: 'KIIT Campus 17 (QC 5)', lat: 20.349176, lng: 85.819399, type: 'stop', description: 'Campus 17 & QC-5 EV Boarding Bay' },
+          { id: 'ev_stop_c15a', name: 'KIIT Campus 15A', lat: 20.348643, lng: 85.815884, type: 'stop', description: 'Campus 15A EV Boarding Bay' },
+          { id: 'ev_stop_c3_oat', name: 'KIIT Campus 3 OAT', lat: 20.352709, lng: 85.816379, type: 'end_terminus', description: 'Final Drop Terminus (Open Air Theatre)' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_1',
+        lineName: 'KIIT EV-1 (Campus 25 Block C ➔ Campus 13 Entrance)',
+        shortName: '⚡ EV-1 Shuttle',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c13', name: 'KIIT Campus 13 Entrance', lat: 20.356383, lng: 85.818454, type: 'end_terminus', description: 'Campus 13 Fashion & Media Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_2',
+        lineName: 'KIIT EV-2 (Campus 25 Block C ➔ Campus 14 Architecture)',
+        shortName: '⚡ EV-2 Shuttle',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture & Planning Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_3',
+        lineName: 'KIIT EV-3 Express (Campus 25 Block C ➔ Campus 14 Architecture)',
+        shortName: '⚡ EV-3 Express',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_4',
+        lineName: 'KIIT EV-4 (QC 1 ➔ Campus 11 Biotechnology)',
+        shortName: '⚡ EV-4 Shuttle',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
+          { id: 'ev_stop_c11', name: 'KIIT Campus 11 (Biotechnology)', lat: 20.358310, lng: 85.821621, type: 'end_terminus', description: 'Campus 11 Biotechnology & TBI Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_5',
+        lineName: 'KIIT EV-5 (QC 1 ➔ Campus 12 Film & Media)',
+        shortName: '⚡ EV-5 Shuttle',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
+          { id: 'ev_stop_c12', name: 'KIIT Campus 12 (Film & Media)', lat: 20.352367, lng: 85.819374, type: 'end_terminus', description: 'Campus 12 Film & Media Sciences Stand' },
+        ],
+      },
+    ];
+
+    // =========================================================================
+    // Find an EV pair (board stop -> alight stop) that GENUINELY HELPS the user's specific journey
+    // =========================================================================
+    let selectedEvLine: typeof ALL_CAMPUS_EV_LINES[0] | null = null;
+    let bestEvBoardStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
+    let bestEvAlightStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
+    let bestJourneyBenefitScore = 0;
+    let bestBoardDist = Infinity;
+    let bestAlightDist = Infinity;
+
+    // Minimum direct journey distance required for EV to even be considered helpful (>= 350m)
+    if (directDistanceM >= 350) {
+      for (const line of ALL_CAMPUS_EV_LINES) {
+        for (let i = 0; i < line.stops.length; i++) {
+          for (let j = 0; j < line.stops.length; j++) {
+            if (i === j) continue; // Must be distinct stops
+
+            const stBoard = line.stops[i];
+            const stAlight = line.stops[j];
+
+            const boardWalkDist = haversineDistanceClient(origin.lat, origin.lng, stBoard.lat, stBoard.lng);
+            const alightWalkDist = haversineDistanceClient(destination.lat, destination.lng, stAlight.lat, stAlight.lng);
+
+            // 1. Proximity Check: Origin must be near boarding stop (<= 300m) AND Destination near drop stop (<= 300m)
+            if (boardWalkDist > 300 || alightWalkDist > 300) {
+              continue;
+            }
+
+            // 2. Forward Progress Check: EV ride must actually move the commuter towards destination
+            const distFromBoardToDest = haversineDistanceClient(stBoard.lat, stBoard.lng, destination.lat, destination.lng);
+            const distFromAlightToDest = haversineDistanceClient(stAlight.lat, stAlight.lng, destination.lat, destination.lng);
+            const forwardProgress = distFromBoardToDest - distFromAlightToDest;
+
+            // Must cut down destination distance by at least 200 meters (no detours or backward loops)
+            if (forwardProgress < 200) {
+              continue;
+            }
+
+            // 3. Efficiency Check: Total walking with EV must be substantially less than direct walk
+            const totalWalk = boardWalkDist + alightWalkDist;
+            if (totalWalk >= directDistanceM * 0.85) {
+              continue;
+            }
+
+            // Calculate benefit score: Higher forward progress and shorter walk to boarding point
+            const benefitScore = forwardProgress - totalWalk;
+            if (benefitScore > bestJourneyBenefitScore) {
+              bestJourneyBenefitScore = benefitScore;
+              selectedEvLine = line;
+              bestEvBoardStop = stBoard;
+              bestEvAlightStop = stAlight;
+              bestBoardDist = boardWalkDist;
+              bestAlightDist = alightWalkDist;
+            }
+          }
+        }
+      }
+    }
+
+    const isEvNearby = selectedEvLine !== null && bestEvBoardStop !== null && bestEvAlightStop !== null;
+
+    let campusEvShuttleOption: RouteSearchResult | null = null;
+
+    if (isEvNearby && selectedEvLine && bestEvBoardStop && bestEvAlightStop) {
+      // Fetch road geometries for selected EV Shuttle
+      const [evWalkToBoardRes, evTransitRes, evWalkToDestRes] = await Promise.all([
+        fetchRoadGeometryLive(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 'walking'),
+        fetchRoadGeometryLive(bestEvBoardStop.lat, bestEvBoardStop.lng, bestEvAlightStop.lat, bestEvAlightStop.lng, 'driving'),
+        fetchRoadGeometryLive(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 'walking'),
+      ]);
+
+      const evWalkToBoard = evWalkToBoardRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 4);
+      const evTransitPath = evTransitRes?.coordinates || interpolateCurvedPoints(bestEvBoardStop.lat, bestEvBoardStop.lng, bestEvAlightStop.lat, bestEvAlightStop.lng, 10);
+      const evWalkToDest = evWalkToDestRes?.coordinates || interpolateCurvedPoints(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 4);
+      const fullEvRoute = [...evWalkToBoard, ...evTransitPath, ...evWalkToDest];
+
+      const evWalkToBoardDistM = evWalkToBoardRes?.distanceM || Math.round(bestBoardDist);
+      const evWalkToDestDistM = evWalkToDestRes?.distanceM || Math.round(bestAlightDist);
+      const evTransitTimeMin = evTransitRes?.durationMin || 4;
+      const evTotalTimeMin = Math.max(3, (evWalkToBoardRes?.durationMin || 1) + evTransitTimeMin + (evWalkToDestRes?.durationMin || 1));
+
+      campusEvShuttleOption = {
+        route: {
+          id: selectedEvLine.id,
+          name: 'Campus EV',
+          shortName: 'Campus EV',
+          vehicleType: 'campus-vehicle',
+          color: '#10b981',
+          description: `Free campus electric vehicle. Leaves from ${bestEvBoardStop.name} ➔ Drops at ${bestEvAlightStop.name}`,
+          active: true,
+          stops: [],
+        },
+        eta: evTotalTimeMin,
+        duration: evTotalTimeMin,
+        walkingDistance: evWalkToBoardDistM + evWalkToDestDistM,
+        transfers: 0,
+        stairs: 0,
+        crowding: 'LOW' as CrowdingLevel,
+        vehicleAccessible: true,
+        delay: 0,
+        travelScope: 'local',
+        originCoords: { lat: origin.lat, lng: origin.lng },
+        destinationCoords: { lat: destination.lat, lng: destination.lng },
+        originName: origin.name,
+        destinationName: destination.name,
+        scores: {
+          accessibility: 98,
+          safety: 98,
+          reliability: 98,
+          comfort: 95,
+          overall: 98,
+        },
+        fare: {
+          type: 'exact',
+          exact: 0,
+          currency: 'INR',
+          confidence: 1.0,
+          source: 'Free Campus EV Service',
+          status: 'confirmed',
+          notes: `100% Free Campus Transit • Departs from ${bestEvBoardStop.name}`,
+        },
+        nearbyStands: nearbyStandsList,
+        priceBreakdown: {
+          mainTicketFare: 0,
+          totalPrice: 0,
+          currency: 'INR',
+          itemizedLegs: [
+            { mode: 'bus', title: `Campus EV (${bestEvBoardStop.name.split('(')[0].trim()} ➔ ${bestEvAlightStop.name.split('(')[0].trim()})`, from: bestEvBoardStop.name, to: bestEvAlightStop.name, fare: 0, bookingLabel: 'Free Campus EV' },
+          ],
+        },
+        recommendation: {
+          recommended: true,
+          rank: 1,
+          reasons: [
+            'Free campus electric vehicle: ₹0 fare',
+            `Leaves from nearby EV stop: ${bestEvBoardStop.name} (${evWalkToBoardDistM}m walk)`,
+            `Drops at ${bestEvAlightStop.name} (${evWalkToDestDistM}m to destination)`,
+            'Zero carbon emission & certified low-floor access',
+          ],
+          tradeoff: `Walk ${evWalkToBoardDistM}m to ${bestEvBoardStop.name}.`,
+        },
+        geometry: {
+          originToBoardWalk: evWalkToBoard,
+          transitPath: evTransitPath,
+          alightToDestWalk: evWalkToDest,
+          fullRoute: fullEvRoute,
+        },
+        intermediateStops: selectedEvLine.stops.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          latitude: s.lat,
+          longitude: s.lng,
+          sequence: idx + 1,
+          hasRamp: true,
+        })),
+        turnByTurn: [
+          `Walk ${evWalkToBoardDistM}m from ${origin.name} to ${bestEvBoardStop.name} EV Stand`,
+          `Board Campus EV (Free service)`,
+          `Ride EV for ~${evTransitTimeMin} mins to ${bestEvAlightStop.name}`,
+          `Alight at ${bestEvAlightStop.name} and walk ${evWalkToDestDistM}m to ${destination.name}`,
+        ],
+        segments: [
+          { type: 'walk', from: origin.name, to: bestEvBoardStop.name, distance: evWalkToBoardDistM, duration: evWalkToBoardRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Level campus sidewalk' },
+          { type: 'board', from: bestEvBoardStop.name, to: 'Campus EV', duration: 1, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle' },
+          { type: 'ride', from: bestEvBoardStop.name, to: bestEvAlightStop.name, duration: evTransitTimeMin, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle', crowding: 'LOW' },
+          { type: 'alight', from: 'Campus EV', to: bestEvAlightStop.name, duration: 1, accessible: true, stairs: 0 },
+          { type: 'walk', from: bestEvAlightStop.name, to: destination.name, distance: evWalkToDestDistM, duration: evWalkToDestRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Paved walkway' },
+        ],
+        condition: DEMO_CONDITIONS.CV1,
+      };
+    }
+
+    const campusCarpoolOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_CARPOOL_MATCH',
+        name: 'Student Carpool & Ride Share',
+        shortName: '🤝 Student Carpool',
+        vehicleType: 'shared-transport',
+        color: '#9333ea',
+        description: `Share an auto/cab with fellow students traveling between ${origin.name.split('(')[0]} and ${destination.name.split('(')[0]}`,
+        active: true,
+        stops: [],
+      },
+      eta: directDrivingDurationMin,
+      duration: directDrivingDurationMin,
+      walkingDistance: 20,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 96,
+        safety: 96,
+        reliability: 95,
+        comfort: 94,
+        overall: 96,
+      },
+      fare: {
+        type: 'exact',
+        exact: 15,
+        currency: 'INR',
+        confidence: 0.98,
+        source: 'Verified Student Carpool Split Rate',
+        status: 'estimated',
+        notes: `₹15 split fare per seat (Save ₹15 compared to solo auto)`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 15,
+        carpoolSplitSavings: 15,
+        totalPrice: 15,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'carpool', title: `Campus Carpool (${origin.name.split('(')[0]} ➔ ${destination.name.split('(')[0]})`, from: origin.name, to: destination.name, fare: 15, bookingLabel: 'Match Student Co-Riders' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 2,
+        reasons: [
+          'Most economical student commute: ₹15 flat split fare',
+          'Instant match with students going to the same hostel/campus',
+          'Safe & verified university corridor riders',
+        ],
+        tradeoff: 'Meet co-riders at the nearest gate/hostel entrance.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Meet student co-riders at ${origin.name} entrance`,
+        `Short campus ride for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
+        `Direct drop-off at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_CARPOOL', routeName: 'Student Carpool Ride', vehicleType: 'shared-transport', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    const campusBikeTaxiOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_BIKE_TAXI',
+        name: 'Bike Taxi (Rapido / Uber Moto)',
+        shortName: '🛵 Bike Taxi',
+        vehicleType: 'shared-transport',
+        color: '#0891b2',
+        description: 'Instant single-rider bike taxi pickup from your hostel or campus gate',
+        active: true,
+        stops: [],
+      },
+      eta: Math.max(2, Math.round(directDrivingDurationMin * 0.7)),
+      duration: Math.max(2, Math.round(directDrivingDurationMin * 0.7)),
+      walkingDistance: 0,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: false,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: isWheelchair ? 25 : 90,
+        safety: 88,
+        reliability: 95,
+        comfort: 80,
+        overall: isWheelchair ? 45 : 91,
+      },
+      fare: {
+        type: 'exact',
+        exact: 20,
+        currency: 'INR',
+        confidence: 0.98,
+        source: 'Instant Bike Tariff (Flat ₹20)',
+        status: 'estimated',
+        notes: `Quick solo ride for ${directDistanceKm.toFixed(1)} km`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 20,
+        totalPrice: 20,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: 'Instant Bike Ride (Rapido / Uber)', from: origin.name, to: destination.name, fare: 20, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Ride' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 3,
+        reasons: [
+          `Fastest travel time: ~${Math.max(2, Math.round(directDrivingDurationMin * 0.7))} mins point-to-point`,
+          'Doorstep pickup directly at hostel/campus gate',
+          'Avoids traffic and road delays',
+        ],
+        tradeoff: 'Single rider motorcycle commute.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Board bike taxi at ${origin.name} gate`,
+        `Direct quick hop for ${directDistanceKm.toFixed(1)} km (~${Math.max(2, Math.round(directDrivingDurationMin * 0.7))} mins)`,
+        `Arrive at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: Math.max(2, Math.round(directDrivingDurationMin * 0.7)), accessible: false, stairs: 0, routeId: 'CAMPUS_BIKE', routeName: 'Bike Taxi', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    const campusAutoOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_AUTO_TAXI',
+        name: 'Taxi / Auto (Direct Ride)',
+        shortName: '🚖 Taxi / Auto',
+        vehicleType: 'shared-transport',
+        color: '#f59e0b',
+        description: `Direct private cab or auto rickshaw from nearest stand (${nearestCampusStand.name.split('/')[0]})`,
+        active: true,
+        stops: [],
+      },
+      eta: directDrivingDurationMin,
+      duration: directDrivingDurationMin,
+      walkingDistance: nearestCampusStand.distanceM || 30,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 95,
+        safety: 93,
+        reliability: 95,
+        comfort: 90,
+        overall: 94,
+      },
+      fare: {
+        type: 'exact',
+        exact: 30,
+        currency: 'INR',
+        confidence: 0.98,
+        source: `Standard Tariff (${nearestCampusStand.name.split('/')[0]})`,
+        status: 'estimated',
+        notes: `Flat ₹30 ride fare from ${nearestCampusStand.name.split('/')[0]}`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 30,
+        totalPrice: 30,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Taxi / Auto from ${nearestCampusStand.name.split('/')[0]}`, from: origin.name, to: destination.name, fare: 30, bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`, bookingLabel: 'Book Ride' },
+        ],
+      },
+      recommendation: {
+        recommended: isWheelchair,
+        rank: 4,
+        reasons: [
+          `Nearest pickup: ${nearestCampusStand.name.split('/')[0]} (${nearestCampusStand.distanceM || 30}m away)`,
+          'Accommodates up to 3 passengers with baggage or wheelchair',
+          'Standard regulated tariff: ₹30',
+        ],
+        tradeoff: 'Board from nearest stand or request doorstep pickup.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Walk ${nearestCampusStand.distanceM || 30}m to ${nearestCampusStand.name}`,
+        `Board auto rickshaw to ${destination.name}`,
+        `Direct arrival at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'walk', from: origin.name, to: nearestCampusStand.name, distance: nearestCampusStand.distanceM || 30, duration: 1, accessible: true, stairs: 0 },
+        { type: 'ride', from: nearestCampusStand.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_AUTO', routeName: 'Campus Auto', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    if (!campusEvShuttleOption) {
+      campusCarpoolOption.recommendation = {
+        recommended: true,
+        rank: 1,
+        reasons: [
+          'Most economical student commute: ₹15 flat split fare',
+          'Instant match with students going to the same hostel/campus',
+          'Safe & verified university corridor riders',
+        ],
+        tradeoff: 'Meet co-riders at the nearest gate/hostel entrance.',
+      };
+    }
+
+    const campusResults: RouteSearchResult[] = [
+      ...(campusEvShuttleOption ? [campusEvShuttleOption] : []),
+      campusCarpoolOption,
+      campusBikeTaxiOption,
+      campusAutoOption,
+    ];
+
+    // If short walk distance <= 1.4 km, also add Step-Free Campus Walkway option
+    if (directDistanceKm <= 1.4) {
+      const walkDurationMin = Math.max(3, Math.round((directDistanceM / 70)));
+      const campusWalkOption: RouteSearchResult = {
+        route: {
+          id: 'CAMPUS_STEP_FREE_WALK',
+          name: 'Step-Free Paved Campus Walkway',
+          shortName: '🚶 Campus Walk',
+          vehicleType: 'campus-vehicle',
+          color: '#10b981',
+          description: 'Tree-shaded paved footpath with ramp-equipped road crossings & street illumination',
+          active: true,
+          stops: [],
+        },
+        eta: walkDurationMin,
+        duration: walkDurationMin,
+        walkingDistance: directDistanceM,
+        transfers: 0,
+        stairs: 0,
+        crowding: 'LOW' as CrowdingLevel,
+        vehicleAccessible: true,
+        delay: 0,
+        travelScope: 'local',
+        originCoords: { lat: origin.lat, lng: origin.lng },
+        destinationCoords: { lat: destination.lat, lng: destination.lng },
+        originName: origin.name,
+        destinationName: destination.name,
+        scores: {
+          accessibility: 95,
+          safety: 94,
+          reliability: 98,
+          comfort: 88,
+          overall: 93,
+        },
+        fare: {
+          type: 'exact',
+          exact: 0,
+          currency: 'INR',
+          confidence: 1.0,
+          source: 'Free Pedestrian Walkway Corridor',
+          status: 'confirmed',
+          notes: '0 min wait time • Step-free level pathway',
+        },
+        nearbyStands: nearbyStandsList,
+        priceBreakdown: {
+          mainTicketFare: 0,
+          totalPrice: 0,
+          currency: 'INR',
+          itemizedLegs: [
+            { mode: 'walk', title: 'Step-Free Campus Footpath', from: origin.name, to: destination.name, fare: 0 },
+          ],
+        },
+        recommendation: {
+          recommended: false,
+          rank: 5,
+          reasons: [
+            'Zero wait time & 100% free',
+            'Continuous paved footpath with ramp curb cuts',
+            'Well-lit & secure campus avenue',
+          ],
+          tradeoff: `Walking commute of ${directDistanceM}m (~${walkDurationMin} min).`,
+        },
+        geometry: {
+          originToBoardWalk: [],
+          transitPath: directDrivingPath,
+          alightToDestWalk: [],
+          fullRoute: directDrivingPath,
+        },
+        intermediateStops: [],
+        turnByTurn: [
+          `Walk along paved sidewalk from ${origin.name}`,
+          `Follow illuminated campus avenue for ${directDistanceM}m`,
+          `Arrive at ${destination.name} entrance`,
+        ],
+        segments: [
+          { type: 'walk', from: origin.name, to: destination.name, distance: directDistanceM, duration: walkDurationMin, accessible: true, stairs: 0, notes: 'Level paved sidewalk' },
+        ],
+        condition: DEMO_CONDITIONS.CV1,
+      };
+
+      campusResults.push(campusWalkOption);
+    }
+
+    return campusResults;
+  }
+
+  // Option: Local Carpool & Auto Split Match (For General City Trips)
+  const carpoolOption: RouteSearchResult = {
+    route: {
+      id: 'LOCAL_CARPOOL_SPLIT',
+      name: 'Local Carpool & Ride Split',
+      shortName: '🚗 Carpool',
+      vehicleType: 'shared-transport',
+      color: '#9333ea',
+      description: 'Match with verified co-riders travelling on the same corridor & split fare by 65%',
+      active: true,
+      stops: [],
+    },
+    eta: directDrivingDurationMin,
+    duration: directDrivingDurationMin,
+    walkingDistance: 40,
+    transfers: 0,
+    stairs: 0,
+    crowding: 'LOW' as CrowdingLevel,
+    vehicleAccessible: true,
+    delay: 0,
+    travelScope: 'local',
+    originCoords: { lat: origin.lat, lng: origin.lng },
+    destinationCoords: { lat: destination.lat, lng: destination.lng },
+    originName: origin.name,
+    destinationName: destination.name,
+    scores: {
+      accessibility: 94,
+      safety: 95,
+      reliability: 94,
+      comfort: 92,
+      overall: 94,
+    },
+    fare: {
+      type: 'exact',
+      exact: carpoolSplitFare,
+      currency: 'INR',
+      confidence: 0.96,
+      source: `Carpool 3-Way Split (Solo fare is ₹${autoFareExact})`,
+      status: 'estimated',
+      notes: `Split cab/auto ride with nearby commuter — save ₹${autoFareExact - carpoolSplitFare}`,
+    },
+    nearbyStands: nearbyStandsList,
+    recommendation: {
+      recommended: false,
+      rank: 2,
+      reasons: [
+        `Save ₹${autoFareExact - carpoolSplitFare} by splitting fare with verified corridor co-riders`,
+        'Door-to-door pickup at designated accessible meeting spot',
+        'Direct road commute without extra stops',
+      ],
+      tradeoff: 'Meet co-riders at nearby corridor point.',
+    },
+    geometry: {
+      originToBoardWalk: [],
+      transitPath: directDrivingPath,
+      alightToDestWalk: [],
+      fullRoute: directDrivingPath,
+    },
+    intermediateStops: [],
+    turnByTurn: [
+      `Walk 40m to accessible meeting point at ${origin.name}`,
+      `Board carpool / split ride with matched co-riders`,
+      `Direct transit for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
+      `Arrive at destination (${destination.name})`,
+    ],
+    segments: [
+      { type: 'ride', from: origin.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'LOCAL_CARPOOL_SPLIT', routeName: 'Local Carpool Split', vehicleType: 'shared-transport', crowding: 'LOW' },
+    ],
+    condition: DEMO_CONDITIONS.S1,
+  };
 
   // Option 3: Direct On-Demand Auto / Rickshaw (Doorstep Pickup - 0m Walk)
   const autoDuration = directDrivingDurationMin;
@@ -1355,7 +2393,7 @@ export async function generateDynamicSearchResults(
     condition: DEMO_CONDITIONS.S1,
   };
 
-  return [...busResults, option3, option4, option5];
+  return [...busResults, carpoolOption, option3, option4, option5];
 }
 
 export function generateDemoSearchResults(originName: string, destName: string): RouteSearchResult[] {

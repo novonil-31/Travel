@@ -488,6 +488,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       geometry: routeResult.geometry,
       intermediateStops: routeResult.intermediateStops,
       turnByTurn: routeResult.turnByTurn,
+      travelScope: routeResult.travelScope,
+      transitChainInfo: routeResult.transitChainInfo,
       routeId: routeResult.route.id,
       routeName: routeResult.route.name,
       status: 'active',

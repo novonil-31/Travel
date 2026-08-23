@@ -96,6 +96,21 @@ export interface TransportCondition {
   updatedAt: string;
 }
 
+export interface TransitChainInfo {
+  carrierName: string;
+  carrierCode: string;
+  flightOrTrainNumber: string;
+  originHubName: string;
+  originHubCode?: string;
+  destHubName: string;
+  destHubCode?: string;
+  layoverHubName?: string;
+  layoverHubCode?: string;
+  bookingService: string;
+  bookingUrl: string;
+  wheelchairAssistanceCode: string;
+}
+
 // --- Route Scoring ---
 export interface RouteSearchResult {
   route: Route;
@@ -112,20 +127,7 @@ export interface RouteSearchResult {
   segments: JourneySegment[];
   condition: TransportCondition;
   travelScope?: 'local' | 'regional' | 'domestic' | 'international';
-  transitChainInfo?: {
-    carrierName: string;
-    carrierCode: string;
-    flightOrTrainNumber: string;
-    originHubName: string;
-    originHubCode?: string;
-    destHubName: string;
-    destHubCode?: string;
-    layoverHubName?: string;
-    layoverHubCode?: string;
-    bookingService: string;
-    bookingUrl: string;
-    wheelchairAssistanceCode: string;
-  };
+  transitChainInfo?: TransitChainInfo;
   // Enhanced Real-world Map & Navigation Geometry
   originCoords?: { lat: number; lng: number };
   destinationCoords?: { lat: number; lng: number };
@@ -156,6 +158,23 @@ export interface RouteSearchResult {
     source?: string;
     status?: 'confirmed' | 'estimated' | 'unknown';
     notes?: string;
+  };
+  priceBreakdown?: {
+    ingressTaxiFare?: number;
+    mainTicketFare: number;
+    egressTaxiFare?: number;
+    carpoolSplitSavings?: number;
+    totalPrice: number;
+    currency: string;
+    itemizedLegs: Array<{
+      mode: 'taxi' | 'flight' | 'train' | 'bus' | 'carpool' | 'walk';
+      title: string;
+      from: string;
+      to: string;
+      fare: number;
+      bookingUrl?: string;
+      bookingLabel?: string;
+    }>;
   };
   nearbyStands?: Array<{
     id: string;
@@ -249,6 +268,8 @@ export interface Journey {
     sequence: number;
   }>;
   turnByTurn?: string[];
+  travelScope?: 'local' | 'regional' | 'domestic' | 'international';
+  transitChainInfo?: TransitChainInfo;
 }
 
 export type JourneyStatus = 'planned' | 'active' | 'completed' | 'cancelled';

@@ -48,17 +48,17 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { state, updateProfile } = useAppStore();
 
-  const [pickup, setPickup] = useState('Campus Gate');
-  const [dropoff, setDropoff] = useState('Patia Transit Station');
+  const [pickup, setPickup] = useState("Queen's Castle 1 (QC 1)");
+  const [dropoff, setDropoff] = useState('Campus 3 OAT');
   const [pickupLocation, setPickupLocation] = useState<{ name: string; lat: number; lng: number }>({
-    name: 'Campus Gate',
-    lat: 20.3555,
-    lng: 85.8145,
+    name: "Queen's Castle 1 (QC 1)",
+    lat: 20.352367250329067,
+    lng: 85.81937388473358,
   });
   const [dropoffLocation, setDropoffLocation] = useState<{ name: string; lat: number; lng: number }>({
-    name: 'Patia Transit Station',
-    lat: 20.3450,
-    lng: 85.8180,
+    name: 'Campus 3 OAT',
+    lat: 20.352708891788033,
+    lng: 85.81637927996144,
   });
 
   const [activeDropdown, setActiveDropdown] = useState<'pickup' | 'dropoff' | null>(null);

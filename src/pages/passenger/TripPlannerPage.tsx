@@ -29,19 +29,19 @@ export default function TripPlannerPage() {
   const urlDestLat = searchParams.get('destLat') ? parseFloat(searchParams.get('destLat')!) : null;
   const urlDestLng = searchParams.get('destLng') ? parseFloat(searchParams.get('destLng')!) : null;
 
-  // Location inputs state
-  const [originInput, setOriginInput] = useState<string>(urlOrigin || 'Campus Gate');
+  // Location inputs state (Default: QC 1 to Campus 3 OAT)
+  const [originInput, setOriginInput] = useState<string>(urlOrigin || "Queen's Castle 1 (QC 1)");
   const [originLocation, setOriginLocation] = useState<LocationState>({
-    name: urlOrigin || 'Campus Gate',
-    lat: urlOriginLat ?? 20.3555,
-    lng: urlOriginLng ?? 85.8145,
+    name: urlOrigin || "Queen's Castle 1 (QC 1)",
+    lat: urlOriginLat ?? 20.352367250329067,
+    lng: urlOriginLng ?? 85.81937388473358,
   });
 
-  const [destinationInput, setDestinationInput] = useState<string>(urlDest || 'Patia Transit Station');
+  const [destinationInput, setDestinationInput] = useState<string>(urlDest || 'Campus 3 OAT');
   const [destinationLocation, setDestinationLocation] = useState<LocationState>({
-    name: urlDest || 'Patia Transit Station',
-    lat: urlDestLat ?? 20.3450,
-    lng: urlDestLng ?? 85.8180,
+    name: urlDest || 'Campus 3 OAT',
+    lat: urlDestLat ?? 20.352708891788033,
+    lng: urlDestLng ?? 85.81637927996144,
   });
 
   // Autocomplete Suggestions State
@@ -77,43 +77,37 @@ export default function TripPlannerPage() {
     }
   }, [urlOrigin, urlDest, urlMobility]);
 
-  // Debounced search for Origin
+  // Immediate & debounced search for Origin (Loads instant KIIT recommendations on focus or typing)
   useEffect(() => {
-    if (!originInput || originInput.trim().length < 2) {
-      setOriginSuggestions([]);
-      return;
-    }
+    const query = originInput?.trim() || '';
     const timeout = setTimeout(async () => {
       setIsSearchingOrigin(true);
       try {
-        const places = await stopsApi.searchPlaces(originInput);
+        const places = await stopsApi.searchPlaces(query);
         setOriginSuggestions(places);
       } catch (err) {
         console.error('Origin search error:', err);
       } finally {
         setIsSearchingOrigin(false);
       }
-    }, 250);
+    }, query.length === 0 ? 0 : 100);
     return () => clearTimeout(timeout);
   }, [originInput]);
 
-  // Debounced search for Destination
+  // Immediate & debounced search for Destination (Loads instant KIIT recommendations on focus or typing)
   useEffect(() => {
-    if (!destinationInput || destinationInput.trim().length < 2) {
-      setDestinationSuggestions([]);
-      return;
-    }
+    const query = destinationInput?.trim() || '';
     const timeout = setTimeout(async () => {
       setIsSearchingDest(true);
       try {
-        const places = await stopsApi.searchPlaces(destinationInput);
+        const places = await stopsApi.searchPlaces(query);
         setDestinationSuggestions(places);
       } catch (err) {
         console.error('Destination search error:', err);
       } finally {
         setIsSearchingDest(false);
       }
-    }, 250);
+    }, query.length === 0 ? 0 : 100);
     return () => clearTimeout(timeout);
   }, [destinationInput]);
 
@@ -316,7 +310,7 @@ export default function TripPlannerPage() {
 
             {/* Origin Autocomplete Dropdown */}
             {activeDropdown === 'origin' && originSuggestions.length > 0 && (
-              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
                 {originSuggestions.map((place, idx) => (
                   <button
                     key={idx}
@@ -324,10 +318,26 @@ export default function TripPlannerPage() {
                     onClick={() => handleSelectOrigin(place)}
                     className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                   >
-                    <MapPin className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-neutral-900 font-bold">{place.name}</div>
-                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'Bhubaneswar Corridor'}</div>
+                    <div className="text-base shrink-0 mt-0.5">
+                      {place.displayName.startsWith('👑') ? '👑' :
+                       place.displayName.startsWith('👸') ? '👸' :
+                       place.displayName.startsWith('🎓') ? '🎓' :
+                       place.displayName.startsWith('📚') ? '📚' :
+                       place.displayName.startsWith('✈️') ? '✈️' :
+                       place.displayName.startsWith('🚆') ? '🚆' :
+                       <MapPin className="w-4 h-4 text-neutral-400 mt-0.5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
+                        <span>{place.name}</span>
+                        {place.type === 'kp_hostel' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">KP</span>
+                        )}
+                        {place.type === 'qc_hostel' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'KIIT / Bhubaneswar Corridor'}</div>
                     </div>
                   </button>
                 ))}
@@ -365,7 +375,7 @@ export default function TripPlannerPage() {
                     setDestinationInput(e.target.value);
                     setActiveDropdown('dest');
                   }}
-                  placeholder="Where to? (Destination address, station, hospital)..."
+                  placeholder="Where to? (e.g. KP 7, QC 5, Campus 15, Station)..."
                   className="w-full pl-3 pr-4 py-3.5 rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
                   required
                 />
@@ -374,7 +384,7 @@ export default function TripPlannerPage() {
 
             {/* Destination Autocomplete Dropdown */}
             {activeDropdown === 'dest' && destinationSuggestions.length > 0 && (
-              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
                 {destinationSuggestions.map((place, idx) => (
                   <button
                     key={idx}
@@ -382,10 +392,26 @@ export default function TripPlannerPage() {
                     onClick={() => handleSelectDest(place)}
                     className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                   >
-                    <MapPin className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-neutral-900 font-bold">{place.name}</div>
-                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'Bhubaneswar Corridor'}</div>
+                    <div className="text-base shrink-0 mt-0.5">
+                      {place.displayName.startsWith('👑') ? '👑' :
+                       place.displayName.startsWith('👸') ? '👸' :
+                       place.displayName.startsWith('🎓') ? '🎓' :
+                       place.displayName.startsWith('📚') ? '📚' :
+                       place.displayName.startsWith('✈️') ? '✈️' :
+                       place.displayName.startsWith('🚆') ? '🚆' :
+                       <MapPin className="w-4 h-4 text-neutral-400 mt-0.5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
+                        <span>{place.name}</span>
+                        {place.type === 'kp_hostel' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">KP</span>
+                        )}
+                        {place.type === 'qc_hostel' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'KIIT / Bhubaneswar Corridor'}</div>
                     </div>
                   </button>
                 ))}
@@ -492,24 +518,24 @@ export default function TripPlannerPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {[
             {
-              from: { name: 'Campus Gate', lat: 20.3555, lng: 85.8145 },
-              to: { name: 'Patia Transit Station', lat: 20.3450, lng: 85.8180 },
-              tag: 'Line C3 • Ramp Certified • ₹20',
+              from: { name: 'Queen\'s Castle 1 (QC-1)', lat: 20.352367, lng: 85.819374 },
+              to: { name: 'KIIT Campus 3 OAT (Open Air Theatre)', lat: 20.352709, lng: 85.816379 },
+              tag: '⚡ KIIT Eco EV Shuttle • Free (Via C17 & C15A)',
             },
             {
-              from: { name: 'Hospital', lat: 20.3570, lng: 85.8170 },
-              to: { name: 'Jaydev Vihar', lat: 20.3000, lng: 85.8230 },
-              tag: 'Line C5 • Hydraulic Lift • ₹20',
+              from: { name: 'King\'s Palace 7 (KP-7, Campus 12)', lat: 20.3567, lng: 85.8160 },
+              to: { name: 'KIIT Campus 15 (School of Computer Engineering)', lat: 20.3529, lng: 85.8242 },
+              tag: 'Hostel to CSE Lab Corridor • 4 min',
             },
             {
-              from: { name: 'Infocity', lat: 20.3590, lng: 85.8080 },
-              to: { name: 'Master Canteen', lat: 20.2640, lng: 85.8400 },
-              tag: 'Shared Auto & Express • ₹25 - ₹40',
+              from: { name: 'Queen\'s Castle 5 (QC-5 / Campus 17)', lat: 20.349176, lng: 85.819399 },
+              to: { name: 'KIIT Campus 3 OAT (Open Air Theatre)', lat: 20.352709, lng: 85.816379 },
+              tag: '⚡ EV Shuttle Boarding Stop • Free',
             },
             {
-              from: { name: 'Campus 25', lat: 20.3540, lng: 85.8120 },
-              to: { name: 'KIIT Square', lat: 20.3530, lng: 85.8160 },
-              tag: 'Step-Free Shuttle • Free',
+              from: { name: 'KIIT Campus 3 (Main Auditorium)', lat: 20.3508, lng: 85.8190 },
+              to: { name: 'Master Canteen Central Railway Station (BBS)', lat: 20.2666, lng: 85.8436 },
+              tag: 'Campus to Superfast Train Line • ₹30',
             },
           ].map((item, idx) => (
             <button

@@ -265,16 +265,8 @@ export const stopsApi = {
   },
 
   searchPlaces: async (query: string) => {
-    if (!query || query.trim().length === 0) return [];
-    try {
-      const res = await request<any[]>(`/stops/places/search?q=${encodeURIComponent(query)}`);
-      if (Array.isArray(res) && res.length > 0) {
-        return res;
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message !== 'DEMO_MODE') {
-        // only fallback if not demo mode
-      }
+    if (!query || query.trim().length === 0) {
+      return searchPlacesLive('');
     }
     return searchPlacesLive(query);
   },

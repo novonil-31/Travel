@@ -65,9 +65,52 @@
     @apply bg-white;
   }
 
-  .custom-map-pin, .custom-nav-pin, .custom-home-pin {
+  .custom-map-pin, .custom-nav-pin, .custom-home-pin, .custom-route-pin, .transfer-pin, .vehicle-tracer-pin {
     background: transparent !important;
     border: none !important;
+  }
+
+  /* Animated Route Flow & Dash Animation */
+  @keyframes routeDashFlow {
+    from {
+      stroke-dashoffset: 40;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .animated-route-flow {
+    animation: routeDashFlow 1.2s linear infinite;
+  }
+
+  .animated-flight-flow {
+    animation: routeDashFlow 0.8s linear infinite;
+  }
+
+  /* Transfer Mode Switch Marker Animation */
+  @keyframes transferPulseRing {
+    0% {
+      transform: scale(0.85);
+      opacity: 0.9;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.3;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+
+  .transfer-pulse-effect {
+    position: absolute;
+    inset: -6px;
+    border-radius: 9999px;
+    background-color: rgba(234, 88, 12, 0.4);
+    animation: transferPulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    z-index: 1;
   }
 }
 
@@ -80,3 +123,4 @@
     scrollbar-width: none;
   }
 }
+
