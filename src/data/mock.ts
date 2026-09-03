@@ -1678,13 +1678,104 @@ export async function generateDynamicSearchResults(
     }
   });
 
-  // Sort candidate bus lines by minimum walking distance
+  // Sort candidate direct bus lines by minimum walking distance
   allCandidateRoutes.sort((a, b) => a.score - b.score);
 
-  // Take top matching bus candidates
-  let topBusCandidates = allCandidateRoutes.slice(0, 2);
-  if (topBusCandidates.length === 0) {
-    // Default to Route 10 only if within metropolitan radius
+  // 2. CONNECTING MULTI-BUS ROUTE COMBINATIONS (Bus 1 ➔ Interchange Hub ➔ Bus 2)
+  interface ConnectingBusCandidate {
+    route1: OfficialBusLine;
+    route2: OfficialBusLine;
+    boardStop: TransitStopInfo;
+    transferStop: TransitStopInfo;
+    alightStop: TransitStopInfo;
+    originWalkDistM: number;
+    destWalkDistM: number;
+    totalWalkM: number;
+    score: number;
+  }
+
+  const allConnectingRoutes: ConnectingBusCandidate[] = [];
+  const allBusRoutes = Object.values(OFFICIAL_ROUTES).filter((r) => r.id !== 'Auto-Stand');
+
+  for (const r1 of allBusRoutes) {
+    const r1Stops = r1.stops
+      .map((sid) => OFFICIAL_STOPS.find((s) => s.id === sid))
+      .filter(Boolean) as TransitStopInfo[];
+    if (r1Stops.length < 2) continue;
+
+    let r1BoardStop: TransitStopInfo | null = null;
+    let minR1BoardDist = Infinity;
+    for (const s of r1Stops) {
+      const d = haversineDistanceClient(origin.lat, origin.lng, s.lat, s.lng);
+      if (d < minR1BoardDist) {
+        minR1BoardDist = d;
+        r1BoardStop = s;
+      }
+    }
+    if (!r1BoardStop || minR1BoardDist > 3500) continue;
+
+    for (const r2 of allBusRoutes) {
+      if (r1.id === r2.id) continue;
+
+      const r2Stops = r2.stops
+        .map((sid) => OFFICIAL_STOPS.find((s) => s.id === sid))
+        .filter(Boolean) as TransitStopInfo[];
+      if (r2Stops.length < 2) continue;
+
+      let r2AlightStop: TransitStopInfo | null = null;
+      let minR2AlightDist = Infinity;
+      for (const s of r2Stops) {
+        const d = haversineDistanceClient(destination.lat, destination.lng, s.lat, s.lng);
+        if (d < minR2AlightDist) {
+          minR2AlightDist = d;
+          r2AlightStop = s;
+        }
+      }
+      if (!r2AlightStop || minR2AlightDist > 3500) continue;
+
+      // Find common interchange transfer stop present in both r1 and r2
+      const commonStops = r1Stops.filter(
+        (s1) =>
+          s1.id !== r1BoardStop?.id &&
+          s1.id !== r2AlightStop?.id &&
+          r2Stops.some((s2) => s2.id === s1.id)
+      );
+
+      if (commonStops.length > 0) {
+        // Prefer recognized high-capacity transfer terminals
+        const transferStop =
+          commonStops.find(
+            (cs) =>
+              cs.id === 's_jaydev_vihar' ||
+              cs.id === 's_master_canteen' ||
+              cs.id === 's_patia_stn' ||
+              cs.id === 's_kiit_sq' ||
+              cs.id === 's_damana' ||
+              cs.id === 's_baramunda_isbt'
+          ) || commonStops[0];
+
+        const totalWalk = minR1BoardDist + minR2AlightDist;
+        allConnectingRoutes.push({
+          route1: r1,
+          route2: r2,
+          boardStop: r1BoardStop,
+          transferStop,
+          alightStop: r2AlightStop,
+          originWalkDistM: minR1BoardDist,
+          destWalkDistM: minR2AlightDist,
+          totalWalkM: totalWalk,
+          score: totalWalk,
+        });
+      }
+    }
+  }
+
+  allConnectingRoutes.sort((a, b) => a.score - b.score);
+
+  // Take top matching direct bus candidates
+  let topBusCandidates = allCandidateRoutes.slice(0, 1);
+  if (topBusCandidates.length === 0 && allConnectingRoutes.length === 0) {
+    // Default to Route 10 only if no direct or connecting matches
     topBusCandidates = [
       {
         route: OFFICIAL_ROUTES['10'],
@@ -1698,9 +1789,10 @@ export async function generateDynamicSearchResults(
     ];
   }
 
-  // Generate Bus Route Results for Matched Lines
+  // Generate Bus Route Results
   const busResults: RouteSearchResult[] = [];
 
+  // A. Generate Direct Bus Option(s)
   for (let i = 0; i < topBusCandidates.length; i++) {
     const cand = topBusCandidates[i];
     const rt = cand.route;
@@ -1741,7 +1833,7 @@ export async function generateDynamicSearchResults(
         shortName: rt.routeNumber,
         vehicleType: 'bus',
         color: rt.color,
-        description: `${rt.busModel} • ${rt.operatingHours} • Departs every ${rt.frequencyMinutes} mins`,
+        description: `Nearest Bus Stop: ${cand.boardStop.name} (${walkToBoardDist}m • ${walkToBoardTime} min walk) • Direct ${rt.routeNumber} line`,
         active: true,
         stops: rt.stops.map((sid, idx) => ({ stopId: sid, order: idx, arrivalOffset: idx * 4, departureOffset: idx * 4 + 1 })),
       },
@@ -1775,11 +1867,22 @@ export async function generateDynamicSearchResults(
         notes: `${officialFare.ruleDescription} • 50% Concession (₹${officialFare.concessionFare}) for accessible pass holders`,
       },
       nearbyStands: [],
+      priceBreakdown: {
+        mainTicketFare: officialFare.fare,
+        totalPrice: officialFare.fare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'walk', title: `Walk to ${cand.boardStop.name}`, from: origin.name, to: cand.boardStop.name, fare: 0 },
+          { mode: 'bus', title: `Mo Bus ${rt.routeNumber}`, from: cand.boardStop.name, to: cand.alightStop.name, fare: officialFare.fare },
+          { mode: 'walk', title: `Walk to ${destination.name}`, from: cand.alightStop.name, to: destination.name, fare: 0 },
+        ],
+      },
       recommendation: {
         recommended: isPrimaryWheelchairBest || (i === 0 && !isWheelchair),
         rank: i + 1,
         reasons: [
           `Direct bus transit via ${rt.routeNumber} (${rt.originTerminus} ↔ ${rt.destTerminus})`,
+          `Nearest stop: ${cand.boardStop.name} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
           rt.hasRamp ? '100% Step-free flat path with low-floor automatic wheelchair ramp' : 'Fast arterial road transit',
           `Official government regulated fare: ₹${officialFare.fare} for ${transitDistKm.toFixed(1)} km`,
           `High frequency: Departs every ${rt.frequencyMinutes} minutes`,
@@ -1799,18 +1902,159 @@ export async function generateDynamicSearchResults(
         { id: cand.alightStop.id, name: cand.alightStop.name, latitude: cand.alightStop.lat, longitude: cand.alightStop.lng, sequence: 2, hasRamp: cand.alightStop.hasRamp },
       ],
       turnByTurn: [
-        `Walk ${walkToBoardDist}m along sidewalk from ${origin.name} to ${cand.boardStop.name} (~${walkToBoardTime} min)`,
+        `Walk ${walkToBoardDist}m along sidewalk from ${origin.name} to nearest bus stop at ${cand.boardStop.name} (~${walkToBoardTime} min)`,
         `Board Mo Bus ${rt.routeNumber} (${rt.routeName}) at ${cand.boardStop.name} (${rt.hasRamp ? 'Low-floor ramp equipped' : 'Boarding platform'})`,
         `Ride ${transitTime} min (${transitDistKm.toFixed(1)} km) along ${rt.routeNumber} corridor`,
         `Alight smoothly at ${cand.alightStop.name}`,
         `Walk ${walkToDestDist}m to ${destination.name} (~${walkToDestTime} min)`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: cand.boardStop.name, fromId: 'orig', toId: cand.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: 'Paved sidewalk, tactile paving' },
+        { type: 'walk', from: origin.name, to: cand.boardStop.name, fromId: 'orig', toId: cand.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Paved sidewalk to ${cand.boardStop.name}` },
         { type: 'board', from: cand.boardStop.name, to: `Mo Bus ${rt.routeNumber}`, fromId: cand.boardStop.id, toId: rt.id, duration: 2, accessible: rt.hasRamp, stairs: rt.hasRamp ? 0 : 1, routeId: rt.id, routeName: rt.routeName, vehicleType: 'bus', notes: rt.busModel },
         { type: 'ride', from: cand.boardStop.name, to: cand.alightStop.name, fromId: cand.boardStop.id, toId: cand.alightStop.id, duration: transitTime, accessible: rt.hasRamp, stairs: 0, routeId: rt.id, routeName: rt.routeName, crowding: 'LOW' },
         { type: 'alight', from: `Mo Bus ${rt.routeNumber}`, to: cand.alightStop.name, fromId: rt.id, toId: cand.alightStop.id, duration: 1, accessible: true, stairs: 0 },
         { type: 'walk', from: cand.alightStop.name, to: destination.name, fromId: cand.alightStop.id, toId: 'dest', distance: walkToDestDist, duration: walkToDestTime, accessible: true, stairs: 0, notes: 'Level pathway to entrance' },
+      ],
+      condition: DEMO_CONDITIONS.C3,
+    });
+  }
+
+  // B. Generate Connecting Multi-Bus Option (Transfer Route)
+  if (allConnectingRoutes.length > 0) {
+    const cc = allConnectingRoutes[0];
+    const r1 = cc.route1;
+    const r2 = cc.route2;
+
+    const [walk1Res, bus1Res, bus2Res, walk2Res] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, cc.boardStop.lat, cc.boardStop.lng, 'walking'),
+      fetchRoadGeometryLive(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng, 'driving'),
+      fetchRoadGeometryLive(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng, 'driving'),
+      fetchRoadGeometryLive(cc.alightStop.lat, cc.alightStop.lng, destination.lat, destination.lng, 'walking'),
+    ]);
+
+    const walkToBoard = walk1Res?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, cc.boardStop.lat, cc.boardStop.lng, 8);
+    const walkToBoardDist = walk1Res?.distanceM || Math.round(cc.originWalkDistM);
+    const walkToBoardTime = walk1Res?.durationMin || Math.max(1, Math.ceil(walkToBoardDist / 70));
+
+    const bus1Path = bus1Res?.coordinates || interpolateCurvedPoints(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng, 12);
+    const bus1DistM = bus1Res?.distanceM || Math.round(haversineDistanceClient(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng));
+    const bus1DistKm = Math.max(0.4, bus1DistM / 1000);
+    const bus1TimeMin = bus1Res?.durationMin || Math.max(3, Math.ceil(bus1DistM / 400));
+    const fare1 = calculateOfficialBusFare(bus1DistKm, r1.hasAirConditioning).fare;
+
+    const bus2Path = bus2Res?.coordinates || interpolateCurvedPoints(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng, 12);
+    const bus2DistM = bus2Res?.distanceM || Math.round(haversineDistanceClient(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng));
+    const bus2DistKm = Math.max(0.4, bus2DistM / 1000);
+    const bus2TimeMin = bus2Res?.durationMin || Math.max(3, Math.ceil(bus2DistM / 400));
+    const fare2 = calculateOfficialBusFare(bus2DistKm, r2.hasAirConditioning).fare;
+
+    const transferWaitMin = 4;
+    const totalBusTransitTime = bus1TimeMin + transferWaitMin + bus2TimeMin;
+
+    const walkToDest = walk2Res?.coordinates || interpolateCurvedPoints(cc.alightStop.lat, cc.alightStop.lng, destination.lat, destination.lng, 8);
+    const walkToDestDist = walk2Res?.distanceM || Math.round(cc.destWalkDistM);
+    const walkToDestTime = walk2Res?.durationMin || Math.max(1, Math.ceil(walkToDestDist / 70));
+
+    const totalDuration = walkToBoardTime + totalBusTransitTime + walkToDestTime;
+    const combinedTransitPath = [...bus1Path, ...bus2Path];
+    const fullConnectingRoute = [...walkToBoard, ...combinedTransitPath, ...walkToDest];
+    const combinedFare = fare1 + fare2;
+
+    busResults.push({
+      route: {
+        id: `BUS_TRANSFER_${r1.id}_${r2.id}`,
+        name: `Mo Bus ${r1.routeNumber} ➔ ${r2.routeNumber} (Via ${cc.transferStop.shortName})`,
+        shortName: `${r1.routeNumber} ➔ ${r2.routeNumber}`,
+        vehicleType: 'bus',
+        color: '#0d9488',
+        description: `Nearest Stop: ${cc.boardStop.name} (${walkToBoardDist}m walk) • Transfer at ${cc.transferStop.name} (${cc.transferStop.bayNumber})`,
+        active: true,
+        stops: [
+          { stopId: cc.boardStop.id, order: 0, arrivalOffset: 0, departureOffset: 1 },
+          { stopId: cc.transferStop.id, order: 1, arrivalOffset: bus1TimeMin, departureOffset: bus1TimeMin + transferWaitMin },
+          { stopId: cc.alightStop.id, order: 2, arrivalOffset: totalBusTransitTime, departureOffset: totalBusTransitTime },
+        ],
+      },
+      eta: totalDuration,
+      duration: totalDuration,
+      walkingDistance: walkToBoardDist + walkToDestDist,
+      transfers: 1,
+      stairs: r1.hasRamp && r2.hasRamp ? 0 : 1,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: r1.hasRamp && r2.hasRamp,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: r1.hasRamp && r2.hasRamp ? 94 : 72,
+        safety: 93,
+        reliability: 91,
+        comfort: 88,
+        overall: 92,
+      },
+      fare: {
+        type: 'exact',
+        exact: combinedFare,
+        currency: 'INR',
+        confidence: 0.98,
+        source: `CRUT Mo Bus Two-Leg Transfer Tariff (₹${fare1} + ₹${fare2})`,
+        status: 'confirmed',
+        notes: `Transfer at ${cc.transferStop.name} • 50% Concession for pass holders`,
+      },
+      nearbyStands: [],
+      priceBreakdown: {
+        mainTicketFare: combinedFare,
+        totalPrice: combinedFare,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'walk', title: `Walk to ${cc.boardStop.name}`, from: origin.name, to: cc.boardStop.name, fare: 0 },
+          { mode: 'bus', title: `Mo Bus ${r1.routeNumber}`, from: cc.boardStop.name, to: cc.transferStop.name, fare: fare1 },
+          { mode: 'walk', title: `Transfer at ${cc.transferStop.name}`, from: cc.transferStop.name, to: cc.transferStop.name, fare: 0 },
+          { mode: 'bus', title: `Mo Bus ${r2.routeNumber}`, from: cc.transferStop.name, to: cc.alightStop.name, fare: fare2 },
+          { mode: 'walk', title: `Walk to ${destination.name}`, from: cc.alightStop.name, to: destination.name, fare: 0 },
+        ],
+      },
+      recommendation: {
+        recommended: busResults.length === 0,
+        rank: busResults.length === 0 ? 1 : 2,
+        reasons: [
+          `Coordinated bus combination: ${r1.routeNumber} ➔ Transfer at ${cc.transferStop.shortName} ➔ ${r2.routeNumber}`,
+          `Nearest stop: ${cc.boardStop.name} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
+          `Affordable combined fare: ₹${combinedFare} total across connecting lines`,
+          `Synchronized platform interchange: 4 min step-free transfer at ${cc.transferStop.name}`,
+        ],
+        tradeoff: `Requires 1 bus transfer at ${cc.transferStop.shortName}.`,
+      },
+      geometry: {
+        originToBoardWalk: walkToBoard,
+        transitPath: combinedTransitPath,
+        alightToDestWalk: walkToDest,
+        fullRoute: fullConnectingRoute,
+      },
+      intermediateStops: [
+        { id: cc.boardStop.id, name: cc.boardStop.name, latitude: cc.boardStop.lat, longitude: cc.boardStop.lng, sequence: 1, hasRamp: cc.boardStop.hasRamp },
+        { id: cc.transferStop.id, name: cc.transferStop.name, latitude: cc.transferStop.lat, longitude: cc.transferStop.lng, sequence: 2, hasRamp: cc.transferStop.hasRamp },
+        { id: cc.alightStop.id, name: cc.alightStop.name, latitude: cc.alightStop.lat, longitude: cc.alightStop.lng, sequence: 3, hasRamp: cc.alightStop.hasRamp },
+      ],
+      turnByTurn: [
+        `Walk ${walkToBoardDist}m to nearest bus stop at ${cc.boardStop.name} (~${walkToBoardTime} min via paved sidewalk)`,
+        `Board Mo Bus ${r1.routeNumber} (${r1.routeName}) at ${cc.boardStop.name}`,
+        `Ride ${bus1TimeMin} min to ${cc.transferStop.name} Interchange`,
+        `Transfer at ${cc.transferStop.name} (${cc.transferStop.bayNumber}) to Mo Bus ${r2.routeNumber} (~${transferWaitMin} min buffer)`,
+        `Ride ${bus2TimeMin} min along ${r2.routeNumber} to ${cc.alightStop.name}`,
+        `Alight at ${cc.alightStop.name} and walk ${walkToDestDist}m to ${destination.name} (~${walkToDestTime} min)`,
+      ],
+      segments: [
+        { type: 'walk', from: origin.name, to: cc.boardStop.name, fromId: 'orig', toId: cc.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Paved sidewalk to ${cc.boardStop.name}` },
+        { type: 'board', from: cc.boardStop.name, to: `Mo Bus ${r1.routeNumber}`, fromId: cc.boardStop.id, toId: r1.id, duration: 2, accessible: r1.hasRamp, stairs: 0, routeId: r1.id, routeName: r1.routeName, vehicleType: 'bus' },
+        { type: 'ride', from: cc.boardStop.name, to: cc.transferStop.name, fromId: cc.boardStop.id, toId: cc.transferStop.id, duration: bus1TimeMin, accessible: r1.hasRamp, stairs: 0, routeId: r1.id, routeName: r1.routeName, crowding: 'LOW' },
+        { type: 'transfer', from: cc.transferStop.name, to: cc.transferStop.name, duration: transferWaitMin, accessible: cc.transferStop.hasRamp, stairs: 0, notes: `Interchange at ${cc.transferStop.bayNumber}` },
+        { type: 'ride', from: cc.transferStop.name, to: cc.alightStop.name, fromId: cc.transferStop.id, toId: cc.alightStop.id, duration: bus2TimeMin, accessible: r2.hasRamp, stairs: 0, routeId: r2.id, routeName: r2.routeName, crowding: 'LOW' },
+        { type: 'alight', from: `Mo Bus ${r2.routeNumber}`, to: cc.alightStop.name, fromId: r2.id, toId: cc.alightStop.id, duration: 1, accessible: true, stairs: 0 },
+        { type: 'walk', from: cc.alightStop.name, to: destination.name, fromId: cc.alightStop.id, toId: 'dest', distance: walkToDestDist, duration: walkToDestTime, accessible: true, stairs: 0, notes: 'Path to final destination' },
       ],
       condition: DEMO_CONDITIONS.C3,
     });
@@ -2482,7 +2726,8 @@ export async function generateDynamicSearchResults(
       campusResults.push(campusWalkOption);
     }
 
-    return campusResults;
+    // Combine Public Bus options with Campus Commute options so buses are ALWAYS available!
+    return [...busResults, ...campusResults];
   }
 
   // Option: Local Carpool & Auto Split Match (For General City Trips)

@@ -366,6 +366,24 @@ function extractTransferChangePoints(route: RouteSearchResult): TransferChangePo
     return transfers;
   }
 
+  // 4. Connecting Multi-Bus Transit (Bus Leg 1 ➔ Transfer Interchange ➔ Bus Leg 2)
+  if (route.transfers && route.transfers > 0 && stops.length >= 3) {
+    const transferStop = stops[1];
+    transfers.push({
+      id: `transfer-bus-${transferStop.id}`,
+      latitude: transferStop.latitude,
+      longitude: transferStop.longitude,
+      locationName: transferStop.name,
+      fromMode: 'Bus Line 1',
+      toMode: 'Connecting Bus Line 2',
+      fromIcon: '🚌',
+      toIcon: '🚌',
+      badgeLabel: 'Bus ➔ Bus Transfer',
+      description: `Alight from initial bus and board connecting service at ${transferStop.name} (Step-free platform)`,
+      hasRamp: transferStop.hasRamp ?? true,
+    });
+  }
+
   return transfers;
 }
 
@@ -907,15 +925,19 @@ export default function RouteDiscoveryPage() {
                         <div className={`text-xs mt-0.5 font-medium ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
                           {route.route?.id?.includes('WALK') || route.route?.id?.includes('STEP_FREE') || route.route?.name?.toLowerCase().includes('walk')
                             ? '🚶 Step-Free Paved Walkway'
-                            : route.route?.vehicleType === 'campus-vehicle' || route.route?.id?.includes('EV')
-                              ? '⚡ Free Campus Shuttle'
-                              : route.route?.id?.includes('CARPOOL')
-                                ? '🤝 Student Ride Sharing'
-                                : route.route?.id?.includes('BIKE')
-                                  ? '🛵 Fast Solo Bike'
-                                  : route.route?.id?.includes('AUTO')
-                                    ? '🚖 Direct Stand Auto'
-                                    : '🚌 Public Transit'}
+                            : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
+                              ? `🔄 Multi-Bus Connecting Line (1 Transfer)`
+                              : route.route?.vehicleType === 'bus'
+                                ? '🚌 Direct Public Mo Bus'
+                                : route.route?.vehicleType === 'campus-vehicle' || route.route?.id?.includes('EV')
+                                  ? '⚡ Free Campus Shuttle'
+                                  : route.route?.id?.includes('CARPOOL')
+                                    ? '🤝 Student Ride Sharing'
+                                    : route.route?.id?.includes('BIKE')
+                                      ? '🛵 Fast Solo Bike'
+                                      : route.route?.id?.includes('AUTO')
+                                        ? '🚖 Direct Stand Auto'
+                                        : '🚌 Public Transit'}
                         </div>
                       </div>
                     </div>
@@ -970,7 +992,8 @@ export default function RouteDiscoveryPage() {
                               seg.vehicleType === 'train' || seg.routeId?.includes('RAIL') ? '🚆 Train' :
                                 seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🚗 Carpool` :
                                   seg.type === 'walk' ? `🚶 ${seg.duration}m` :
-                                    seg.vehicleType === 'bus' || seg.routeId?.includes('EV') ? (seg.routeId?.includes('EV') ? '⚡ EV' : '🚌 Bus') : `🚖 Cab`}
+                                    seg.type === 'transfer' ? `🔄 Transfer (${seg.duration}m)` :
+                                      seg.vehicleType === 'bus' || seg.routeId?.includes('EV') ? (seg.routeId?.includes('EV') ? '⚡ EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`) : `🚖 Cab`}
                           </span>
                           {sIdx < route.segments.length - 1 && (
                             <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
