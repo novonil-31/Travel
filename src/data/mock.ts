@@ -2135,7 +2135,7 @@ export async function generateDynamicSearchResults(
       route: {
         id: 'CAMPUS_CARPOOL_MATCH',
         name: 'Student Carpool',
-        shortName: '🤝 Student Carpool',
+        shortName: 'Carpool',
         vehicleType: 'shared-transport',
         color: '#9333ea',
         description: `Share an auto/cab with fellow students traveling between ${origin.name.split('(')[0]} and ${destination.name.split('(')[0]}`,

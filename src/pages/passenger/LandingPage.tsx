@@ -75,7 +75,7 @@ export default function LandingPage() {
   const [dropoffSuggestions, setDropoffSuggestions] = useState<GeocodedPlace[]>([]);
 
   const [timeMode, setTimeMode] = useState('now');
-  const [departTime, setDepartTime] = useState('09:30');
+  const [departTime, setDepartTime] = useState('');
   const [mobilityFilter, setMobilityFilter] = useState<'wheelchair' | 'walking' | 'senior' | 'all'>('all');
 
   // Close dropdown on outside click
@@ -137,7 +137,8 @@ export default function LandingPage() {
       saveRecentSearch(state.currentUser.id, pickupLocation, dropoffLocation);
     }
 
-    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&originLat=${pickupLocation.lat}&originLng=${pickupLocation.lng}&destLat=${dropoffLocation.lat}&destLng=${dropoffLocation.lng}&mobility=${mobilityFilter}&timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`;
+    const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
+    const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&originLat=${pickupLocation.lat}&originLng=${pickupLocation.lng}&destLat=${dropoffLocation.lat}&destLng=${dropoffLocation.lng}&mobility=${mobilityFilter}&timeMode=${timeMode}${timeParam}`;
 
     if (!isAuth) {
       navigate(`/login?${query}`);
@@ -418,8 +419,8 @@ export default function LandingPage() {
               style={{ zIndex: 1 }}
             >
               <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               />
               <Polyline positions={polylineCoords} color="#2563eb" weight={5} opacity={0.9} />
 

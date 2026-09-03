@@ -71,7 +71,7 @@ export default function TripPlannerPage() {
   const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
-  const urlDepartTime = searchParams.get('departTime') || '09:30';
+  const urlDepartTime = searchParams.get('departTime') || '';
 
   // Mobility Mode (Simple 3 options like Uber/Google Maps)
   const [selectedMobility, setSelectedMobility] = useState<string>(
@@ -268,7 +268,8 @@ export default function TripPlannerPage() {
       console.error('Journey planning failed', err);
     } finally {
       setIsPlanning(false);
-      navigate(`/routes?timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`);
+      const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
+      navigate(`/routes?timeMode=${timeMode}${timeParam}`);
     }
   };
 

@@ -30,7 +30,6 @@ import {
   type AuthenticRadarStatus,
 } from '../../utils/liveTransitRadar';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
-import { LiveTransitCountdownBanner } from '../../components/map/LiveTransitCountdownBanner';
 
 // Minimalist Endpoint Pins
 const createMapPin = (color: string, label: string) =>
@@ -122,152 +121,33 @@ function MapZoomListener({ onZoomChange }: { onZoomChange: (zoom: number) => voi
   return null;
 }
 
-// Ultra-High Definition Cartography & Satellite Layer Presets
-const TILE_LAYERS = {
-  voyager: {
-    name: 'HD Vector',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-  },
-  satellite: {
-    name: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    subdomains: 'abcd',
-    maxZoom: 19,
-  },
-  positron: {
-    name: 'Clean Light',
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-  },
-};
-
+// Minimalist Map Controls (Clean & Uncluttered for Mobile & Desktop)
 function MapCustomControls({
   coordinates,
-  mapStyle,
-  setMapStyle,
-  liveRadarEnabled,
-  setLiveRadarEnabled,
-  onRecenterOnBus,
 }: {
   coordinates: Array<[number, number]>;
-  mapStyle: 'voyager' | 'satellite' | 'positron';
-  setMapStyle: (s: 'voyager' | 'satellite' | 'positron') => void;
-  liveRadarEnabled: boolean;
-  setLiveRadarEnabled: (enabled: boolean) => void;
-  onRecenterOnBus?: () => void;
 }) {
   const map = useMap();
 
-  const handleZoomIn = () => map.zoomIn();
-  const handleZoomOut = () => map.zoomOut();
   const handleRecenter = () => {
     if (coordinates && coordinates.length > 0) {
       const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17, animate: true, duration: 0.6 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true, duration: 0.5 });
       }
     }
   };
 
   return (
-    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '12px' }}>
-      <div className="flex flex-col gap-2 items-end">
-        {/* Map Layer Style & Live Radar Switcher */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-neutral-200/90 p-1 flex items-center gap-1 text-[11px] font-bold text-neutral-700">
-          <button
-            type="button"
-            onClick={() => setLiveRadarEnabled(!liveRadarEnabled)}
-            className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              liveRadarEnabled
-                ? 'bg-emerald-700 text-white shadow-sm'
-                : 'hover:bg-neutral-100 text-neutral-600'
-            }`}
-            title="Toggle Real-Time Vehicle Radar"
-          >
-            <span className={`w-2 h-2 rounded-full ${liveRadarEnabled ? 'bg-emerald-300 animate-pulse' : 'bg-neutral-400'}`}></span>
-            <span>🛰️ Radar</span>
-          </button>
-          <div className="w-[1px] h-4 bg-neutral-200" />
-          <button
-            type="button"
-            onClick={() => setMapStyle('voyager')}
-            className={`px-2.5 py-1.5 rounded-xl transition-all ${mapStyle === 'voyager'
-                ? 'bg-neutral-900 text-white shadow-sm'
-                : 'hover:bg-neutral-100 text-neutral-600'
-              }`}
-            title="Ultra-Clear Vector HD Map"
-          >
-            🗺️ HD
-          </button>
-          <button
-            type="button"
-            onClick={() => setMapStyle('satellite')}
-            className={`px-2.5 py-1.5 rounded-xl transition-all ${mapStyle === 'satellite'
-                ? 'bg-neutral-900 text-white shadow-sm'
-                : 'hover:bg-neutral-100 text-neutral-600'
-              }`}
-            title="Satellite Aerial Imagery"
-          >
-            🛰️ Sat
-          </button>
-          <button
-            type="button"
-            onClick={() => setMapStyle('positron')}
-            className={`px-2.5 py-1.5 rounded-xl transition-all ${mapStyle === 'positron'
-                ? 'bg-neutral-900 text-white shadow-sm'
-                : 'hover:bg-neutral-100 text-neutral-600'
-              }`}
-            title="Minimalist Light Map"
-          >
-            ⚪ Clean
-          </button>
-        </div>
-
-        {/* Quick View Controls: Recenter, Bus Lock & Zoom */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-neutral-200/90 p-1 flex flex-col items-center gap-1">
-          <button
-            type="button"
-            onClick={handleRecenter}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-700 transition-all"
-            title="Recenter Map on Complete Route"
-          >
-            <Crosshair className="w-4 h-4 text-neutral-800" />
-          </button>
-          {liveRadarEnabled && onRecenterOnBus && (
-            <button
-              type="button"
-              onClick={onRecenterOnBus}
-              className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-emerald-50 text-emerald-700 transition-all"
-              title="Lock & Track Nearest Active Vehicle"
-            >
-              <Bus className="w-4 h-4 text-emerald-700" />
-            </button>
-          )}
-          <div className="w-5 h-[1px] bg-neutral-200" />
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-800 font-black text-sm"
-            title="Zoom In"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-neutral-100 text-neutral-800 font-black text-sm"
-            title="Zoom Out"
-          >
-            &minus;
-          </button>
-        </div>
-      </div>
+    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '10px' }}>
+      <button
+        type="button"
+        onClick={handleRecenter}
+        className="w-9 h-9 rounded-xl bg-white shadow-md border border-neutral-200 flex items-center justify-center hover:bg-neutral-50 text-neutral-700 transition-all cursor-pointer"
+        title="Recenter Map on Route"
+      >
+        <Crosshair className="w-4 h-4 text-neutral-800" />
+      </button>
     </div>
   );
 }
@@ -474,7 +354,7 @@ export default function RouteDiscoveryPage() {
   const { searchResults, currentUser } = state;
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
-  const urlDepartTime = searchParams.get('departTime') || '09:30';
+  const urlDepartTime = searchParams.get('departTime') || '';
 
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
@@ -491,13 +371,12 @@ export default function RouteDiscoveryPage() {
   const [poolPhoneInput, setPoolPhoneInput] = useState<string>(currentUser?.phoneNumber || '+91 94370 12345');
   const [poolVehicleModelInput, setPoolVehicleModelInput] = useState<string>('Tata Nexon EV');
   const [poolVehiclePlateInput, setPoolVehiclePlateInput] = useState<string>('OD-02-AZ-8890');
-  const [poolDepartTimeInput, setPoolDepartTimeInput] = useState<string>(urlDepartTime);
+  const [poolDepartTimeInput, setPoolDepartTimeInput] = useState<string>(urlDepartTime || 'Flexible');
   const [poolSeatsInput, setPoolSeatsInput] = useState<number>(1);
   const [poolStepFreeInput, setPoolStepFreeInput] = useState<boolean>(false);
   const [poolNotesInput, setPoolNotesInput] = useState<string>('');
 
   const [infoModalRoute, setInfoModalRoute] = useState<RouteSearchResult | null>(null);
-  const [mapStyle, setMapStyle] = useState<'voyager' | 'satellite' | 'positron'>('voyager');
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(12);
   const [selectedCoachClassOverrides, setSelectedCoachClassOverrides] = useState<Record<string, string>>({});
 
@@ -770,7 +649,7 @@ export default function RouteDiscoveryPage() {
           <ArrowRight className="w-4 h-4 text-neutral-400 shrink-0" />
           <span className="truncate max-w-[180px] sm:max-w-[240px]">{selectedRoute?.destinationName || 'Destination'}</span>
           <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg shrink-0 ml-1">
-            {urlTimeMode === 'now' ? '⚡ Leave Now' : `⏰ ${urlDepartTime || '09:30'}`}
+            {urlTimeMode === 'now' || !urlDepartTime ? '⚡ Leave Now' : `⏰ ${urlDepartTime}`}
           </span>
         </div>
 
@@ -876,25 +755,6 @@ export default function RouteDiscoveryPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Itinerary Column: Route Choices & Trip Breakdown (5 cols on desktop, 2nd order on mobile) */}
         <div className="order-2 lg:order-1 lg:col-span-5 space-y-4">
-          {/* 🛰️ Live Transit Radar & Arrival Countdown Banner (Moovit / Transit App Grade) */}
-          {/* 🛰️ Authentic Transit Radar & Telemetry Banner (Zero Fabrication) */}
-          {selectedRoute && (
-            <LiveTransitCountdownBanner
-              routeNumber={selectedRoute.route?.shortName || selectedRoute.route?.id?.split('_')[0] || 'Transit'}
-              routeName={selectedRoute.route?.name || 'Regional Corridor Route'}
-              vehicleType={selectedRoute.route?.vehicleType || 'bus'}
-              radarStatus={radarStatus}
-              activeStopName={selectedRoute.originName || 'Your Boarding Station'}
-              scheduledEtaMinutes={selectedRoute.eta || 10}
-              scheduledDepartureTime={urlDepartTime}
-              onRefreshRadar={fetchLiveTelemetry}
-              onReportSubmitted={() => {
-                addToast('success', '🌟 Ground-truth occupancy verified! Thank you for helping commuters.', 4000);
-                fetchLiveTelemetry();
-              }}
-            />
-          )}
-
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-black uppercase tracking-wider text-neutral-700">
               Available Rides & Routes ({searchResults.length})
@@ -1283,9 +1143,9 @@ export default function RouteDiscoveryPage() {
           </div>
         </div>
 
-        {/* Map Column: High Precision Leaflet Map (Top on mobile, Right 7 cols on desktop) */}
+        {/* Map Column: Clean OpenStreetMap (Top on mobile, Right 7 cols on desktop) */}
         <div className="order-1 lg:order-2 lg:col-span-7 sticky top-4">
-          <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[280px] sm:h-[380px] lg:h-[620px] relative">
+          <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[250px] sm:h-[350px] lg:h-[620px] relative">
             <MapContainer
               center={originCoords}
               zoom={12}
@@ -1294,29 +1154,14 @@ export default function RouteDiscoveryPage() {
               scrollWheelZoom={false}
             >
               <TileLayer
-                key={mapStyle}
-                attribution={TILE_LAYERS[mapStyle].attribution}
-                url={TILE_LAYERS[mapStyle].url}
-                subdomains={TILE_LAYERS[mapStyle].subdomains}
-                maxZoom={TILE_LAYERS[mapStyle].maxZoom}
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                maxZoom={19}
               />
 
               <MapBoundsController coordinates={continuousRoute} />
               <MapZoomListener onZoomChange={setCurrentMapZoom} />
-              <MapCustomControls
-                coordinates={continuousRoute}
-                mapStyle={mapStyle}
-                setMapStyle={setMapStyle}
-                liveRadarEnabled={liveRadarEnabled}
-                setLiveRadarEnabled={setLiveRadarEnabled}
-                onRecenterOnBus={() => {
-                  if (radarStatus.activeVehicles.length > 0) {
-                    addToast('info', `📍 Focused on verified vehicle ${radarStatus.activeVehicles[0].label}`, 3000);
-                  } else {
-                    addToast('info', 'ℹ️ No active transponder broadcasting on this corridor. Operating on scheduled timetable.', 3500);
-                  }
-                }}
-              />
+              <MapCustomControls coordinates={continuousRoute} />
 
               {/* 1. Backdrop Casing Polyline for High Contrast & Sharp Clarity */}
               <Polyline
@@ -1515,26 +1360,6 @@ export default function RouteDiscoveryPage() {
                 </Popup>
               </Marker>
             </MapContainer>
-
-            {/* Floating Bottom Legend */}
-            <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md border border-neutral-200 px-3.5 py-2 rounded-2xl shadow-lg text-[11px] font-bold text-neutral-800 flex flex-wrap items-center gap-3 z-[1000]">
-              <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span>Origin (A)</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                <span>🔄 Transport Change Hub</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                <span>Transit Corridor</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span>Destination (B)</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
