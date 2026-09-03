@@ -32,43 +32,35 @@ import {
 } from '../../utils/liveTransitRadar';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
 
-// Modern High-Clarity Journey Endpoint Pins
-const createEndpointPin = (color: string, label: string, name?: string) => {
-  const cleanName = (name || '').split('(')[0].trim() || (label === 'A' ? 'Start' : 'Destination');
-  return L.divIcon({
+// Modern High-Clarity Circular Journey Endpoint Pin (Prevents Overlap with nearby Station Badges)
+const createEndpointPin = (color: string, label: string) =>
+  L.divIcon({
     className: 'custom-endpoint-pin',
     html: `
-      <div style="display:flex; flex-direction:column; align-items:center; cursor:pointer; filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));">
-        <div style="
-          background:${color};
-          color:white;
-          border:2px solid white;
-          border-radius:16px;
-          padding:3px 9px;
-          font-weight:800;
-          font-size:11px;
-          white-space:nowrap;
-          display:flex;
-          align-items:center;
-          gap:4px;
-        ">
-          <span style="background:rgba(255,255,255,0.3); border-radius:10px; width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:900;">${label}</span>
-          <span style="max-width:130px; overflow:hidden; text-overflow:ellipsis;">${cleanName}</span>
-        </div>
-        <div style="
-          width:0; 
-          height:0; 
-          border-left:5px solid transparent;
-          border-right:5px solid transparent;
-          border-top:6px solid ${color};
-          margin-top:-1px;
-        "></div>
+      <div style="
+        background-color: ${color};
+        color: white;
+        border: 2.5px solid white;
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 13px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        cursor: pointer;
+      ">
+        ${label}
       </div>
     `,
-    iconSize: [150, 32],
-    iconAnchor: [75, 30],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
-};
+
+const originPin = createEndpointPin('#10b981', 'A');
+const destPin = createEndpointPin('#ef4444', 'B');
 
 // Transport Change / Transfer Mode Switch Badge Marker
 const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
@@ -1438,8 +1430,8 @@ export default function RouteDiscoveryPage() {
                 </>
               )}
 
-              {/* Origin Marker */}
-              <Marker position={originCoords} icon={createEndpointPin('#10b981', 'A', selectedRoute.originName)}>
+              {/* Origin Marker (Compact 28px circular beacon - no text rectangle collision) */}
+              <Marker position={originCoords} icon={originPin}>
                 <Popup>
                   <div className="text-xs font-bold p-1">
                     <div className="text-emerald-700 flex items-center gap-1 font-black">
@@ -1448,7 +1440,7 @@ export default function RouteDiscoveryPage() {
                     <div className="text-neutral-900 font-bold mt-1 text-sm">{selectedRoute.originName}</div>
                     {ingressPath.length > 0 && (
                       <div className="text-[11px] text-blue-700 font-semibold mt-1 flex items-center gap-1">
-                        <span>🚶 Walk along blue dashed path to nearest stop</span>
+                        <span>🚶 Walk along blue dashed path to boarding stop</span>
                       </div>
                     )}
                   </div>
@@ -1487,7 +1479,7 @@ export default function RouteDiscoveryPage() {
                 </Marker>
               ))}
 
-              {/* 🚉 REAL INTERMEDIATE TRANSIT STATIONS & AIRPORTS ON MAP (Clear Station Names & Roles) */}
+              {/* 🚉 REAL INTERMEDIATE TRANSIT STATIONS & AIRPORTS ON MAP (Concise, Uncluttered Badges) */}
               {selectedRoute.intermediateStops && selectedRoute.intermediateStops.map((stop, sIdx) => {
                 const isTrainStop = isTrain || selectedRoute.route?.vehicleType === 'train';
                 const isFlightStop = isFlight || selectedRoute.route?.vehicleType === 'flight';
@@ -1495,7 +1487,17 @@ export default function RouteDiscoveryPage() {
                 const isLast = sIdx === selectedRoute.intermediateStops!.length - 1;
                 const isTransfer = stop.stopRole === 'transfer' || (selectedRoute.transfers > 0 && sIdx > 0 && sIdx < selectedRoute.intermediateStops!.length - 1);
 
-                const cleanName = (stop.name || '').split('(')[0].trim();
+                // Concise station name to avoid wide text overlapping
+                const cleanShortName = (stop.name || '')
+                  .split('(')[0]
+                  .replace(/Central Transit Hub/gi, '')
+                  .replace(/Transit Station & Chowk/gi, 'Station')
+                  .replace(/Transit Station/gi, 'Station')
+                  .replace(/Bus Terminal/gi, 'Terminal')
+                  .replace(/Bus Stop/gi, '')
+                  .replace(/Main Entrance/gi, '')
+                  .trim();
+
                 const roleBadge = isTransfer ? 'TRANSFER' : isFirst ? 'BOARD' : isLast ? 'ALIGHT' : 'STOP';
                 const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';
                 const stopEmoji = isTransfer ? '🔄' : isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
@@ -1513,21 +1515,21 @@ export default function RouteDiscoveryPage() {
                   pinSize = [20, 20];
                   pinAnchor = [10, 10];
                 } else if (currentMapZoom <= 13) {
-                  pinHtml = `<div style="display:flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 6px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;"><span>${stopEmoji}</span><span>${cleanName}</span></div>`;
-                  pinSize = [100, 24];
-                  pinAnchor = [50, 12];
+                  pinHtml = `<div style="display:flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 6px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;"><span>${stopEmoji}</span><span>${cleanShortName}</span></div>`;
+                  pinSize = [80, 22];
+                  pinAnchor = [40, 11];
                 } else {
-                  // Zoom 14+ (Optimal viewing): Prominent, crystal-clear badge showing Role and Stop Name
-                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));">
-                    <div style="display:flex;align-items:center;gap:4px;background:${stopColor};color:white;border:${isTransfer ? '2.5px solid #fde047' : '2px solid white'};border-radius:18px;padding:3px 9px;box-shadow:0 3px 10px rgba(0,0,0,0.4);font-weight:900;font-size:11px;white-space:nowrap;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
-                      <span style="font-size:13px;">${stopEmoji}</span>
-                      <span style="background:rgba(0,0,0,0.25);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:900;">${roleBadge}</span>
-                      <span>${cleanName}</span>
+                  // Zoom 14+ (Optimal viewing): Compact, crisp pill with short role and clean station name
+                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.3));">
+                    <div style="display:flex;align-items:center;gap:3.5px;background:${stopColor};color:white;border:${isTransfer ? '2px solid #fde047' : '1.5px solid white'};border-radius:14px;padding:2px 7px;font-weight:800;font-size:10.5px;white-space:nowrap;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
+                      <span style="font-size:12px;">${stopEmoji}</span>
+                      <span style="background:rgba(0,0,0,0.25);border-radius:3px;padding:0.5px 4px;font-size:8.5px;font-weight:900;">${roleBadge}</span>
+                      <span>${cleanShortName}</span>
                     </div>
-                    <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${stopColor};margin-top:-1px;"></div>
+                    <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${stopColor};margin-top:-1px;"></div>
                   </div>`;
-                  pinSize = [140, 34];
-                  pinAnchor = [70, 32];
+                  pinSize = [110, 28];
+                  pinAnchor = [55, 26];
                 }
 
                 const stationIcon = L.divIcon({
@@ -1579,8 +1581,8 @@ export default function RouteDiscoveryPage() {
                 />
               )}
 
-              {/* Destination Marker */}
-              <Marker position={destCoords} icon={createEndpointPin('#ef4444', 'B', selectedRoute.destinationName)}>
+              {/* Destination Marker (Compact 28px circular beacon) */}
+              <Marker position={destCoords} icon={destPin}>
                 <Popup>
                   <div className="text-xs font-bold p-1">
                     <div className="text-red-600 flex items-center gap-1 font-black">
