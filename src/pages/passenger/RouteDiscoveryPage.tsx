@@ -14,6 +14,7 @@ import {
   CreditCard, Ticket, Crosshair, Layers, Info
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
+import { journeysApi } from '../../api';
 import {
   getMatchingCarpools,
   registerCarpoolRequest,
@@ -124,8 +125,12 @@ function MapZoomListener({ onZoomChange }: { onZoomChange: (zoom: number) => voi
 // Minimalist Map Controls (Clean & Uncluttered for Mobile & Desktop)
 function MapCustomControls({
   coordinates,
+  mapType,
+  setMapType,
 }: {
   coordinates: Array<[number, number]>;
+  mapType: 'streets' | 'satellite';
+  setMapType: (t: 'streets' | 'satellite') => void;
 }) {
   const map = useMap();
 
@@ -139,15 +144,44 @@ function MapCustomControls({
   };
 
   return (
-    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '10px' }}>
-      <button
-        type="button"
-        onClick={handleRecenter}
-        className="w-9 h-9 rounded-xl bg-white shadow-md border border-neutral-200 flex items-center justify-center hover:bg-neutral-50 text-neutral-700 transition-all cursor-pointer"
-        title="Recenter Map on Route"
-      >
-        <Crosshair className="w-4 h-4 text-neutral-800" />
-      </button>
+    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '8px' }}>
+      <div className="flex items-center gap-1.5">
+        {/* Minimalist 2-Option Layer Switcher */}
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-neutral-200 p-0.5 flex items-center gap-0.5 text-[11px] font-bold text-neutral-700">
+          <button
+            type="button"
+            onClick={() => setMapType('streets')}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              mapType === 'streets'
+                ? 'bg-neutral-900 text-white shadow-xs'
+                : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+            }`}
+          >
+            🗺️ Roads
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapType('satellite')}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              mapType === 'satellite'
+                ? 'bg-neutral-900 text-white shadow-xs'
+                : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+            }`}
+          >
+            🛰️ Satellite
+          </button>
+        </div>
+
+        {/* Recenter Button */}
+        <button
+          type="button"
+          onClick={handleRecenter}
+          className="w-8 h-8 rounded-xl bg-white/95 backdrop-blur-md shadow-md border border-neutral-200 flex items-center justify-center hover:bg-neutral-50 text-neutral-700 transition-all cursor-pointer"
+          title="Recenter Map on Route"
+        >
+          <Crosshair className="w-4 h-4 text-neutral-800" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -349,15 +383,58 @@ function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number
 export default function RouteDiscoveryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { state, startJourney } = useAppStore();
+  const { state, startJourney, setSearchResults } = useAppStore();
   const { addToast } = useToast();
   const { searchResults, currentUser } = state;
+
+  const urlOrigin = searchParams.get('origin');
+  const urlDest = searchParams.get('destination');
+  const urlOriginLat = searchParams.get('originLat') ? parseFloat(searchParams.get('originLat')!) : undefined;
+  const urlOriginLng = searchParams.get('originLng') ? parseFloat(searchParams.get('originLng')!) : undefined;
+  const urlDestLat = searchParams.get('destLat') ? parseFloat(searchParams.get('destLat')!) : undefined;
+  const urlDestLng = searchParams.get('destLng') ? parseFloat(searchParams.get('destLng')!) : undefined;
+  const urlMobility = searchParams.get('mobility') || 'none';
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
   const urlDepartTime = searchParams.get('departTime') || '';
 
+  const [mapType, setMapType] = useState<'streets' | 'satellite'>('streets');
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
+
+  // Automatically fetch & synchronize routes whenever URL origin / destination changes
+  useEffect(() => {
+    if (urlOrigin && urlDest) {
+      const currentOrigin = searchResults[0]?.originName;
+      const currentDest = searchResults[0]?.destinationName;
+      if (
+        searchResults.length === 0 ||
+        (currentOrigin && currentOrigin !== urlOrigin) ||
+        (currentDest && currentDest !== urlDest)
+      ) {
+        journeysApi.plan({
+          origin: {
+            lat: urlOriginLat ?? 20.3523,
+            lng: urlOriginLng ?? 85.8193,
+            name: urlOrigin,
+          },
+          destination: {
+            lat: urlDestLat ?? 20.3527,
+            lng: urlDestLng ?? 85.8163,
+            name: urlDest,
+          },
+          profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+        }).then((res) => {
+          if (res && res.options && res.options.length > 0) {
+            setSearchResults(res.options);
+            setSelectedIndex(0);
+          }
+        }).catch((err) => {
+          console.warn('Failed to dynamically sync route from query params:', err);
+        });
+      }
+    }
+  }, [urlOrigin, urlDest, urlOriginLat, urlOriginLng, urlDestLat, urlDestLng, urlMobility, searchResults.length]);
 
   // Carpooling States & Modals
   const [showCarpoolModal, setShowCarpoolModal] = useState<boolean>(false);
@@ -828,16 +905,16 @@ export default function RouteDiscoveryPage() {
                           )}
                         </div>
                         <div className={`text-xs mt-0.5 font-medium ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                          {route.route?.vehicleType === 'campus-vehicle' || route.route?.id?.includes('EV')
-                            ? '⚡ Free Campus Shuttle'
-                            : route.route?.id?.includes('CARPOOL')
-                              ? '🤝 Student Ride Sharing'
-                              : route.route?.id?.includes('BIKE')
-                                ? '🛵 Fast Solo Bike'
-                                : route.route?.id?.includes('AUTO')
-                                  ? '🚖 Direct Stand Auto'
-                                  : route.route?.id?.includes('WALK') || route.route?.id?.includes('STEP_FREE')
-                                    ? '🚶 Paved Sidewalk'
+                          {route.route?.id?.includes('WALK') || route.route?.id?.includes('STEP_FREE') || route.route?.name?.toLowerCase().includes('walk')
+                            ? '🚶 Step-Free Paved Walkway'
+                            : route.route?.vehicleType === 'campus-vehicle' || route.route?.id?.includes('EV')
+                              ? '⚡ Free Campus Shuttle'
+                              : route.route?.id?.includes('CARPOOL')
+                                ? '🤝 Student Ride Sharing'
+                                : route.route?.id?.includes('BIKE')
+                                  ? '🛵 Fast Solo Bike'
+                                  : route.route?.id?.includes('AUTO')
+                                    ? '🚖 Direct Stand Auto'
                                     : '🚌 Public Transit'}
                         </div>
                       </div>
@@ -857,9 +934,9 @@ export default function RouteDiscoveryPage() {
                             </span>
                           )}
                         </div>
-                        {route.priceBreakdown?.mainTicketFare && route.priceBreakdown.mainTicketFare !== displayTotalPrice && (
+                        {Boolean(route.priceBreakdown?.mainTicketFare && route.priceBreakdown.mainTicketFare !== displayTotalPrice) && (
                           <div className={`text-[10px] font-bold leading-none mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                            Ticket: ₹{route.priceBreakdown.mainTicketFare.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
+                            Ticket: ₹{route.priceBreakdown?.mainTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
                           </div>
                         )}
                       </div>
@@ -1154,14 +1231,27 @@ export default function RouteDiscoveryPage() {
               scrollWheelZoom={false}
             >
               <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                key={mapType}
+                attribution={
+                  mapType === 'satellite'
+                    ? 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                    : 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+                }
+                url={
+                  mapType === 'satellite'
+                    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+                }
                 maxZoom={19}
               />
 
               <MapBoundsController coordinates={continuousRoute} />
               <MapZoomListener onZoomChange={setCurrentMapZoom} />
-              <MapCustomControls coordinates={continuousRoute} />
+              <MapCustomControls
+                coordinates={continuousRoute}
+                mapType={mapType}
+                setMapType={setMapType}
+              />
 
               {/* 1. Backdrop Casing Polyline for High Contrast & Sharp Clarity */}
               <Polyline

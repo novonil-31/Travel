@@ -36,14 +36,15 @@ export default function TripPlannerPage() {
   const urlDestLat = searchParams.get('destLat') ? parseFloat(searchParams.get('destLat')!) : null;
   const urlDestLng = searchParams.get('destLng') ? parseFloat(searchParams.get('destLng')!) : null;
 
-  // Retrieve last searched destination only for authentic logged in users
-  const lastSavedSearch = isAuth && state.currentUser ? getLastSearchedDestination(state.currentUser.id) : null;
-  const userRecentSearches = isAuth && state.currentUser ? getRecentSearches(state.currentUser.id) : [];
+  // Retrieve last searched destination for all commuters (guest or logged-in)
+  const currentUserId = state.currentUser?.id || 'guest';
+  const lastSavedSearch = getLastSearchedDestination(currentUserId);
+  const userRecentSearches = getRecentSearches(currentUserId);
 
   // Location inputs state
-  const initialOriginName = urlOrigin || (isAuth && lastSavedSearch?.origin?.name ? lastSavedSearch.origin.name : "Queen's Castle 1 (QC 1)");
-  const initialOriginLat = urlOriginLat ?? (isAuth && lastSavedSearch?.origin?.lat ? lastSavedSearch.origin.lat : 20.352367250329067);
-  const initialOriginLng = urlOriginLng ?? (isAuth && lastSavedSearch?.origin?.lng ? lastSavedSearch.origin.lng : 85.81937388473358);
+  const initialOriginName = urlOrigin || (lastSavedSearch?.origin?.name ? lastSavedSearch.origin.name : "Queen's Castle 1 (QC 1)");
+  const initialOriginLat = urlOriginLat ?? (lastSavedSearch?.origin?.lat ? lastSavedSearch.origin.lat : 20.352367250329067);
+  const initialOriginLng = urlOriginLng ?? (lastSavedSearch?.origin?.lng ? lastSavedSearch.origin.lng : 85.81937388473358);
 
   const initialDestName = urlDest || (isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT');
   const initialDestLat = urlDestLat ?? (isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : 20.352708891788033);
@@ -204,41 +205,46 @@ export default function TripPlannerPage() {
     setDestinationLocation(tempLoc);
   };
 
-  // Quick Preset Selection
-  const handleSelectPreset = (from: LocationState, to: LocationState) => {
+  // Quick Preset Selection (Immediately executes search & planning)
+  const handleSelectPreset = async (from: LocationState, to: LocationState) => {
     setOriginInput(from.name);
     setOriginLocation(from);
     setDestinationInput(to.name);
     setDestinationLocation(to);
     setActiveDropdown(null);
+    await executePlanning(from.name, to.name, selectedMobility, from, to);
   };
 
   // Execute Dynamic Planning
-  const executePlanning = async (origText: string, destText: string, mobility: string) => {
+  const executePlanning = async (
+    origText: string,
+    destText: string,
+    mobility: string,
+    overrideOrigin?: LocationState,
+    overrideDest?: LocationState
+  ) => {
     setIsPlanning(true);
 
     try {
-      let finalOrigin = { ...originLocation };
-      let finalDest = { ...destinationLocation };
+      let finalOrigin = overrideOrigin ? { ...overrideOrigin } : { ...originLocation };
+      let finalDest = overrideDest ? { ...overrideDest } : { ...destinationLocation };
 
-      if (origText && origText !== originLocation.name) {
+      if (!overrideOrigin && origText && origText !== originLocation.name) {
         const matches = await stopsApi.searchPlaces(origText);
         if (matches && matches.length > 0) {
           finalOrigin = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
       }
 
-      if (destText && destText !== destinationLocation.name) {
+      if (!overrideDest && destText && destText !== destinationLocation.name) {
         const matches = await stopsApi.searchPlaces(destText);
         if (matches && matches.length > 0) {
           finalDest = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
       }
 
-      // Save recent search for authentic logged-in user
-      if (isAuth && state.currentUser) {
-        saveRecentSearch(state.currentUser.id, finalOrigin, finalDest);
-      }
+      // Save recent search for all users
+      saveRecentSearch(state.currentUser?.id, finalOrigin, finalDest);
 
       let finalDepartureTime = new Date();
       if (timeMode !== 'now' && departTime) {
@@ -264,12 +270,15 @@ export default function TripPlannerPage() {
       if (planRes && planRes.options && planRes.options.length > 0) {
         setSearchResults(planRes.options);
       }
+
+      const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
+      navigate(
+        `/routes?origin=${encodeURIComponent(finalOrigin.name)}&destination=${encodeURIComponent(finalDest.name)}&originLat=${finalOrigin.lat}&originLng=${finalOrigin.lng}&destLat=${finalDest.lat}&destLng=${finalDest.lng}&mobility=${mobility}&timeMode=${timeMode}${timeParam}`
+      );
     } catch (err) {
       console.error('Journey planning failed', err);
     } finally {
       setIsPlanning(false);
-      const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
-      navigate(`/routes?timeMode=${timeMode}${timeParam}`);
     }
   };
 
@@ -642,6 +651,38 @@ export default function TripPlannerPage() {
           </button>
         </form>
       </div>
+
+      {/* Recent Search History (Interactive Instant Re-planning) */}
+      {userRecentSearches && userRecentSearches.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
+              Recent Search History
+            </span>
+            <span className="text-[11px] font-semibold text-neutral-400">Tap to plan</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {userRecentSearches.slice(0, 4).map((rec, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSelectPreset(rec.origin, rec.destination)}
+                className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-black text-left transition-all shadow-sm group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-neutral-900 group-hover:text-black truncate">
+                  <Clock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                  <span className="truncate">{rec.origin.name} → {rec.destination.name}</span>
+                </div>
+                <div className="text-[11px] text-neutral-400 mt-1 flex items-center justify-between">
+                  <span>Saved Route</span>
+                  <span className="text-emerald-700 font-bold group-hover:underline">Plan Trip →</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Popular Corridors Shortcuts */}
       <div className="space-y-2.5">

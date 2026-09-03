@@ -132,10 +132,8 @@ export default function LandingPage() {
       updateProfile({ mobility: 'none', stairs: 'acceptable', walkingTolerance: 'high' });
     }
 
-    // Save recent search for authentic logged-in user
-    if (isAuth && state.currentUser) {
-      saveRecentSearch(state.currentUser.id, pickupLocation, dropoffLocation);
-    }
+    // Save recent search for all users
+    saveRecentSearch(state.currentUser?.id, pickupLocation, dropoffLocation);
 
     const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
     const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&originLat=${pickupLocation.lat}&originLng=${pickupLocation.lng}&destLat=${dropoffLocation.lat}&destLng=${dropoffLocation.lng}&mobility=${mobilityFilter}&timeMode=${timeMode}${timeParam}`;
@@ -392,17 +390,31 @@ export default function LandingPage() {
               <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Popular routes in Bhubaneswar:</span>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { from: 'Campus Gate', to: 'Patia Transit Station' },
-                  { from: 'Hospital', to: 'Jaydev Vihar' },
-                  { from: 'Infocity', to: 'Master Canteen' },
+                  {
+                    from: { name: 'Campus Gate', lat: 20.3555, lng: 85.8145 },
+                    to: { name: 'Patia Transit Station', lat: 20.3450, lng: 85.8180 },
+                  },
+                  {
+                    from: { name: 'Hospital', lat: 20.3570, lng: 85.8170 },
+                    to: { name: 'Jaydev Vihar', lat: 20.2980, lng: 85.8250 },
+                  },
+                  {
+                    from: { name: 'Infocity', lat: 20.3588, lng: 85.8078 },
+                    to: { name: 'Master Canteen', lat: 20.2666, lng: 85.8436 },
+                  },
                 ].map((p, idx) => (
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => { setPickup(p.from); setDropoff(p.to); }}
-                    className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-colors"
+                    onClick={() => {
+                      setPickup(p.from.name);
+                      setPickupLocation(p.from);
+                      setDropoff(p.to.name);
+                      setDropoffLocation(p.to);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-xs font-semibold text-neutral-800 transition-colors cursor-pointer"
                   >
-                    {p.from} → {p.to}
+                    {p.from.name} → {p.to.name}
                   </button>
                 ))}
               </div>
@@ -419,8 +431,8 @@ export default function LandingPage() {
               style={{ zIndex: 1 }}
             >
               <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                attribution='Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
               />
               <Polyline positions={polylineCoords} color="#2563eb" weight={5} opacity={0.9} />
 
