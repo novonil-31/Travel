@@ -22,6 +22,7 @@ import {
 } from '../../utils/mapMatching';
 import { safetyApi, reportsApi } from '../../api';
 import { isGuestAccount } from '../../utils/authUtils';
+import { speakTransitAnnouncement } from '../../utils/liveTransitRadar';
 
 // Custom Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -794,6 +795,21 @@ export default function ActiveJourneyPage() {
                 ? `${liveDistToStartMeters}m to Start (~${walkingEtaToStartMins} min)`
                 : `${effectiveRemainingDistMeters >= 1000 ? (effectiveRemainingDistMeters / 1000).toFixed(1) + ' km' : effectiveRemainingDistMeters + ' m'} (~${liveRemainingEtaMins} min)`}
             </span>
+            <button
+              type="button"
+              onClick={() => {
+                const speechText = !hasReachedStartOrigin
+                  ? `You are currently ${liveDistToStartMeters} meters from ${activeJourney?.originName}. Continue along the pedestrian path.`
+                  : `Approaching milestone ${targetLocationName}. Remaining distance is ${effectiveRemainingDistMeters >= 1000 ? (effectiveRemainingDistMeters / 1000).toFixed(1) + ' kilometers' : effectiveRemainingDistMeters + ' meters'}. Estimated arrival in approximately ${liveRemainingEtaMins} minutes.`;
+                speakTransitAnnouncement(speechText);
+                addToast('info', '🔊 Speaking live navigation instruction', 3000);
+              }}
+              className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-emerald-200 text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+              title="Speak Live Navigation Announcement"
+            >
+              <Volume2 className="w-3 h-3" />
+              <span>Voice</span>
+            </button>
             <button
               onClick={() => setShowLeaveModal(true)}
               className="px-2.5 py-0.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
