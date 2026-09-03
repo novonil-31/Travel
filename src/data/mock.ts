@@ -1742,9 +1742,23 @@ export async function generateDynamicSearchResults(
       );
 
       if (commonStops.length > 0) {
+        // Prevent illogical backtracking loops
+        const dOrigToDest = haversineDistanceClient(origin.lat, origin.lng, destination.lat, destination.lng);
+        const validTransfers = commonStops.filter((cs) => {
+          const dOrigToTransfer = haversineDistanceClient(origin.lat, origin.lng, cs.lat, cs.lng);
+          const dTransferToDest = haversineDistanceClient(cs.lat, cs.lng, destination.lat, destination.lng);
+          // Transfer stop must not take passenger further away from destination than origin itself
+          if (dTransferToDest >= dOrigToDest * 1.05) return false;
+          // Total path through transfer must not be an absurd 50%+ detour
+          if (allCandidateRoutes.length > 0 && (dOrigToTransfer + dTransferToDest) > dOrigToDest * 1.4) return false;
+          return true;
+        });
+
+        if (validTransfers.length === 0) continue;
+
         // Prefer recognized high-capacity transfer terminals
         const transferStop =
-          commonStops.find(
+          validTransfers.find(
             (cs) =>
               cs.id === 's_jaydev_vihar' ||
               cs.id === 's_master_canteen' ||
@@ -1752,7 +1766,7 @@ export async function generateDynamicSearchResults(
               cs.id === 's_kiit_sq' ||
               cs.id === 's_damana' ||
               cs.id === 's_baramunda_isbt'
-          ) || commonStops[0];
+          ) || validTransfers[0];
 
         const totalWalk = minR1BoardDist + minR2AlightDist;
         allConnectingRoutes.push({
@@ -1804,16 +1818,23 @@ export async function generateDynamicSearchResults(
       fetchRoadGeometryLive(cand.alightStop.lat, cand.alightStop.lng, destination.lat, destination.lng, 'walking'),
     ]);
 
-    const walkToBoard = origToBoardRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, cand.boardStop.lat, cand.boardStop.lng, 8);
+    // Ensure polylines always have at least 2 points connecting precisely to pins
+    const walkToBoard = (origToBoardRes?.coordinates && origToBoardRes.coordinates.length >= 2)
+      ? origToBoardRes.coordinates
+      : [[origin.lat, origin.lng], [cand.boardStop.lat, cand.boardStop.lng]] as Array<[number, number]>;
     const walkToBoardDist = origToBoardRes?.distanceM || Math.round(cand.originWalkDistM);
     const walkToBoardTime = origToBoardRes?.durationMin || Math.max(1, Math.ceil(walkToBoardDist / 70));
 
-    const transitPath = transitRes?.coordinates || interpolateCurvedPoints(cand.boardStop.lat, cand.boardStop.lng, cand.alightStop.lat, cand.alightStop.lng, 16);
+    const transitPath = (transitRes?.coordinates && transitRes.coordinates.length >= 2)
+      ? transitRes.coordinates
+      : interpolateCurvedPoints(cand.boardStop.lat, cand.boardStop.lng, cand.alightStop.lat, cand.alightStop.lng, 16);
     const transitDist = transitRes?.distanceM || Math.round(haversineDistanceClient(cand.boardStop.lat, cand.boardStop.lng, cand.alightStop.lat, cand.alightStop.lng));
     const transitDistKm = Math.max(0.4, transitDist / 1000);
-    const transitTime = transitRes?.durationMin || Math.max(4, Math.ceil(transitDist / 400));
+    const transitTime = transitRes?.durationMin || Math.max(3, Math.ceil(transitDist / 400));
 
-    const walkToDest = alightToDestRes?.coordinates || interpolateCurvedPoints(cand.alightStop.lat, cand.alightStop.lng, destination.lat, destination.lng, 8);
+    const walkToDest = (alightToDestRes?.coordinates && alightToDestRes.coordinates.length >= 2)
+      ? alightToDestRes.coordinates
+      : [[cand.alightStop.lat, cand.alightStop.lng], [destination.lat, destination.lng]] as Array<[number, number]>;
     const walkToDestDist = alightToDestRes?.distanceM || Math.round(cand.destWalkDistM);
     const walkToDestTime = alightToDestRes?.durationMin || Math.max(1, Math.ceil(walkToDestDist / 70));
 
@@ -1821,7 +1842,7 @@ export async function generateDynamicSearchResults(
     const totalDuration = walkToBoardTime + transitTime + walkToDestTime;
     const fullRoute = [...walkToBoard, ...transitPath, ...walkToDest];
 
-    // Real Government Mo Bus Gazette Fare Calculation
+    // Real Government Mo Bus Gazette Fare Calculation (Exact distance stages)
     const officialFare = calculateOfficialBusFare(transitDistKm, rt.hasAirConditioning);
 
     const isPrimaryWheelchairBest = i === 0 && rt.hasRamp;
@@ -1833,7 +1854,7 @@ export async function generateDynamicSearchResults(
         shortName: rt.routeNumber,
         vehicleType: 'bus',
         color: rt.color,
-        description: `Nearest Bus Stop: ${cand.boardStop.name} (${walkToBoardDist}m • ${walkToBoardTime} min walk) • Direct ${rt.routeNumber} line`,
+        description: `Nearest Stop: ${cand.boardStop.name.split('(')[0].trim()} (${walkToBoardDist}m • ${walkToBoardTime}m walk) • Direct ${rt.routeNumber} corridor`,
         active: true,
         stops: rt.stops.map((sid, idx) => ({ stopId: sid, order: idx, arrivalOffset: idx * 4, departureOffset: idx * 4 + 1 })),
       },
@@ -1862,7 +1883,7 @@ export async function generateDynamicSearchResults(
         exact: officialFare.fare,
         currency: 'INR',
         confidence: 0.98,
-        source: `CRUT Mo Bus Official Distance Fare Matrix (${officialFare.slabName})`,
+        source: `CRUT Mo Bus Official Distance Matrix (${officialFare.slabName})`,
         status: 'confirmed',
         notes: `${officialFare.ruleDescription} • 50% Concession (₹${officialFare.concessionFare}) for accessible pass holders`,
       },
@@ -1872,9 +1893,9 @@ export async function generateDynamicSearchResults(
         totalPrice: officialFare.fare,
         currency: 'INR',
         itemizedLegs: [
-          { mode: 'walk', title: `Walk to ${cand.boardStop.name}`, from: origin.name, to: cand.boardStop.name, fare: 0 },
+          { mode: 'walk', title: `Walk to ${cand.boardStop.name.split('(')[0].trim()}`, from: origin.name, to: cand.boardStop.name, fare: 0 },
           { mode: 'bus', title: `Mo Bus ${rt.routeNumber}`, from: cand.boardStop.name, to: cand.alightStop.name, fare: officialFare.fare },
-          { mode: 'walk', title: `Walk to ${destination.name}`, from: cand.alightStop.name, to: destination.name, fare: 0 },
+          { mode: 'walk', title: `Walk to ${destination.name.split('(')[0].trim()}`, from: cand.alightStop.name, to: destination.name, fare: 0 },
         ],
       },
       recommendation: {
@@ -1882,9 +1903,9 @@ export async function generateDynamicSearchResults(
         rank: i + 1,
         reasons: [
           `Direct bus transit via ${rt.routeNumber} (${rt.originTerminus} ↔ ${rt.destTerminus})`,
-          `Nearest stop: ${cand.boardStop.name} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
+          `Nearest stop: ${cand.boardStop.name.split('(')[0].trim()} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
           rt.hasRamp ? '100% Step-free flat path with low-floor automatic wheelchair ramp' : 'Fast arterial road transit',
-          `Official government regulated fare: ₹${officialFare.fare} for ${transitDistKm.toFixed(1)} km`,
+          `Official CRUT regulated fare: ₹${officialFare.fare} for ${transitDistKm.toFixed(1)} km`,
           `High frequency: Departs every ${rt.frequencyMinutes} minutes`,
         ],
         tradeoff: rt.hasRamp
@@ -1898,8 +1919,8 @@ export async function generateDynamicSearchResults(
         fullRoute,
       },
       intermediateStops: [
-        { id: cand.boardStop.id, name: cand.boardStop.name, latitude: cand.boardStop.lat, longitude: cand.boardStop.lng, sequence: 1, hasRamp: cand.boardStop.hasRamp },
-        { id: cand.alightStop.id, name: cand.alightStop.name, latitude: cand.alightStop.lat, longitude: cand.alightStop.lng, sequence: 2, hasRamp: cand.alightStop.hasRamp },
+        { id: cand.boardStop.id, name: cand.boardStop.name, latitude: cand.boardStop.lat, longitude: cand.boardStop.lng, sequence: 1, hasRamp: cand.boardStop.hasRamp, stopRole: 'board' },
+        { id: cand.alightStop.id, name: cand.alightStop.name, latitude: cand.alightStop.lat, longitude: cand.alightStop.lng, sequence: 2, hasRamp: cand.alightStop.hasRamp, stopRole: 'alight' },
       ],
       turnByTurn: [
         `Walk ${walkToBoardDist}m along sidewalk from ${origin.name} to nearest bus stop at ${cand.boardStop.name} (~${walkToBoardTime} min)`,
@@ -1909,11 +1930,9 @@ export async function generateDynamicSearchResults(
         `Walk ${walkToDestDist}m to ${destination.name} (~${walkToDestTime} min)`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: cand.boardStop.name, fromId: 'orig', toId: cand.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Paved sidewalk to ${cand.boardStop.name}` },
-        { type: 'board', from: cand.boardStop.name, to: `Mo Bus ${rt.routeNumber}`, fromId: cand.boardStop.id, toId: rt.id, duration: 2, accessible: rt.hasRamp, stairs: rt.hasRamp ? 0 : 1, routeId: rt.id, routeName: rt.routeName, vehicleType: 'bus', notes: rt.busModel },
-        { type: 'ride', from: cand.boardStop.name, to: cand.alightStop.name, fromId: cand.boardStop.id, toId: cand.alightStop.id, duration: transitTime, accessible: rt.hasRamp, stairs: 0, routeId: rt.id, routeName: rt.routeName, crowding: 'LOW' },
-        { type: 'alight', from: `Mo Bus ${rt.routeNumber}`, to: cand.alightStop.name, fromId: rt.id, toId: cand.alightStop.id, duration: 1, accessible: true, stairs: 0 },
-        { type: 'walk', from: cand.alightStop.name, to: destination.name, fromId: cand.alightStop.id, toId: 'dest', distance: walkToDestDist, duration: walkToDestTime, accessible: true, stairs: 0, notes: 'Level pathway to entrance' },
+        { type: 'walk', from: origin.name, to: cand.boardStop.name, fromId: 'orig', toId: cand.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Walk to ${cand.boardStop.name}` },
+        { type: 'ride', from: cand.boardStop.name, to: cand.alightStop.name, fromId: cand.boardStop.id, toId: cand.alightStop.id, duration: transitTime, accessible: rt.hasRamp, stairs: 0, routeId: rt.id, routeName: rt.routeName, vehicleType: 'bus', crowding: 'LOW' },
+        { type: 'walk', from: cand.alightStop.name, to: destination.name, fromId: cand.alightStop.id, toId: 'dest', distance: walkToDestDist, duration: walkToDestTime, accessible: true, stairs: 0, notes: 'Path to final destination' },
       ],
       condition: DEMO_CONDITIONS.C3,
     });
@@ -1932,17 +1951,23 @@ export async function generateDynamicSearchResults(
       fetchRoadGeometryLive(cc.alightStop.lat, cc.alightStop.lng, destination.lat, destination.lng, 'walking'),
     ]);
 
-    const walkToBoard = walk1Res?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, cc.boardStop.lat, cc.boardStop.lng, 8);
+    const walkToBoard = (walk1Res?.coordinates && walk1Res.coordinates.length >= 2)
+      ? walk1Res.coordinates
+      : [[origin.lat, origin.lng], [cc.boardStop.lat, cc.boardStop.lng]] as Array<[number, number]>;
     const walkToBoardDist = walk1Res?.distanceM || Math.round(cc.originWalkDistM);
     const walkToBoardTime = walk1Res?.durationMin || Math.max(1, Math.ceil(walkToBoardDist / 70));
 
-    const bus1Path = bus1Res?.coordinates || interpolateCurvedPoints(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng, 12);
+    const bus1Path = (bus1Res?.coordinates && bus1Res.coordinates.length >= 2)
+      ? bus1Res.coordinates
+      : interpolateCurvedPoints(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng, 12);
     const bus1DistM = bus1Res?.distanceM || Math.round(haversineDistanceClient(cc.boardStop.lat, cc.boardStop.lng, cc.transferStop.lat, cc.transferStop.lng));
     const bus1DistKm = Math.max(0.4, bus1DistM / 1000);
     const bus1TimeMin = bus1Res?.durationMin || Math.max(3, Math.ceil(bus1DistM / 400));
     const fare1 = calculateOfficialBusFare(bus1DistKm, r1.hasAirConditioning).fare;
 
-    const bus2Path = bus2Res?.coordinates || interpolateCurvedPoints(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng, 12);
+    const bus2Path = (bus2Res?.coordinates && bus2Res.coordinates.length >= 2)
+      ? bus2Res.coordinates
+      : interpolateCurvedPoints(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng, 12);
     const bus2DistM = bus2Res?.distanceM || Math.round(haversineDistanceClient(cc.transferStop.lat, cc.transferStop.lng, cc.alightStop.lat, cc.alightStop.lng));
     const bus2DistKm = Math.max(0.4, bus2DistM / 1000);
     const bus2TimeMin = bus2Res?.durationMin || Math.max(3, Math.ceil(bus2DistM / 400));
@@ -1951,7 +1976,9 @@ export async function generateDynamicSearchResults(
     const transferWaitMin = 4;
     const totalBusTransitTime = bus1TimeMin + transferWaitMin + bus2TimeMin;
 
-    const walkToDest = walk2Res?.coordinates || interpolateCurvedPoints(cc.alightStop.lat, cc.alightStop.lng, destination.lat, destination.lng, 8);
+    const walkToDest = (walk2Res?.coordinates && walk2Res.coordinates.length >= 2)
+      ? walk2Res.coordinates
+      : [[cc.alightStop.lat, cc.alightStop.lng], [destination.lat, destination.lng]] as Array<[number, number]>;
     const walkToDestDist = walk2Res?.distanceM || Math.round(cc.destWalkDistM);
     const walkToDestTime = walk2Res?.durationMin || Math.max(1, Math.ceil(walkToDestDist / 70));
 
@@ -1967,7 +1994,7 @@ export async function generateDynamicSearchResults(
         shortName: `${r1.routeNumber} ➔ ${r2.routeNumber}`,
         vehicleType: 'bus',
         color: '#0d9488',
-        description: `Nearest Stop: ${cc.boardStop.name} (${walkToBoardDist}m walk) • Transfer at ${cc.transferStop.name} (${cc.transferStop.bayNumber})`,
+        description: `Nearest Stop: ${cc.boardStop.name.split('(')[0].trim()} (${walkToBoardDist}m walk) • Transfer at ${cc.transferStop.name.split('(')[0].trim()} (${cc.transferStop.bayNumber})`,
         active: true,
         stops: [
           { stopId: cc.boardStop.id, order: 0, arrivalOffset: 0, departureOffset: 1 },
@@ -2000,7 +2027,7 @@ export async function generateDynamicSearchResults(
         exact: combinedFare,
         currency: 'INR',
         confidence: 0.98,
-        source: `CRUT Mo Bus Two-Leg Transfer Tariff (₹${fare1} + ₹${fare2})`,
+        source: `CRUT Mo Bus Two-Ticket Tariff (₹${fare1} Leg 1 + ₹${fare2} Leg 2)`,
         status: 'confirmed',
         notes: `Transfer at ${cc.transferStop.name} • 50% Concession for pass holders`,
       },
@@ -2010,11 +2037,11 @@ export async function generateDynamicSearchResults(
         totalPrice: combinedFare,
         currency: 'INR',
         itemizedLegs: [
-          { mode: 'walk', title: `Walk to ${cc.boardStop.name}`, from: origin.name, to: cc.boardStop.name, fare: 0 },
+          { mode: 'walk', title: `Walk to ${cc.boardStop.name.split('(')[0].trim()}`, from: origin.name, to: cc.boardStop.name, fare: 0 },
           { mode: 'bus', title: `Mo Bus ${r1.routeNumber}`, from: cc.boardStop.name, to: cc.transferStop.name, fare: fare1 },
-          { mode: 'walk', title: `Transfer at ${cc.transferStop.name}`, from: cc.transferStop.name, to: cc.transferStop.name, fare: 0 },
+          { mode: 'walk', title: `Transfer at ${cc.transferStop.name.split('(')[0].trim()}`, from: cc.transferStop.name, to: cc.transferStop.name, fare: 0 },
           { mode: 'bus', title: `Mo Bus ${r2.routeNumber}`, from: cc.transferStop.name, to: cc.alightStop.name, fare: fare2 },
-          { mode: 'walk', title: `Walk to ${destination.name}`, from: cc.alightStop.name, to: destination.name, fare: 0 },
+          { mode: 'walk', title: `Walk to ${destination.name.split('(')[0].trim()}`, from: cc.alightStop.name, to: destination.name, fare: 0 },
         ],
       },
       recommendation: {
@@ -2022,22 +2049,23 @@ export async function generateDynamicSearchResults(
         rank: busResults.length === 0 ? 1 : 2,
         reasons: [
           `Coordinated bus combination: ${r1.routeNumber} ➔ Transfer at ${cc.transferStop.shortName} ➔ ${r2.routeNumber}`,
-          `Nearest stop: ${cc.boardStop.name} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
-          `Affordable combined fare: ₹${combinedFare} total across connecting lines`,
+          `Nearest stop: ${cc.boardStop.name.split('(')[0].trim()} (${walkToBoardDist}m walk from ${origin.name.split('(')[0]})`,
+          `Affordable combined fare: ₹${combinedFare} (₹${fare1} + ₹${fare2})`,
           `Synchronized platform interchange: 4 min step-free transfer at ${cc.transferStop.name}`,
         ],
         tradeoff: `Requires 1 bus transfer at ${cc.transferStop.shortName}.`,
       },
       geometry: {
         originToBoardWalk: walkToBoard,
-        transitPath: combinedTransitPath,
+        transitPath: bus1Path,
+        connectingTransitPath: bus2Path,
         alightToDestWalk: walkToDest,
         fullRoute: fullConnectingRoute,
       },
       intermediateStops: [
-        { id: cc.boardStop.id, name: cc.boardStop.name, latitude: cc.boardStop.lat, longitude: cc.boardStop.lng, sequence: 1, hasRamp: cc.boardStop.hasRamp },
-        { id: cc.transferStop.id, name: cc.transferStop.name, latitude: cc.transferStop.lat, longitude: cc.transferStop.lng, sequence: 2, hasRamp: cc.transferStop.hasRamp },
-        { id: cc.alightStop.id, name: cc.alightStop.name, latitude: cc.alightStop.lat, longitude: cc.alightStop.lng, sequence: 3, hasRamp: cc.alightStop.hasRamp },
+        { id: cc.boardStop.id, name: cc.boardStop.name, latitude: cc.boardStop.lat, longitude: cc.boardStop.lng, sequence: 1, hasRamp: cc.boardStop.hasRamp, stopRole: 'board' },
+        { id: cc.transferStop.id, name: cc.transferStop.name, latitude: cc.transferStop.lat, longitude: cc.transferStop.lng, sequence: 2, hasRamp: cc.transferStop.hasRamp, stopRole: 'transfer' },
+        { id: cc.alightStop.id, name: cc.alightStop.name, latitude: cc.alightStop.lat, longitude: cc.alightStop.lng, sequence: 3, hasRamp: cc.alightStop.hasRamp, stopRole: 'alight' },
       ],
       turnByTurn: [
         `Walk ${walkToBoardDist}m to nearest bus stop at ${cc.boardStop.name} (~${walkToBoardTime} min via paved sidewalk)`,
@@ -2048,12 +2076,10 @@ export async function generateDynamicSearchResults(
         `Alight at ${cc.alightStop.name} and walk ${walkToDestDist}m to ${destination.name} (~${walkToDestTime} min)`,
       ],
       segments: [
-        { type: 'walk', from: origin.name, to: cc.boardStop.name, fromId: 'orig', toId: cc.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Paved sidewalk to ${cc.boardStop.name}` },
-        { type: 'board', from: cc.boardStop.name, to: `Mo Bus ${r1.routeNumber}`, fromId: cc.boardStop.id, toId: r1.id, duration: 2, accessible: r1.hasRamp, stairs: 0, routeId: r1.id, routeName: r1.routeName, vehicleType: 'bus' },
-        { type: 'ride', from: cc.boardStop.name, to: cc.transferStop.name, fromId: cc.boardStop.id, toId: cc.transferStop.id, duration: bus1TimeMin, accessible: r1.hasRamp, stairs: 0, routeId: r1.id, routeName: r1.routeName, crowding: 'LOW' },
+        { type: 'walk', from: origin.name, to: cc.boardStop.name, fromId: 'orig', toId: cc.boardStop.id, distance: walkToBoardDist, duration: walkToBoardTime, accessible: true, stairs: 0, notes: `Walk to ${cc.boardStop.name}` },
+        { type: 'ride', from: cc.boardStop.name, to: cc.transferStop.name, fromId: cc.boardStop.id, toId: cc.transferStop.id, duration: bus1TimeMin, accessible: r1.hasRamp, stairs: 0, routeId: r1.id, routeName: r1.routeName, vehicleType: 'bus', crowding: 'LOW' },
         { type: 'transfer', from: cc.transferStop.name, to: cc.transferStop.name, duration: transferWaitMin, accessible: cc.transferStop.hasRamp, stairs: 0, notes: `Interchange at ${cc.transferStop.bayNumber}` },
-        { type: 'ride', from: cc.transferStop.name, to: cc.alightStop.name, fromId: cc.transferStop.id, toId: cc.alightStop.id, duration: bus2TimeMin, accessible: r2.hasRamp, stairs: 0, routeId: r2.id, routeName: r2.routeName, crowding: 'LOW' },
-        { type: 'alight', from: `Mo Bus ${r2.routeNumber}`, to: cc.alightStop.name, fromId: r2.id, toId: cc.alightStop.id, duration: 1, accessible: true, stairs: 0 },
+        { type: 'ride', from: cc.transferStop.name, to: cc.alightStop.name, fromId: cc.transferStop.id, toId: cc.alightStop.id, duration: bus2TimeMin, accessible: r2.hasRamp, stairs: 0, routeId: r2.id, routeName: r2.routeName, vehicleType: 'bus', crowding: 'LOW' },
         { type: 'walk', from: cc.alightStop.name, to: destination.name, fromId: cc.alightStop.id, toId: 'dest', distance: walkToDestDist, duration: walkToDestTime, accessible: true, stairs: 0, notes: 'Path to final destination' },
       ],
       condition: DEMO_CONDITIONS.C3,
@@ -2072,12 +2098,12 @@ export async function generateDynamicSearchResults(
   const directDrivingDistM = directDrivingRes?.distanceM || directDistanceM;
   const directDrivingDurationMin = directDrivingRes?.durationMin || Math.max(3, Math.ceil(directDrivingDistM / 500));
 
-  // Dynamic Auto, Shared, and Bike Fares
-  const autoFareExact = Math.round(30 + Math.max(0, (directDistanceKm - 1.5) * 12));
-  const carpoolSplitFare = Math.max(15, Math.round(autoFareExact * 0.35));
-  const sharedAutoMin = directDistanceKm <= 4 ? 15 : directDistanceKm <= 10 ? 25 : 35;
-  const sharedAutoMax = sharedAutoMin + 10;
-  const bikeTaxiFare = Math.round(20 + directDistanceKm * 8);
+  // Dynamic Auto, Shared, and Bike Fares (Real Bhubaneswar RTA Meter Standards)
+  const autoFareExact = Math.max(30, 30 + Math.round(Math.max(0, directDistanceKm - 1.5) * 12 / 5) * 5);
+  const carpoolSplitFare = Math.max(10, Math.min(25, Math.round(autoFareExact * 0.35 / 5) * 5));
+  const sharedAutoMin = directDistanceKm <= 3 ? 10 : directDistanceKm <= 7 ? 15 : 20;
+  const sharedAutoMax = sharedAutoMin + 5;
+  const bikeTaxiFare = Math.max(20, 20 + Math.round(Math.max(0, directDistanceKm - 1.5) * 6 / 5) * 5);
 
   // Compute closest shared taxi & auto stands to Origin
   const nearbyStandsList = DEMO_TRANSPORT_STANDS.map((s) => ({

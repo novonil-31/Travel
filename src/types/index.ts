@@ -145,6 +145,7 @@ export interface RouteSearchResult {
   geometry?: {
     originToBoardWalk: Array<[number, number]>;
     transitPath: Array<[number, number]>;
+    connectingTransitPath?: Array<[number, number]>;
     alightToDestWalk: Array<[number, number]>;
     fullRoute: Array<[number, number]>;
   };
@@ -155,6 +156,7 @@ export interface RouteSearchResult {
     longitude: number;
     sequence: number;
     hasRamp?: boolean;
+    stopRole?: 'board' | 'transfer' | 'alight' | 'intermediate';
   }>;
   turnByTurn?: string[];
   fare?: {

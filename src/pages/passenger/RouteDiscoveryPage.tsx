@@ -32,34 +32,43 @@ import {
 } from '../../utils/liveTransitRadar';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
 
-// Minimalist Endpoint Pins
-const createMapPin = (color: string, label: string) =>
-  L.divIcon({
-    className: 'custom-route-pin',
+// Modern High-Clarity Journey Endpoint Pins
+const createEndpointPin = (color: string, label: string, name?: string) => {
+  const cleanName = (name || '').split('(')[0].trim() || (label === 'A' ? 'Start' : 'Destination');
+  return L.divIcon({
+    className: 'custom-endpoint-pin',
     html: `
-      <div style="
-        background-color: ${color};
-        color: white;
-        border: 2.5px solid white;
-        border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 900;
-        font-size: 13px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      ">
-        ${label}
+      <div style="display:flex; flex-direction:column; align-items:center; cursor:pointer; filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));">
+        <div style="
+          background:${color};
+          color:white;
+          border:2px solid white;
+          border-radius:16px;
+          padding:3px 9px;
+          font-weight:800;
+          font-size:11px;
+          white-space:nowrap;
+          display:flex;
+          align-items:center;
+          gap:4px;
+        ">
+          <span style="background:rgba(255,255,255,0.3); border-radius:10px; width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:900;">${label}</span>
+          <span style="max-width:130px; overflow:hidden; text-overflow:ellipsis;">${cleanName}</span>
+        </div>
+        <div style="
+          width:0; 
+          height:0; 
+          border-left:5px solid transparent;
+          border-right:5px solid transparent;
+          border-top:6px solid ${color};
+          margin-top:-1px;
+        "></div>
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
+    iconSize: [150, 32],
+    iconAnchor: [75, 30],
   });
-
-const originPin = createMapPin('#10b981', 'A');
-const destPin = createMapPin('#ef4444', 'B');
+};
 
 // Transport Change / Transfer Mode Switch Badge Marker
 const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
@@ -501,6 +510,7 @@ export default function RouteDiscoveryPage() {
   // Ingress, Transit, and Egress geometries for multi-colored crisp rendering
   const ingressPath: Array<[number, number]> = selectedRoute?.geometry?.originToBoardWalk || [];
   const transitPath: Array<[number, number]> = selectedRoute?.geometry?.transitPath || continuousRoute;
+  const connectingTransitPath: Array<[number, number]> = selectedRoute?.geometry?.connectingTransitPath || [];
   const egressPath: Array<[number, number]> = selectedRoute?.geometry?.alightToDestWalk || [];
 
   // Extract transfer points for transport change symbols
@@ -982,7 +992,9 @@ export default function RouteDiscoveryPage() {
                   {/* Multi-modal Legs Sequence Pills */}
                   {route.segments && route.segments.length > 0 && (
                     <div className="flex items-center flex-wrap gap-1.5 pt-1.5 border-t border-white/10 border-neutral-100 text-[11px] font-medium">
-                      {route.segments.map((seg, sIdx) => (
+                      {route.segments
+                        .filter((seg) => seg.type === 'walk' || seg.type === 'ride' || seg.type === 'transfer')
+                        .map((seg, sIdx, arr) => (
                         <React.Fragment key={sIdx}>
                           <span
                             className={`px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/15 text-neutral-200' : 'bg-neutral-100 text-neutral-700'
@@ -993,9 +1005,11 @@ export default function RouteDiscoveryPage() {
                                 seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🚗 Carpool` :
                                   seg.type === 'walk' ? `🚶 ${seg.duration}m` :
                                     seg.type === 'transfer' ? `🔄 Transfer (${seg.duration}m)` :
-                                      seg.vehicleType === 'bus' || seg.routeId?.includes('EV') ? (seg.routeId?.includes('EV') ? '⚡ EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`) : `🚖 Cab`}
+                                      seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus'
+                                        ? (seg.routeId?.includes('EV') ? '⚡ Campus EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`)
+                                        : (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport' ? `🚖 Auto/Cab` : `🚶 ${seg.duration}m`)}
                           </span>
-                          {sIdx < route.segments.length - 1 && (
+                          {sIdx < arr.length - 1 && (
                             <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
                           )}
                         </React.Fragment>
@@ -1246,6 +1260,45 @@ export default function RouteDiscoveryPage() {
         {/* Map Column: Clean OpenStreetMap (Top on mobile, Right 7 cols on desktop) */}
         <div className="order-1 lg:order-2 lg:col-span-7 sticky top-4">
           <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[250px] sm:h-[350px] lg:h-[620px] relative">
+            {/* Floating Step-by-Step Route Guidance Ribbon */}
+            <div className="absolute top-3 left-3 z-[1000] pointer-events-none flex items-center max-w-[calc(100%-125px)] sm:max-w-[calc(100%-140px)]">
+              <div className="pointer-events-auto bg-white/95 backdrop-blur-md border border-neutral-200/90 shadow-md rounded-xl px-2.5 py-1.5 text-xs flex items-center gap-1.5 overflow-x-auto select-none no-scrollbar">
+                <span className="font-bold text-emerald-800 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                  <span>🚩</span>
+                  <span className="truncate max-w-[75px] sm:max-w-[110px]">{(selectedRoute.originName || '').split('(')[0].trim() || 'Start'}</span>
+                </span>
+                <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
+                  <span>🚶</span>
+                  <span>Walk</span>
+                </span>
+                <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                  <span>🚏</span>
+                  <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[0]?.name.split('(')[0].trim() || 'Board'}</span>
+                </span>
+                {selectedRoute.transfers > 0 && selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 2 && (
+                  <>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-black text-amber-800 flex items-center gap-1 shrink-0 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 text-[10px] animate-pulse">
+                      <span>🔄</span>
+                      <span className="truncate max-w-[85px] sm:max-w-[120px]">Change: {selectedRoute.intermediateStops[1]?.name.split('(')[0].trim()}</span>
+                    </span>
+                  </>
+                )}
+                <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                <span className="font-bold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
+                  <span>🚏</span>
+                  <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[selectedRoute.intermediateStops.length - 1]?.name.split('(')[0].trim() || 'Alight'}</span>
+                </span>
+                <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                <span className="font-bold text-red-800 flex items-center gap-1 shrink-0 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 text-[11px]">
+                  <span>🏁</span>
+                  <span className="truncate max-w-[75px] sm:max-w-[110px]">{(selectedRoute.destinationName || '').split('(')[0].trim() || 'Destination'}</span>
+                </span>
+              </div>
+            </div>
+
             <MapContainer
               center={originCoords}
               zoom={12}
@@ -1276,66 +1329,128 @@ export default function RouteDiscoveryPage() {
                 setMapType={setMapType}
               />
 
-              {/* 1. Backdrop Casing Polyline for High Contrast & Sharp Clarity */}
-              <Polyline
-                positions={continuousRoute}
-                pathOptions={{
-                  color: '#0f172a',
-                  weight: isFlight ? 6 : 7,
-                  opacity: 0.3,
-                  lineCap: 'round',
-                  lineJoin: 'round',
-                }}
-              />
-
-              {/* 2. Distinct Leg 1: Ingress Road Path (Cab / Auto / Walk) */}
+              {/* 1. Ingress Pedestrian Path: Origin 'A' to Boarding Stop (Vibrant Blue Dashed with White Glow Casing) */}
               {ingressPath.length > 0 && (
-                <Polyline
-                  positions={ingressPath}
-                  pathOptions={{
-                    color: selectedRoute.route?.vehicleType === 'bus' ? '#10b981' : '#d97706',
-                    weight: 5,
-                    opacity: 0.95,
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                  }}
-                />
+                <>
+                  <Polyline
+                    positions={ingressPath}
+                    pathOptions={{
+                      color: '#ffffff',
+                      weight: 7,
+                      opacity: 0.95,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                  <Polyline
+                    positions={ingressPath}
+                    pathOptions={{
+                      color: '#2563eb',
+                      weight: 4,
+                      opacity: 0.95,
+                      dashArray: '6, 8',
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                </>
               )}
 
-              {/* 3. Distinct Leg 2: Main Transit Corridor (Flight / Rail / Bus / Carpool) */}
-              <Polyline
-                positions={transitPath}
-                pathOptions={{
-                  color: isFlight ? '#0284c7' : isTrain ? '#1d4ed8' : selectedRoute.route?.vehicleType === 'bus' ? '#059669' : '#9333ea',
-                  weight: isFlight ? 4 : 5,
-                  opacity: 0.95,
-                  dashArray: isFlight ? '12, 10' : undefined,
-                  className: isFlight ? 'animated-flight-flow' : 'animated-route-flow',
-                }}
-              />
+              {/* 2. Main Transit Corridor (Flight / Rail / Bus Leg 1 / Carpool) */}
+              {transitPath.length > 0 && (
+                <>
+                  <Polyline
+                    positions={transitPath}
+                    pathOptions={{
+                      color: '#ffffff',
+                      weight: isFlight ? 6 : 9,
+                      opacity: 0.95,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                  <Polyline
+                    positions={transitPath}
+                    pathOptions={{
+                      color: isFlight ? '#0284c7' : isTrain ? '#1d4ed8' : selectedRoute.route?.vehicleType === 'bus' ? '#059669' : '#9333ea',
+                      weight: isFlight ? 4 : 6,
+                      opacity: 0.95,
+                      dashArray: isFlight ? '12, 10' : undefined,
+                      className: isFlight ? 'animated-flight-flow' : 'animated-route-flow',
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                </>
+              )}
 
-              {/* 4. Distinct Leg 3: Egress Road Path (Cab / Walk to Final Destination) */}
+              {/* 3. Connecting Transit Leg (Bus Leg 2 after Interchange - Distinct Royal Purple) */}
+              {connectingTransitPath.length > 0 && (
+                <>
+                  <Polyline
+                    positions={connectingTransitPath}
+                    pathOptions={{
+                      color: '#ffffff',
+                      weight: 9,
+                      opacity: 0.95,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                  <Polyline
+                    positions={connectingTransitPath}
+                    pathOptions={{
+                      color: '#7c3aed',
+                      weight: 6,
+                      opacity: 0.95,
+                      className: 'animated-route-flow',
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                </>
+              )}
+
+              {/* 4. Egress Pedestrian Path: Alight Stop to Destination 'B' (Vibrant Blue Dashed with White Glow Casing) */}
               {egressPath.length > 0 && (
-                <Polyline
-                  positions={egressPath}
-                  pathOptions={{
-                    color: selectedRoute.route?.vehicleType === 'bus' ? '#10b981' : '#d97706',
-                    weight: 5,
-                    opacity: 0.95,
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                  }}
-                />
+                <>
+                  <Polyline
+                    positions={egressPath}
+                    pathOptions={{
+                      color: '#ffffff',
+                      weight: 7,
+                      opacity: 0.95,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                  <Polyline
+                    positions={egressPath}
+                    pathOptions={{
+                      color: '#2563eb',
+                      weight: 4,
+                      opacity: 0.95,
+                      dashArray: '6, 8',
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                </>
               )}
 
               {/* Origin Marker */}
-              <Marker position={originCoords} icon={originPin}>
+              <Marker position={originCoords} icon={createEndpointPin('#10b981', 'A', selectedRoute.originName)}>
                 <Popup>
                   <div className="text-xs font-bold p-1">
-                    <div className="text-emerald-700 flex items-center gap-1">
-                      <span>🟢 Journey Start (A)</span>
+                    <div className="text-emerald-700 flex items-center gap-1 font-black">
+                      <span>🚩 Journey Start (A)</span>
                     </div>
-                    <div className="text-neutral-700 font-semibold mt-1">{selectedRoute.originName}</div>
+                    <div className="text-neutral-900 font-bold mt-1 text-sm">{selectedRoute.originName}</div>
+                    {ingressPath.length > 0 && (
+                      <div className="text-[11px] text-blue-700 font-semibold mt-1 flex items-center gap-1">
+                        <span>🚶 Walk along blue dashed path to nearest stop</span>
+                      </div>
+                    )}
                   </div>
                 </Popup>
               </Marker>
@@ -1372,49 +1487,47 @@ export default function RouteDiscoveryPage() {
                 </Marker>
               ))}
 
-              {/* 🚉 REAL INTERMEDIATE TRANSIT STATIONS & AIRPORTS ON MAP (Progressive Dynamic Zoom Scaling) */}
+              {/* 🚉 REAL INTERMEDIATE TRANSIT STATIONS & AIRPORTS ON MAP (Clear Station Names & Roles) */}
               {selectedRoute.intermediateStops && selectedRoute.intermediateStops.map((stop, sIdx) => {
                 const isTrainStop = isTrain || selectedRoute.route?.vehicleType === 'train';
                 const isFlightStop = isFlight || selectedRoute.route?.vehicleType === 'flight';
-                const stopIconEmoji = isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
-                const stopColor = isTrainStop ? '#1e40af' : isFlightStop ? '#0284c7' : '#059669';
+                const isFirst = sIdx === 0;
+                const isLast = sIdx === selectedRoute.intermediateStops!.length - 1;
+                const isTransfer = stop.stopRole === 'transfer' || (selectedRoute.transfers > 0 && sIdx > 0 && sIdx < selectedRoute.intermediateStops!.length - 1);
 
-                // Multi-Tier Zoom Scaling:
-                // Zoom <= 5: Tiny 4px micro dot
-                // Zoom 6-8: 6px micro dot
-                // Zoom 9-10: 18px mini station badge
-                // Zoom 11-13: 26px standard badge
-                // Zoom 14-15: Large badge with station code pill
-                // Zoom 16+: Prominent landmark station badge with name
+                const cleanName = (stop.name || '').split('(')[0].trim();
+                const roleBadge = isTransfer ? 'TRANSFER' : isFirst ? 'BOARD' : isLast ? 'ALIGHT' : 'STOP';
+                const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';
+                const stopEmoji = isTransfer ? '🔄' : isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
+
                 let pinHtml = '';
                 let pinSize: [number, number] = [6, 6];
                 let pinAnchor: [number, number] = [3, 3];
 
-                if (currentMapZoom <= 5) {
-                  pinHtml = `<div style="width:4px;height:4px;background:${stopColor};border:1px solid white;border-radius:9999px;"></div>`;
-                  pinSize = [4, 4];
-                  pinAnchor = [2, 2];
-                } else if (currentMapZoom <= 8) {
+                if (currentMapZoom <= 7) {
                   pinHtml = `<div style="width:6px;height:6px;background:${stopColor};border:1.5px solid white;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>`;
                   pinSize = [6, 6];
                   pinAnchor = [3, 3];
                 } else if (currentMapZoom <= 10) {
-                  pinHtml = `<div style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;background:${stopColor};color:white;border:1.5px solid white;border-radius:9999px;box-shadow:0 2px 4px rgba(0,0,0,0.3);font-size:9px;font-weight:bold;cursor:pointer;">${stopIconEmoji}</div>`;
-                  pinSize = [18, 18];
-                  pinAnchor = [9, 9];
+                  pinHtml = `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:${stopColor};color:white;border:1.5px solid white;border-radius:9999px;box-shadow:0 2px 4px rgba(0,0,0,0.3);font-size:10px;font-weight:bold;cursor:pointer;">${stopEmoji}</div>`;
+                  pinSize = [20, 20];
+                  pinAnchor = [10, 10];
                 } else if (currentMapZoom <= 13) {
-                  pinHtml = `<div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;background:${stopColor};color:white;border:2px solid white;border-radius:9999px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:12px;font-weight:bold;cursor:pointer;">${stopIconEmoji}</div>`;
-                  pinSize = [26, 26];
-                  pinAnchor = [13, 13];
-                } else if (currentMapZoom <= 15) {
-                  pinHtml = `<div style="display:flex;align-items:center;gap:4px;background:${stopColor};color:white;border:2px solid white;border-radius:20px;padding:3px 8px;box-shadow:0 3px 8px rgba(0,0,0,0.4);font-weight:bold;font-size:11px;white-space:nowrap;cursor:pointer;"><span style="font-size:13px;">${stopIconEmoji}</span><span>${stop.id}</span></div>`;
-                  pinSize = [70, 26];
-                  pinAnchor = [35, 13];
+                  pinHtml = `<div style="display:flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 6px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;"><span>${stopEmoji}</span><span>${cleanName}</span></div>`;
+                  pinSize = [100, 24];
+                  pinAnchor = [50, 12];
                 } else {
-                  // High zoom (>= 16)
-                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;"><div style="display:flex;align-items:center;gap:5px;background:${stopColor};color:white;border:2px solid white;border-radius:20px;padding:4px 10px;box-shadow:0 4px 10px rgba(0,0,0,0.45);font-weight:bold;font-size:12px;white-space:nowrap;"><span style="font-size:15px;">${stopIconEmoji}</span><span>${stop.name.split('(')[0]}</span></div>${stop.hasRamp ? '<div style="background:#10b981;color:white;font-size:9px;font-weight:bold;padding:1px 6px;border-radius:10px;margin-top:2px;border:1px solid white;">♿ RAMP</div>' : ''}</div>`;
-                  pinSize = [120, 36];
-                  pinAnchor = [60, 18];
+                  // Zoom 14+ (Optimal viewing): Prominent, crystal-clear badge showing Role and Stop Name
+                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));">
+                    <div style="display:flex;align-items:center;gap:4px;background:${stopColor};color:white;border:${isTransfer ? '2.5px solid #fde047' : '2px solid white'};border-radius:18px;padding:3px 9px;box-shadow:0 3px 10px rgba(0,0,0,0.4);font-weight:900;font-size:11px;white-space:nowrap;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
+                      <span style="font-size:13px;">${stopEmoji}</span>
+                      <span style="background:rgba(0,0,0,0.25);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:900;">${roleBadge}</span>
+                      <span>${cleanName}</span>
+                    </div>
+                    <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${stopColor};margin-top:-1px;"></div>
+                  </div>`;
+                  pinSize = [140, 34];
+                  pinAnchor = [70, 32];
                 }
 
                 const stationIcon = L.divIcon({
@@ -1433,12 +1546,17 @@ export default function RouteDiscoveryPage() {
                     <Popup>
                       <div className="text-xs space-y-1.5 p-1 min-w-[200px]">
                         <div className="flex items-center justify-between gap-1.5 font-bold" style={{ color: stopColor }}>
-                          <span>{stopIconEmoji} {isTrainStop ? 'Railway Station' : isFlightStop ? 'Airport Hub' : 'Transit Stop'}</span>
+                          <span>{stopEmoji} {isTransfer ? 'Transfer Hub' : isFirst ? 'Boarding Stop' : isLast ? 'Alighting Stop' : isTrainStop ? 'Railway Station' : isFlightStop ? 'Airport Hub' : 'Transit Stop'}</span>
                           <span className="text-[10px] bg-neutral-100 text-neutral-800 px-1.5 py-0.5 rounded font-mono font-bold">Stop #{stop.sequence}</span>
                         </div>
-                        <div className="font-bold text-neutral-900 leading-snug">
+                        <div className="font-bold text-neutral-900 leading-snug text-sm">
                           {stop.name}
                         </div>
+                        {isTransfer && (
+                          <div className="bg-amber-50 border border-amber-200 rounded p-1.5 text-[11px] text-amber-900 font-semibold">
+                            🔄 Transfer Point: Change here between connecting routes
+                          </div>
+                        )}
                         {stop.hasRamp && (
                           <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 mt-1 bg-emerald-50 px-2 py-1 rounded-md">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -1462,13 +1580,13 @@ export default function RouteDiscoveryPage() {
               )}
 
               {/* Destination Marker */}
-              <Marker position={destCoords} icon={destPin}>
+              <Marker position={destCoords} icon={createEndpointPin('#ef4444', 'B', selectedRoute.destinationName)}>
                 <Popup>
                   <div className="text-xs font-bold p-1">
-                    <div className="text-red-600 flex items-center gap-1">
-                      <span>🔴 Journey Destination (B)</span>
+                    <div className="text-red-600 flex items-center gap-1 font-black">
+                      <span>🏁 Journey Destination (B)</span>
                     </div>
-                    <div className="text-neutral-700 font-semibold mt-1">{selectedRoute.destinationName}</div>
+                    <div className="text-neutral-900 font-bold mt-1 text-sm">{selectedRoute.destinationName}</div>
                   </div>
                 </Popup>
               </Marker>
