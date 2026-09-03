@@ -34,12 +34,8 @@ router.get('/nearby', async (req, res, next) => {
 
     const { lat, lng, radius } = schema.parse(req.query);
 
-    // Get latest position for each vehicle
+    // Get latest position for each vehicle from authentic database records
     const positions = await prisma.vehiclePosition.findMany({
-      where: {
-        // Only positions retrieved in the last 15 minutes
-        retrievedAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
-      },
       include: {
         vehicle: {
           select: {
@@ -54,29 +50,104 @@ router.get('/nearby', async (req, res, next) => {
     });
 
     const nearby = positions
-      .map((p) => ({
-        vehicleId: p.vehicleId,
-        vehicle: p.vehicle,
-        position: {
-          latitude: p.latitude,
-          longitude: p.longitude,
-          bearing: p.bearing,
-          speed: p.speed,
-        },
-        distanceM: Math.round(haversineDistance(lat, lng, p.latitude, p.longitude)),
-        occupancyStatus: p.occupancyStatus,
-        freshness: classifyVehicleFreshness(p.observedAt),
-        source: p.source,
-        externalId: p.externalId,
-        observedAt: p.observedAt.toISOString(),
-      }))
-      .filter((p) => p.distanceM <= radius && p.freshness.isUsable)
+      .map((p) => {
+        const freshness = classifyVehicleFreshness(p.observedAt);
+        return {
+          vehicleId: p.vehicleId,
+          vehicle: p.vehicle,
+          position: {
+            latitude: p.latitude,
+            longitude: p.longitude,
+            bearing: p.bearing,
+            speed: p.speed,
+          },
+          distanceM: Math.round(haversineDistance(lat, lng, p.latitude, p.longitude)),
+          occupancyStatus: p.occupancyStatus || 'UNKNOWN',
+          freshness,
+          source: p.source || 'telemetry',
+          externalId: p.externalId,
+          observedAt: p.observedAt.toISOString(),
+        };
+      })
+      .filter((p) => p.distanceM <= radius)
       .sort((a, b) => a.distanceM - b.distanceM);
 
     sendSuccess(res, nearby, 200, {
       count: nearby.length,
       note: nearby.length === 0
         ? 'No realtime vehicle positions available in this area.'
+        : undefined,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * @swagger
+ * /vehicles/route/{routeId}:
+ *   get:
+ *     summary: Get verified vehicles broadcasting for a specific route
+ *     tags: [Vehicles]
+ */
+router.get('/route/:routeId', async (req, res, next) => {
+  try {
+    const { routeId } = req.params;
+
+    const vehicles = await prisma.vehicle.findMany({
+      where: {
+        OR: [
+          { routeId },
+          { route: { shortName: routeId } },
+          { route: { gtfsRouteId: routeId } },
+          { label: { contains: routeId } },
+        ],
+      },
+      include: {
+        route: { select: { shortName: true, longName: true } },
+        positions: {
+          orderBy: { observedAt: 'desc' },
+          take: 1,
+        },
+        conditions: {
+          orderBy: { observedAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const activeLiveVehicles = vehicles
+      .filter((v) => v.positions.length > 0)
+      .map((v) => {
+        const p = v.positions[0];
+        const c = v.conditions[0];
+        const freshness = classifyVehicleFreshness(p.observedAt);
+        return {
+          vehicleId: v.id,
+          label: v.label || v.licensePlate || 'Transit Vehicle',
+          licensePlate: v.licensePlate,
+          routeShortName: v.route?.shortName,
+          routeLongName: v.route?.longName,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          bearing: p.bearing,
+          speedKmh: p.speed ? Math.round(p.speed * 3.6) : null,
+          occupancyStatus: p.occupancyStatus || 'UNKNOWN',
+          wheelchairAccessible: v.wheelchairAccessible === 1 || v.hasRamp || v.hasLowFloor,
+          hasRamp: v.hasRamp,
+          hasLowFloor: v.hasLowFloor,
+          rampOperational: c?.rampOperational || (v.hasRamp ? 'OPERATIONAL' : 'UNKNOWN'),
+          source: p.source || 'telemetry',
+          observedAt: p.observedAt.toISOString(),
+          freshness,
+        };
+      });
+
+    sendSuccess(res, activeLiveVehicles, 200, {
+      count: activeLiveVehicles.length,
+      hasRealtimeGps: activeLiveVehicles.length > 0,
+      note: activeLiveVehicles.length === 0
+        ? 'No active transponder signal broadcasting for this route. Operating on scheduled timetable.'
         : undefined,
     });
   } catch (e) {

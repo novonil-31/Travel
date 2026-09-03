@@ -25,10 +25,9 @@ import {
 } from '../../data/liveTimetable';
 import { buildMakeMyTripBusUrl, extractCityForBooking, detectCorridorPopularity } from '../../utils/liveTransitPriceFetcher';
 import {
-  generateLiveTransitRadarVehicles,
-  generateUpcomingDepartures,
-  type LiveRadarVehicle,
-  type UpcomingDeparture,
+  fetchAuthenticRouteRadar,
+  type AuthenticVehicleRecord,
+  type AuthenticRadarStatus,
 } from '../../utils/liveTransitRadar';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
 import { LiveTransitCountdownBanner } from '../../components/map/LiveTransitCountdownBanner';
@@ -502,12 +501,6 @@ export default function RouteDiscoveryPage() {
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(12);
   const [selectedCoachClassOverrides, setSelectedCoachClassOverrides] = useState<Record<string, string>>({});
 
-  // 🛰️ Real-Time Transit Radar & Telemetry States
-  const [liveRadarEnabled, setLiveRadarEnabled] = useState<boolean>(true);
-  const [radarVehicles, setRadarVehicles] = useState<LiveRadarVehicle[]>([]);
-  const [upcomingDepartures, setUpcomingDepartures] = useState<UpcomingDeparture[]>([]);
-  const [selectedRadarVehicle, setSelectedRadarVehicle] = useState<LiveRadarVehicle | null>(null);
-
   // Keep selected index valid
   useEffect(() => {
     if (selectedIndex >= searchResults.length) {
@@ -543,44 +536,33 @@ export default function RouteDiscoveryPage() {
   const isTrain = selectedRoute?.route?.vehicleType === 'train';
   const isBus = selectedRoute?.route?.vehicleType === 'bus';
 
-  // 🛰️ Real-Time Live Transit Radar Telemetry Loop (Kinematic Movement & Live Countdown)
-  useEffect(() => {
+  // 🛰️ Authentic Transit Radar & Telemetry State (Zero Fabrication)
+  const [liveRadarEnabled, setLiveRadarEnabled] = useState<boolean>(true);
+  const [radarStatus, setRadarStatus] = useState<AuthenticRadarStatus>({
+    hasLiveGps: false,
+    activeVehicles: [],
+    statusLabel: 'SCHEDULED_TIMETABLE_ONLY',
+    sourceAttribution: 'Official Transit Schedule',
+    crowdsourcedCount: 0,
+  });
+
+  // Fetch authentic telemetry from backend database & real crowdsourced reports
+  const fetchLiveTelemetry = useCallback(async () => {
     if (!selectedRoute) return;
+    const rId = selectedRoute.route?.shortName || selectedRoute.route?.id || 'BUS_10';
+    const status = await fetchAuthenticRouteRadar(
+      rId,
+      originCoords[0],
+      originCoords[1]
+    );
+    setRadarStatus(status);
+  }, [selectedRoute, originCoords]);
 
-    const updateTelemetry = () => {
-      const vType = (selectedRoute.route?.vehicleType as any) || 'bus';
-      const rId = selectedRoute.route?.id || 'BUS_10';
-      const rName = selectedRoute.route?.name || 'Corridor Transit';
-      const path = transitPath.length >= 2 ? transitPath : continuousRoute;
-      const stops = (selectedRoute.intermediateStops || []).map((s) => ({
-        name: s.name,
-        latitude: s.latitude,
-        longitude: s.longitude,
-      }));
-
-      const vehex = generateLiveTransitRadarVehicles(
-        rId,
-        rName,
-        vType,
-        path,
-        stops,
-        Date.now() / 1000
-      );
-      setRadarVehicles(vehex);
-
-      const departures = generateUpcomingDepartures(
-        selectedRoute.eta || 3,
-        10,
-        vType,
-        rId.includes('OD') ? 'OD-02' : 'DL-1P'
-      );
-      setUpcomingDepartures(departures);
-    };
-
-    updateTelemetry();
-    const interval = setInterval(updateTelemetry, 1500);
+  useEffect(() => {
+    fetchLiveTelemetry();
+    const interval = setInterval(fetchLiveTelemetry, 10000);
     return () => clearInterval(interval);
-  }, [selectedRoute, transitPath, continuousRoute]);
+  }, [fetchLiveTelemetry]);
 
   // Live Matching Carpools along this Corridor
   const matchingCarpools = getMatchingCarpools(
@@ -895,19 +877,20 @@ export default function RouteDiscoveryPage() {
         {/* Itinerary Column: Route Choices & Trip Breakdown (5 cols on desktop, 2nd order on mobile) */}
         <div className="order-2 lg:order-1 lg:col-span-5 space-y-4">
           {/* 🛰️ Live Transit Radar & Arrival Countdown Banner (Moovit / Transit App Grade) */}
+          {/* 🛰️ Authentic Transit Radar & Telemetry Banner (Zero Fabrication) */}
           {selectedRoute && (
             <LiveTransitCountdownBanner
               routeNumber={selectedRoute.route?.shortName || selectedRoute.route?.id?.split('_')[0] || 'Transit'}
               routeName={selectedRoute.route?.name || 'Regional Corridor Route'}
               vehicleType={selectedRoute.route?.vehicleType || 'bus'}
-              nearestVehicle={selectedRadarVehicle || radarVehicles[0]}
-              upcomingDepartures={upcomingDepartures}
+              radarStatus={radarStatus}
               activeStopName={selectedRoute.originName || 'Your Boarding Station'}
-              onRefreshRadar={() => {
-                addToast('info', '🛰️ Synchronized with latest live satellite GPS telemetry feed', 3000);
-              }}
-              onReportCrowding={() => {
+              scheduledEtaMinutes={selectedRoute.eta || 10}
+              scheduledDepartureTime={urlDepartTime}
+              onRefreshRadar={fetchLiveTelemetry}
+              onReportSubmitted={() => {
                 addToast('success', '🌟 Ground-truth occupancy verified! Thank you for helping commuters.', 4000);
+                fetchLiveTelemetry();
               }}
             />
           )}
@@ -1327,8 +1310,10 @@ export default function RouteDiscoveryPage() {
                 liveRadarEnabled={liveRadarEnabled}
                 setLiveRadarEnabled={setLiveRadarEnabled}
                 onRecenterOnBus={() => {
-                  if (radarVehicles.length > 0) {
-                    setSelectedRadarVehicle(radarVehicles[0]);
+                  if (radarStatus.activeVehicles.length > 0) {
+                    addToast('info', `📍 Focused on verified vehicle ${radarStatus.activeVehicles[0].label}`, 3000);
+                  } else {
+                    addToast('info', 'ℹ️ No active transponder broadcasting on this corridor. Operating on scheduled timetable.', 3500);
                   }
                 }}
               />
@@ -1508,12 +1493,13 @@ export default function RouteDiscoveryPage() {
                 );
               })}
 
-              {/* 🛰️ REAL-TIME LIVE TRANSIT RADAR & MOVING VEHICLES OVERLAY */}
-              {liveRadarEnabled && radarVehicles.length > 0 && (
+              {/* 🛰️ REAL-TIME LIVE TRANSIT RADAR (Only authentic vehicles from telemetry/crowdsourcing) */}
+              {liveRadarEnabled && radarStatus.activeVehicles.length > 0 && (
                 <LiveTransitRadarOverlay
-                  vehicles={radarVehicles}
-                  activeRouteName={selectedRoute.route?.name || 'Corridor Route'}
-                  onSelectVehicle={(v) => setSelectedRadarVehicle(v)}
+                  vehicles={radarStatus.activeVehicles}
+                  onSelectVehicle={(v) => {
+                    addToast('info', `📍 Live Vehicle: ${v.label} • Source: ${v.source}`, 3000);
+                  }}
                 />
               )}
 

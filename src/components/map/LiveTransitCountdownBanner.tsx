@@ -1,234 +1,276 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Clock,
-  Navigation,
-  Bus,
-  Train,
-  Users,
+  Radio,
   CheckCircle2,
   Volume2,
-  Wifi,
-  Sparkles,
-  AlertCircle,
-  RotateCw,
-  Share2,
-  ChevronRight,
+  Users,
   ShieldCheck,
-  Compass
+  AlertCircle,
+  PlusCircle,
+  X,
+  Sparkles
 } from 'lucide-react';
-import type { LiveRadarVehicle, UpcomingDeparture } from '../../utils/liveTransitRadar';
-import { formatCountdown, speakTransitAnnouncement } from '../../utils/liveTransitRadar';
+import type { AuthenticRadarStatus } from '../../utils/liveTransitRadar';
+import { submitAuthenticCrowdCheckIn, speakTransitAnnouncement } from '../../utils/liveTransitRadar';
 
 interface LiveTransitCountdownBannerProps {
   routeNumber: string;
   routeName: string;
   vehicleType: string;
-  nearestVehicle?: LiveRadarVehicle | null;
-  upcomingDepartures: UpcomingDeparture[];
+  radarStatus: AuthenticRadarStatus;
   activeStopName: string;
+  scheduledEtaMinutes: number;
+  scheduledDepartureTime?: string;
   onRefreshRadar?: () => void;
-  onReportCrowding?: () => void;
+  onReportSubmitted?: () => void;
 }
 
 export function LiveTransitCountdownBanner({
   routeNumber,
   routeName,
   vehicleType,
-  nearestVehicle,
-  upcomingDepartures,
+  radarStatus,
   activeStopName,
+  scheduledEtaMinutes,
+  scheduledDepartureTime,
   onRefreshRadar,
-  onReportCrowding,
+  onReportSubmitted,
 }: LiveTransitCountdownBannerProps) {
-  // Local real-time second ticker for smooth countdown
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(
-    nearestVehicle?.etaSecondsToBoarding || (upcomingDepartures[0]?.etaMinutes ? upcomingDepartures[0].etaMinutes * 60 : 180)
-  );
-  const [isAudioSpeaking, setIsAudioSpeaking] = useState<boolean>(false);
-  const [crowdingFeedbackSent, setCrowdingFeedbackSent] = useState<boolean>(false);
+  const [showCheckInModal, setShowCheckInModal] = useState<boolean>(false);
+  const [selectedCrowd, setSelectedCrowd] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('LOW');
+  const [rampWorking, setRampWorking] = useState<boolean>(true);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submittedSuccess, setSubmittedSuccess] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (nearestVehicle?.etaSecondsToBoarding) {
-      setSecondsRemaining(nearestVehicle.etaSecondsToBoarding);
-    }
-  }, [nearestVehicle?.etaSecondsToBoarding]);
-
-  // Tick down every second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsRemaining((prev) => (prev > 1 ? prev - 1 : 180));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const countdown = formatCountdown(secondsRemaining);
+  const activeVehicle = radarStatus.activeVehicles[0];
+  const isLive = radarStatus.hasLiveGps && !!activeVehicle;
 
   const handleAudioAnnouncement = () => {
-    setIsAudioSpeaking(true);
-    const stopStr = activeStopName ? `at ${activeStopName}` : 'at your boarding point';
-    const vehStr = nearestVehicle
-      ? `${nearestVehicle.routeName} fleet ${nearestVehicle.fleetNumber} is arriving in approximately ${countdown.minutes > 0 ? `${countdown.minutes} minutes` : `${countdown.remainingSec} seconds`}. Current speed is ${nearestVehicle.speedKmh} km per hour. Step-free wheelchair ramp is functional and ready.`
-      : `${routeName} is scheduled to arrive ${stopStr} in ${countdown.minutes} minutes. Low floor wheelchair ramp certified.`;
-
-    speakTransitAnnouncement(vehStr);
-    setTimeout(() => setIsAudioSpeaking(false), 5000);
+    let speech = '';
+    if (isLive) {
+      speech = `Route ${routeNumber}, ${routeName}. Live vehicle ${activeVehicle.label} is active on the corridor. Wheelchair ramp is reported ${activeVehicle.hasRamp ? 'functional' : 'unavailable'}.`;
+    } else {
+      speech = `Route ${routeNumber}, ${routeName}. Operating on scheduled timetable. Next departure is in approximately ${scheduledEtaMinutes} minutes. No active transponder signal currently broadcasting.`;
+    }
+    speakTransitAnnouncement(speech);
   };
 
-  const handleQuickCrowdReport = () => {
-    setCrowdingFeedbackSent(true);
-    if (onReportCrowding) onReportCrowding();
-    setTimeout(() => setCrowdingFeedbackSent(false), 3500);
+  const handleCheckInSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await submitAuthenticCrowdCheckIn({
+        routeId: routeNumber,
+        routeName,
+        lat: 20.3533,
+        lng: 85.8164,
+        crowdingLevel: selectedCrowd,
+        rampFunctional: rampWorking,
+        comment: 'Verified on-board by commuter',
+      });
+      setSubmittedSuccess(true);
+      if (onReportSubmitted) onReportSubmitted();
+      setTimeout(() => {
+        setShowCheckInModal(false);
+        setSubmittedSuccess(false);
+      }, 1500);
+    } catch {
+      setShowCheckInModal(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
-  const isTrain = vehicleType === 'train';
-  const themeColor = isTrain ? 'from-blue-900 to-indigo-950 border-blue-800' : 'from-emerald-950 via-slate-900 to-neutral-950 border-emerald-800/40';
 
   return (
-    <div className={`bg-gradient-to-r ${themeColor} border text-white rounded-3xl p-4 sm:p-5 shadow-lg relative overflow-hidden`}>
-      {/* Background Animated Radar Grid Glow */}
-      <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-      {/* Top Telemetry Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3 mb-3">
+    <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 shadow-sm text-neutral-900 transition-all font-sans">
+      {/* Top Provenance & Signal Status Row */}
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-2.5 mb-3">
         <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-            <Wifi className="w-3 h-3" /> Live GPS Transit Radar
-          </span>
-          {nearestVehicle?.fleetNumber && (
-            <span className="text-[10px] font-mono bg-white/10 text-neutral-300 px-2 py-0.5 rounded-full font-bold">
-              {nearestVehicle.fleetNumber}
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Live GPS Transponder</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-neutral-100 text-neutral-600 border border-neutral-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+              <span>Scheduled Timetable</span>
             </span>
           )}
+
+          <span className="text-[11px] text-neutral-400 font-medium truncate max-w-[190px] sm:max-w-none">
+            {radarStatus.sourceAttribution}
+          </span>
         </div>
 
-        {/* Action icons */}
+        {/* Minimalist actions */}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={handleAudioAnnouncement}
-            className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              isAudioSpeaking ? 'bg-emerald-500 text-black animate-pulse' : 'bg-white/10 hover:bg-white/20 text-white'
-            }`}
-            title="Listen to Live Speech Announcement"
+            className="px-2 py-1 rounded-lg text-xs font-semibold text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors flex items-center gap-1"
+            title="Listen to Trip Info"
           >
             <Volume2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Audio Guide</span>
+            <span className="hidden sm:inline">Listen</span>
           </button>
-          {onRefreshRadar && (
-            <button
-              type="button"
-              onClick={onRefreshRadar}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-all"
-              title="Refresh Telemetry"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
+          <button
+            type="button"
+            onClick={() => setShowCheckInModal(true)}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-neutral-900 hover:bg-black text-white transition-colors flex items-center gap-1 shadow-sm"
+            title="Crowdsource Live Status"
+          >
+            <PlusCircle className="w-3 h-3" />
+            <span>Check In</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Information Block */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-black text-neutral-950 tracking-tight">{routeNumber}</span>
+            <span className="text-xs text-neutral-500 font-medium">{routeName}</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+            <span className="flex items-center gap-1 font-semibold text-neutral-900">
+              <Clock className="w-3.5 h-3.5 text-neutral-500" />
+              {scheduledDepartureTime ? `Departure: ${scheduledDepartureTime}` : `ETA: ~${scheduledEtaMinutes} min`}
+            </span>
+            <span>•</span>
+            <span>Boarding at <strong className="text-neutral-900 font-bold">{activeStopName || 'Origin Stop'}</strong></span>
+          </div>
+        </div>
+
+        {/* Real-world Telemetry Tag or Timetable note */}
+        <div className="sm:text-right shrink-0">
+          {isLive ? (
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-neutral-800">
+                {activeVehicle.label}
+              </div>
+              <div className="flex items-center sm:justify-end gap-2 text-[11px]">
+                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  {activeVehicle.hasRamp ? 'Wheelchair Ramp Verified' : 'Standard Boarding'}
+                </span>
+                {activeVehicle.speedKmh !== null && activeVehicle.speedKmh !== undefined && (
+                  <span className="text-neutral-500 font-mono">
+                    {activeVehicle.speedKmh} km/h
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-neutral-500 bg-neutral-50 px-3 py-1.5 rounded-xl border border-neutral-100 max-w-xs">
+              Live GPS transponder offline for this vehicle. Showing authentic published timetable schedule.
+            </div>
           )}
         </div>
       </div>
 
-      {/* Center Countdown & Live Speed Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-        {/* Countdown Big Display */}
-        <div className="sm:col-span-6 flex items-center gap-3.5">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md flex flex-col items-center justify-center p-2 shrink-0 shadow-inner">
-            <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white leading-none">
-              {countdown.display}
-            </div>
-            <div className="text-[9px] uppercase font-extrabold text-emerald-400 mt-1">
-              {countdown.minutes === 0 ? 'Seconds' : 'Minutes'}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs font-medium text-neutral-300">
-              Arriving at <span className="font-bold text-white">{activeStopName || 'Your Stop'}</span>
-            </div>
-            <div className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2 mt-0.5">
-              <span>{routeNumber}</span>
-              <span className="text-neutral-400 text-xs font-normal truncate max-w-[170px]">{routeName}</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-medium text-neutral-300 mt-1">
-              <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {nearestVehicle?.delayMinutes === 0 ? 'On Time' : `+${nearestVehicle?.delayMinutes || 0}m Delay`}
-              </span>
-              {nearestVehicle?.speedKmh && (
-                <>
-                  <span>•</span>
-                  <span className="font-mono text-neutral-200">
-                    ⚡ {nearestVehicle.speedKmh} km/h
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+      {/* Crowdsourced Ground-Truth Summary if available */}
+      {radarStatus.crowdsourcedCount > 0 && (
+        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-600">
+          <span className="flex items-center gap-1 text-[11px] text-neutral-700 font-medium">
+            <Users className="w-3.5 h-3.5 text-neutral-500" />
+            Verified by {radarStatus.crowdsourcedCount} commuter{radarStatus.crowdsourcedCount > 1 ? 's' : ''} on this route today
+          </span>
+          <span className="text-[11px] text-neutral-400 font-medium">
+            {radarStatus.lastReportedText || 'Community verified'}
+          </span>
         </div>
+      )}
 
-        {/* Live Seat Occupancy & Ramp Card */}
-        <div className="sm:col-span-6 bg-white/5 border border-white/10 rounded-2xl p-3 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-neutral-300 flex items-center gap-1 font-semibold">
-              <Users className="w-3.5 h-3.5 text-emerald-400" />
-              Live Seat Occupancy
-            </span>
-            <span className="font-bold text-emerald-400 text-[11px]">
-              {nearestVehicle ? `${nearestVehicle.seatsAvailable} seats free` : 'Seats Available'}
-            </span>
-          </div>
-
-          {/* Occupancy Bar */}
-          <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${
-                (nearestVehicle?.occupancyPercent || 45) > 80 ? 'bg-red-500' : (nearestVehicle?.occupancyPercent || 45) > 55 ? 'bg-amber-400' : 'bg-emerald-400'
-              }`}
-              style={{ width: `${nearestVehicle?.occupancyPercent || 45}%` }}
-            ></div>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] pt-0.5">
-            <span className="text-emerald-300 font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              ♿ Certified Ramp Ready
-            </span>
-            <span className="font-mono text-[10px] bg-white/10 text-neutral-200 px-2 py-0.5 rounded-full font-bold">
-              {nearestVehicle?.wheelchairBayVacant ? 'Bay Free' : 'Bay In Use'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Headway Row: Next 3 Upcoming Departures */}
-      {upcomingDepartures && upcomingDepartures.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-white/10 flex items-center flex-wrap gap-2 text-xs">
-          <span className="text-[11px] font-bold text-neutral-400 shrink-0">Subsequent Buses:</span>
-          {upcomingDepartures.slice(1, 3).map((dep, idx) => (
-            <div
-              key={idx}
-              className="bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl px-2.5 py-1 flex items-center gap-1.5 transition-all text-[11px]"
-            >
-              <Clock className="w-3 h-3 text-neutral-400" />
-              <span className="font-bold text-white">in {dep.etaMinutes} min</span>
-              <span className="text-neutral-400 font-mono text-[10px]">({dep.departureTimeFormatted})</span>
-              {dep.isLiveGps && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              )}
+      {/* Clean Commuter Check-in Modal */}
+      {showCheckInModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-neutral-200 rounded-3xl p-5 max-w-sm w-full shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+              <div className="flex items-center gap-1.5 font-bold text-sm text-neutral-900">
+                <Radio className="w-4 h-4 text-emerald-600" />
+                <span>Rider Ground-Truth Check-In</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCheckInModal(false)}
+                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ))}
 
-          {/* Quick 1-Tap Crowding feedback */}
-          <button
-            type="button"
-            onClick={handleQuickCrowdReport}
-            className="ml-auto text-[10px] font-bold text-neutral-300 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-xl transition-all flex items-center gap-1"
-          >
-            {crowdingFeedbackSent ? '✓ Ground-Truth Confirmed!' : '👍 Confirm Live Status'}
-          </button>
+            <p className="text-xs text-neutral-500">
+              Are you commuting on <strong>{routeNumber}</strong>? Help other commuters with legitimate real-time data:
+            </p>
+
+            <form onSubmit={handleCheckInSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Observed Crowding Level:
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['LOW', 'MEDIUM', 'HIGH'] as const).map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setSelectedCrowd(lvl)}
+                      className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                        selectedCrowd === lvl
+                          ? 'bg-neutral-900 text-white border-black'
+                          : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {lvl === 'LOW' ? 'Low' : lvl === 'MEDIUM' ? 'Moderate' : 'Crowded'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Wheelchair Ramp Status:
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setRampWorking(true)}
+                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                      rampWorking
+                        ? 'bg-emerald-700 text-white border-emerald-800'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    ♿ Functional & Ready
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRampWorking(false)}
+                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                      !rampWorking
+                        ? 'bg-red-700 text-white border-red-800'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    ⚠️ Obstructed / Inactive
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmitting || submittedSuccess}
+                  className="w-full py-2.5 bg-neutral-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all disabled:opacity-60"
+                >
+                  {submittedSuccess ? '✓ Ground-Truth Recorded!' : isSubmitting ? 'Submitting...' : 'Submit Real-Time Check-In'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

@@ -93,19 +93,7 @@
     display: none;
   }
 
-  /* Live Radar Pulse & Moving Vehicles */
-  @keyframes radarPing {
-    0% {
-      transform: scale(0.6);
-      opacity: 0.8;
-    }
-    100% {
-      transform: scale(2.2);
-      opacity: 0;
-    }
-  }
-
-  .live-radar-vehicle-marker {
+  .authentic-radar-vehicle-pin {
     background: transparent !important;
     border: none !important;
   }

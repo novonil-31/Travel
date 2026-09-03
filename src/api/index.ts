@@ -281,6 +281,33 @@ export const stopsApi = {
   },
 };
 
+// ============ Vehicles & Live Telemetry ============
+export const vehiclesApi = {
+  getNearby: async (lat: number, lng: number, radius = 5000) => {
+    try {
+      const res = await request<any[]>(`/vehicles/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
+      return Array.isArray(res) ? res : [];
+    } catch {
+      return [];
+    }
+  },
+  getByRoute: async (routeId: string) => {
+    try {
+      const res = await request<any[]>(`/vehicles/route/${encodeURIComponent(routeId)}`);
+      return Array.isArray(res) ? res : [];
+    } catch {
+      return [];
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      return await request<any>(`/vehicles/${id}`);
+    } catch {
+      return null;
+    }
+  },
+};
+
 // ============ Routes ============
 export const routesApi = {
   getAll: async () => {
@@ -735,6 +762,7 @@ export default {
   crowding: crowdingApi,
   fares: faresApi,
   transport: transportApi,
+  vehicles: vehiclesApi,
   evaluate: evaluateApi,
   notifications: notificationsApi,
 };
