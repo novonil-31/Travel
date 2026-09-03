@@ -264,11 +264,8 @@ export const stopsApi = {
     }
   },
 
-  searchPlaces: async (query: string) => {
-    if (!query || query.trim().length === 0) {
-      return searchPlacesLive('');
-    }
-    return searchPlacesLive(query);
+  searchPlaces: async (query: string, userLocation?: any) => {
+    return searchPlacesLive(query, userLocation);
   },
 
   reverseGeocode: async (lat: number, lng: number) => {

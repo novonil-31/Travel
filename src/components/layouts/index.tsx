@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { StatusDot } from '../ui';
+import { isGuestAccount } from '../../utils/authUtils';
 
 export function PassengerLayout() {
   const { state, setAccessibilitySettings } = useAppStore();
@@ -73,7 +74,7 @@ export function PassengerLayout() {
             <span>{state.isOffline ? 'Offline' : 'Live Network'}</span>
           </div>
 
-          {state.currentUser ? (
+          {!isGuestAccount(state.currentUser) && state.currentUser ? (
             <Link to="/profile" className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-full text-xs font-bold transition-all">
               <User className="w-3.5 h-3.5" />
               <span>{state.currentUser.name}</span>
@@ -160,7 +161,7 @@ export function PassengerLayout() {
             </div>
 
             <div className="pt-4 border-t border-neutral-200">
-              {state.currentUser ? (
+              {!isGuestAccount(state.currentUser) && state.currentUser ? (
                 <div className="text-xs text-neutral-500">
                   Logged in as <strong className="text-neutral-900">{state.currentUser.name}</strong>
                 </div>

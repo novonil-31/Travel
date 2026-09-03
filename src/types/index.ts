@@ -2,6 +2,11 @@
 // ACCESS — Complete Type System
 // ============================================
 
+export interface TravelPreferences {
+  preferredTrainCoach: 'SL' | '3A' | '2A' | '1A' | 'CC' | 'EC' | '2S';
+  preferredFlightCabin: 'economy' | 'premium-economy' | 'business' | 'first';
+}
+
 // --- User & Profile ---
 export interface User {
   id: string;
@@ -10,8 +15,10 @@ export interface User {
   phoneNumber?: string;
   avatar?: string;
   profile: AccessibilityProfile;
+  travelPreferences?: TravelPreferences;
   emergencyContact?: EmergencyContact;
   role: 'passenger' | 'operator';
+  isGuest?: boolean;
 }
 
 export interface AccessibilityProfile {
@@ -109,6 +116,8 @@ export interface TransitChainInfo {
   bookingService: string;
   bookingUrl: string;
   wheelchairAssistanceCode: string;
+  availableClasses?: Array<{ code: string; name: string; fare: number }>;
+  selectedClassCode?: string;
 }
 
 // --- Route Scoring ---
@@ -172,6 +181,7 @@ export interface RouteSearchResult {
       from: string;
       to: string;
       fare: number;
+      isEstimated?: boolean;
       bookingUrl?: string;
       bookingLabel?: string;
     }>;
@@ -189,6 +199,12 @@ export interface RouteSearchResult {
     typicalFareMax?: number;
     currency?: string;
   }>;
+  algorithmMetadata?: {
+    algorithm: 'A*' | 'Dijkstra' | 'Contraction Hierarchies' | 'Multi-Modal RAPTOR';
+    nodesExplored: number;
+    executionTimeMs: number;
+    heuristicEfficiency?: string;
+  };
 }
 
 export interface RouteScores {

@@ -6,13 +6,17 @@ import {
   Accessibility, Shield, Save, User, Check, Footprints,
   Users, Moon, Phone, WifiOff, Download, ArrowRight, ShieldCheck, HeartPulse
 } from 'lucide-react';
-import type { AccessibilityProfile, EmergencyContact, SafetyPreference } from '../../types';
+import type { AccessibilityProfile, EmergencyContact, SafetyPreference, TravelPreferences } from '../../types';
 import { Link } from 'react-router-dom';
 import { authApi } from '../../api';
+import { Train, Plane } from 'lucide-react';
+import { isGuestAccount } from '../../utils/authUtils';
 
 export default function ProfilePage() {
   const { state, updateProfile, setUser, dispatch } = useAppStore();
   const { addToast } = useToast();
+
+  const isGuest = isGuestAccount(state.currentUser);
 
   const [profile, setProfile] = useState<AccessibilityProfile>(
     state.accessibilityProfile || {
@@ -23,6 +27,13 @@ export default function ProfilePage() {
       vision: 'normal',
       hearing: 'normal',
       safetyPreferences: ['late-night', 'prefer-safer'],
+    }
+  );
+
+  const [travelPrefs, setTravelPrefs] = useState<TravelPreferences>(
+    state.currentUser?.travelPreferences || {
+      preferredTrainCoach: '3A',
+      preferredFlightCabin: 'economy',
     }
   );
 
@@ -45,15 +56,18 @@ export default function ProfilePage() {
       ...state.currentUser,
       emergencyContact,
       profile,
+      travelPreferences: travelPrefs,
     } : {
       id: 'local-user',
       name: 'Registered Passenger',
       role: 'passenger' as const,
       emergencyContact,
       profile,
+      travelPreferences: travelPrefs,
     };
 
     setUser(updatedUser);
+    localStorage.setItem('access_user', JSON.stringify(updatedUser));
 
     try {
       if (localStorage.getItem('access_token')) {
@@ -63,10 +77,10 @@ export default function ProfilePage() {
           relationship: emergencyContact.relationship,
         });
       }
-      addToast('success', 'Emergency SOS contact & profile saved successfully!');
+      addToast('success', 'Travel preferences & safety profile saved successfully!');
     } catch (err: any) {
       console.warn('Backend sync failed, saved locally in browser storage.', err);
-      addToast('success', 'Emergency SOS contact saved locally in your account.');
+      addToast('success', 'Travel preferences & profile saved locally in your account.');
     } finally {
       setIsSaving(false);
     }
@@ -105,6 +119,28 @@ export default function ProfilePage() {
           <Save className="w-3.5 h-3.5 mr-1.5" /> Save Changes
         </Button>
       </div>
+
+      {isGuest && (
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex items-center justify-between text-xs text-amber-950 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-800">
+              <Shield className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-950">Guest Passenger Mode</div>
+              <div className="text-[11px] text-amber-800">
+                Log in to link your emergency contacts and activate Emergency SOS dispatch.
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/login?returnTo=/profile"
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-2xs"
+          >
+            Log In ➔
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-5">
         {/* Mobility Category */}
@@ -162,6 +198,96 @@ export default function ProfilePage() {
               />
               <span className="font-semibold text-neutral-900">Prioritize Well-Lit Night Corridors</span>
             </label>
+          </div>
+        </div>
+
+        {/* Travel Class & Recommendation Preferences */}
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Train className="w-5 h-5 text-neutral-900" />
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+                Train & Flight Class Preferences
+              </h2>
+              <span className="text-xs text-neutral-500">
+                Default coach and cabin classes automatically recommended across all journey searches
+              </span>
+            </div>
+          </div>
+
+          {/* Train Coach Class Selector */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-neutral-700">
+              <span className="flex items-center gap-1.5">
+                <span className="text-sm">🚆</span>
+                <span>Default Preferred Train Coach Class:</span>
+              </span>
+              <span className="text-blue-700 font-mono font-black">{travelPrefs.preferredTrainCoach}</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {[
+                { id: '3A', label: '3A (AC 3 Tier)', desc: 'Comfortable AC Berth' },
+                { id: '2A', label: '2A (AC 2 Tier)', desc: 'Spacious 2-Tier AC' },
+                { id: '1A', label: '1A (AC 1st Class)', desc: 'Coupe / Lockable Cabin' },
+                { id: 'SL', label: 'SL (Sleeper Class)', desc: 'Non-AC Budget Berth' },
+                { id: 'CC', label: 'CC (AC Chair Car)', desc: 'Vande Bharat / Shatabdi' },
+                { id: 'EC', label: 'EC (Exec Chair Car)', desc: 'Premium Executive CC' },
+                { id: '2S', label: '2S (Second Sitting)', desc: 'Day Express Budget' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setTravelPrefs({ ...travelPrefs, preferredTrainCoach: c.id as any })}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    travelPrefs.preferredTrainCoach === c.id
+                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:bg-neutral-100'
+                  }`}
+                >
+                  <div className="font-bold text-xs">{c.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${travelPrefs.preferredTrainCoach === c.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    {c.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Flight Cabin Class Selector */}
+          <div className="space-y-2 pt-3 border-t border-neutral-100">
+            <div className="flex items-center justify-between text-xs font-bold text-neutral-700">
+              <span className="flex items-center gap-1.5">
+                <span className="text-sm">✈️</span>
+                <span>Default Preferred Flight Cabin:</span>
+              </span>
+              <span className="text-blue-700 uppercase font-black">{travelPrefs.preferredFlightCabin}</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {[
+                { id: 'economy', label: 'Economy', desc: 'Standard Seating' },
+                { id: 'premium-economy', label: 'Premium Economy', desc: 'Extra Legroom' },
+                { id: 'business', label: 'Business Class', desc: 'Priority & Flatbeds' },
+                { id: 'first', label: 'First Class', desc: 'Private Suite' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setTravelPrefs({ ...travelPrefs, preferredFlightCabin: f.id as any })}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    travelPrefs.preferredFlightCabin === f.id
+                      ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:bg-neutral-100'
+                  }`}
+                >
+                  <div className="font-bold text-xs">{f.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${travelPrefs.preferredFlightCabin === f.id ? 'text-blue-200' : 'text-neutral-500'}`}>
+                    {f.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

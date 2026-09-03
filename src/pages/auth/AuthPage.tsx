@@ -344,6 +344,7 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
       id: `guest-${Date.now()}`,
       name: 'Guest Passenger',
       email: 'guest@transit.maarg',
+      isGuest: true,
       role: 'passenger' as const,
       profile: {
         mobility: 'wheelchair' as const,
@@ -354,15 +355,11 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
         hearing: 'normal' as const,
         safetyPreferences: ['late-night' as const, 'prefer-safer' as const],
       },
-      emergencyContact: {
-        name: 'Family Contact',
-        phone: '+91 98765 43210',
-        relationship: 'Family',
-      },
+      emergencyContact: undefined,
     };
     setUser(guestUser);
     updateProfile(guestUser.profile);
-    addToast('success', 'Continuing as Guest Passenger (No Login Required)');
+    addToast('info', 'Continuing as Guest Passenger. Sign in anytime to activate Emergency SOS.');
     navigate(getTargetUrl());
   };
 

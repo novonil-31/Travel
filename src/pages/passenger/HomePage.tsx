@@ -95,22 +95,34 @@ export default function HomePage() {
 
       {/* Active Navigation Card (If trip active) */}
       {activeJourney && (
-        <div className="bg-neutral-900 text-white p-5 rounded-3xl shadow-lg flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            <div>
-              <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wider">
-                Active Ride in Progress
-              </span>
-              <span className="text-base font-bold text-white block">
+        <div className="bg-black text-white p-5 rounded-3xl border border-neutral-800 shadow-xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative flex items-center justify-center shrink-0">
+              <span className="w-3.5 h-3.5 rounded-full bg-white animate-ping absolute opacity-40" />
+              <span className="w-3 h-3 rounded-full bg-white relative" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] uppercase font-black text-neutral-400 tracking-wider">
+                  Active Ride in Progress
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-neutral-900 text-neutral-300 border border-neutral-800">
+                  Live
+                </span>
+              </div>
+              <span className="text-base font-black text-white block truncate">
                 {activeJourney.routeName} → {activeJourney.destinationName}
               </span>
             </div>
           </div>
-          <Link to={`/journey/${activeJourney.id}`}>
-            <Button size="sm" className="bg-white text-black hover:bg-neutral-200">
-              Open Navigation <ArrowRight className="w-3.5 h-3.5 ml-1" />
-            </Button>
+          <Link to={`/journey/${activeJourney.id}`} className="shrink-0">
+            <button
+              type="button"
+              className="px-4 py-2.5 bg-white hover:bg-neutral-100 text-black font-black rounded-2xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer"
+            >
+              <span>Open Navigation</span>
+              <ArrowRight className="w-3.5 h-3.5 text-black" />
+            </button>
           </Link>
         </div>
       )}

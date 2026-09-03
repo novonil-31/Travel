@@ -43,22 +43,30 @@ const taxiPin = createMapPin('#d97706', '🚖');
 
 import { stopsApi } from '../../api';
 import type { GeocodedPlace } from '../../utils/onlineRouting';
+import { getLastSearchedDestination, saveRecentSearch } from '../../utils/recentSearches';
+import { isLoggedInAccount } from '../../utils/authUtils';
+import { useUserLocation } from '../../hooks/useUserLocation';
+import { LocationRegionBanner } from '../../components/LocationRegionBanner';
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const { state, updateProfile } = useAppStore();
+  const { userLocation } = useUserLocation();
+
+  const isAuth = isLoggedInAccount(state.currentUser);
+  const lastSavedSearch = isAuth && state.currentUser ? getLastSearchedDestination(state.currentUser.id) : null;
 
   const [pickup, setPickup] = useState("Queen's Castle 1 (QC 1)");
-  const [dropoff, setDropoff] = useState('Campus 3 OAT');
+  const [dropoff, setDropoff] = useState(isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT');
   const [pickupLocation, setPickupLocation] = useState<{ name: string; lat: number; lng: number }>({
     name: "Queen's Castle 1 (QC 1)",
     lat: 20.352367250329067,
     lng: 85.81937388473358,
   });
   const [dropoffLocation, setDropoffLocation] = useState<{ name: string; lat: number; lng: number }>({
-    name: 'Campus 3 OAT',
-    lat: 20.352708891788033,
-    lng: 85.81637927996144,
+    name: isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT',
+    lat: isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : 20.352708891788033,
+    lng: isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : 85.81637927996144,
   });
 
   const [activeDropdown, setActiveDropdown] = useState<'pickup' | 'dropoff' | null>(null);
@@ -81,39 +89,33 @@ export default function LandingPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Debounced search for Pickup
+  // Debounced search for Pickup with active userLocation
   React.useEffect(() => {
-    if (!pickup || pickup.trim().length < 1) {
-      setPickupSuggestions([]);
-      return;
-    }
+    const query = pickup?.trim() || '';
     const timeout = setTimeout(async () => {
       try {
-        const places = await stopsApi.searchPlaces(pickup);
+        const places = await stopsApi.searchPlaces(query, userLocation);
         setPickupSuggestions(places);
       } catch (err) {
         console.error('Pickup search error:', err);
       }
-    }, 200);
+    }, query.length === 0 ? 0 : 200);
     return () => clearTimeout(timeout);
-  }, [pickup]);
+  }, [pickup, userLocation]);
 
-  // Debounced search for Drop-off
+  // Debounced search for Drop-off with active userLocation
   React.useEffect(() => {
-    if (!dropoff || dropoff.trim().length < 1) {
-      setDropoffSuggestions([]);
-      return;
-    }
+    const query = dropoff?.trim() || '';
     const timeout = setTimeout(async () => {
       try {
-        const places = await stopsApi.searchPlaces(dropoff);
+        const places = await stopsApi.searchPlaces(query, userLocation);
         setDropoffSuggestions(places);
       } catch (err) {
         console.error('Dropoff search error:', err);
       }
-    }, 200);
+    }, query.length === 0 ? 0 : 200);
     return () => clearTimeout(timeout);
-  }, [dropoff]);
+  }, [dropoff, userLocation]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,9 +132,14 @@ export default function LandingPage() {
       updateProfile({ mobility: 'none', stairs: 'acceptable', walkingTolerance: 'high' });
     }
 
+    // Save recent search for authentic logged-in user
+    if (isAuth && state.currentUser) {
+      saveRecentSearch(state.currentUser.id, pickupLocation, dropoffLocation);
+    }
+
     const query = `origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&originLat=${pickupLocation.lat}&originLng=${pickupLocation.lng}&destLat=${dropoffLocation.lat}&destLng=${dropoffLocation.lng}&mobility=${mobilityFilter}&timeMode=${timeMode}&departTime=${encodeURIComponent(departTime)}`;
 
-    if (!state.currentUser) {
+    if (!isAuth) {
       navigate(`/login?${query}`);
     } else {
       navigate(`/plan?${query}`);
@@ -191,6 +198,11 @@ export default function LandingPage() {
               </p>
             </div>
 
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Search Region</span>
+              <LocationRegionBanner compact />
+            </div>
+
             <form onSubmit={handleSearch} className="space-y-3.5">
               <div ref={searchFormRef} className="space-y-3.5">
                 {/* Pickup Input */}
@@ -214,6 +226,10 @@ export default function LandingPage() {
                   {/* Pickup Dropdown */}
                   {activeDropdown === 'pickup' && pickupSuggestions.length > 0 && (
                     <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                      <div className="px-3 py-1 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                        <span>Priority in {userLocation.cityName}</span>
+                        <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                      </div>
                       {pickupSuggestions.map((place, idx) => (
                         <button
                           key={idx}
@@ -226,8 +242,15 @@ export default function LandingPage() {
                           className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                         >
                           <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="text-neutral-900 font-bold">{place.name}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
+                              <span>{place.name}</span>
+                              {place.distanceLabel && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
+                                  {place.distanceLabel}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
                           </div>
                         </button>
@@ -257,6 +280,10 @@ export default function LandingPage() {
                   {/* Dropoff Dropdown */}
                   {activeDropdown === 'dropoff' && dropoffSuggestions.length > 0 && (
                     <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                      <div className="px-3 py-1 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                        <span>Priority in {userLocation.cityName}</span>
+                        <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                      </div>
                       {dropoffSuggestions.map((place, idx) => (
                         <button
                           key={idx}
@@ -269,12 +296,39 @@ export default function LandingPage() {
                           className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                         >
                           <MapPin className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="text-neutral-900 font-bold">{place.name}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
+                              <span>{place.name}</span>
+                              {place.distanceLabel && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
+                                  {place.distanceLabel}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName}</div>
                           </div>
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Logged In Last Destination Chip */}
+                  {isAuth && lastSavedSearch?.destination && (
+                    <div className="flex items-center gap-2 pt-1 text-xs">
+                      <span className="text-[10px] font-bold text-neutral-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-neutral-400" />
+                        <span>Recent:</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDropoff(lastSavedSearch.destination.name);
+                          setDropoffLocation(lastSavedSearch.destination);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer truncate max-w-[240px] border border-neutral-200"
+                      >
+                        <span>📍 {lastSavedSearch.destination.name}</span>
+                      </button>
                     </div>
                   )}
                 </div>

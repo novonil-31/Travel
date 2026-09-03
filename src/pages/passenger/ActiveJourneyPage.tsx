@@ -12,10 +12,16 @@ import {
   MessageSquarePlus, Phone, Share2, AlertOctagon, X, Star,
   ThumbsUp, Award, Volume2, Footprints, RefreshCw,
   ExternalLink, Ticket, Train, Plane, Car, LogOut, CheckCircle2,
-  ChevronRight, ArrowUpRight, Shield
+  ChevronRight, ArrowUpRight, Shield, Lock
 } from 'lucide-react';
 import { haversineDistanceClient } from '../../utils/onlineRouting';
+import {
+  snapPointToPolyline,
+  calculatePreciseRoadETA,
+  computePolylineTotalDistance,
+} from '../../utils/mapMatching';
 import { safetyApi, reportsApi } from '../../api';
+import { isGuestAccount } from '../../utils/authUtils';
 
 // Custom Map Pins
 const createMapPin = (color: string, label: string) =>
@@ -48,36 +54,32 @@ const destPin = createMapPin('#ef4444', 'B');
 const userGpsPin = createMapPin('#000000', '📍');
 
 // Transport Change / Mode Switch Badge Pin
-const createTransferPin = (fromIcon: string, toIcon: string, label: string) =>
+const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
   L.divIcon({
     className: 'transfer-pin',
     html: `
-      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-        <div class="transfer-pulse-effect"></div>
-        <div style="
-          background: linear-gradient(135deg, #18181b, #09090b);
-          color: white;
-          border: 2px solid #f59e0b;
-          border-radius: 20px;
-          padding: 2px 8px;
-          display: flex;
-          align-items: center;
-          gap: 3px;
-          font-weight: 800;
-          font-size: 10px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.45);
-          white-space: nowrap;
-          z-index: 2;
-          cursor: pointer;
-        ">
-          <span>${fromIcon}</span>
-          <span style="color: #f59e0b; font-size: 11px; font-weight: 900;">➔</span>
-          <span>${toIcon}</span>
-        </div>
+      <div style="
+        background: #000000;
+        color: #ffffff;
+        border: 1.5px solid #262626;
+        border-radius: 9999px;
+        padding: 2px 7px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-weight: 800;
+        font-size: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        white-space: nowrap;
+        cursor: pointer;
+      ">
+        <span>${fromIcon}</span>
+        <span style="color: #ffffff; font-size: 9px; font-weight: 900;">➔</span>
+        <span>${toIcon}</span>
       </div>
     `,
-    iconSize: [80, 26],
-    iconAnchor: [40, 13],
+    iconSize: [60, 22],
+    iconAnchor: [30, 11],
   });
 
 function NavBoundsController({
@@ -113,6 +115,7 @@ export default function ActiveJourneyPage() {
   const [showEmergencyModal, setShowEmergencyModal] = useState<boolean>(false);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [showLeaveModal, setShowLeaveModal] = useState<boolean>(false);
+  const [showGuestSosModal, setShowGuestSosModal] = useState<boolean>(false);
   const [hasArrivedSafely, setHasArrivedSafely] = useState<boolean>(false);
   const [sosActive, setSosActive] = useState<boolean>(false);
 
@@ -138,8 +141,10 @@ export default function ActiveJourneyPage() {
   // Safe Coordinates Calculation
   const fullRouteArr: Array<[number, number]> = activeJourney?.geometry?.fullRoute || [];
   const originCoords: [number, number] =
+    activeJourney?.originCoords ? [activeJourney.originCoords.lat, activeJourney.originCoords.lng] :
     fullRouteArr.length > 0 ? fullRouteArr[0] : [20.3555, 85.8145];
   const destCoords: [number, number] =
+    activeJourney?.destinationCoords ? [activeJourney.destinationCoords.lat, activeJourney.destinationCoords.lng] :
     fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1] : [20.3450, 85.8180];
 
   const continuousRoute: Array<[number, number]> =
@@ -152,12 +157,15 @@ export default function ActiveJourneyPage() {
     activeJourney?.routeId?.startsWith('AIR') ||
     activeJourney?.transitChainInfo?.carrierCode === 'AIR' ||
     (activeJourney?.transitChainInfo?.bookingService || '').toLowerCase().includes('flight') ||
-    (activeJourney?.routeName || '').toLowerCase().includes('flight')
+    (activeJourney?.routeName || '').toLowerCase().includes('flight') ||
+    activeJourney?.segments?.some((s) => s.vehicleType === 'flight')
   );
 
   const isTrain = Boolean(
     activeJourney?.routeId?.startsWith('RAIL') ||
     activeJourney?.routeId?.startsWith('IRCTC') ||
+    activeJourney?.routeId?.startsWith('SUPERFAST') ||
+    activeJourney?.routeId?.startsWith('TRAIN') ||
     activeJourney?.transitChainInfo?.carrierCode === 'RAIL' ||
     (activeJourney?.transitChainInfo?.bookingService || '').toLowerCase().includes('irctc') ||
     (activeJourney?.routeName || '').toLowerCase().includes('vande bharat') ||
@@ -165,19 +173,66 @@ export default function ActiveJourneyPage() {
     (activeJourney?.routeName || '').toLowerCase().includes('tejas') ||
     (activeJourney?.routeName || '').toLowerCase().includes('shatabdi') ||
     (activeJourney?.routeName || '').toLowerCase().includes('purushottam') ||
-    (activeJourney?.routeName || '').toLowerCase().includes('express') && !(activeJourney?.routeName || '').toLowerCase().includes('bus')
+    (activeJourney?.routeName || '').toLowerCase().includes('express') && !(activeJourney?.routeName || '').toLowerCase().includes('bus') ||
+    activeJourney?.segments?.some((s) => s.vehicleType === 'train')
   );
 
   const isBus = Boolean(
     activeJourney?.routeId === 'C3' ||
     activeJourney?.routeId === 'C2' ||
     activeJourney?.routeId?.includes('BUS') ||
-    (activeJourney?.routeName || '').toLowerCase().includes('bus')
+    (activeJourney?.routeName || '').toLowerCase().includes('bus') ||
+    activeJourney?.segments?.some((s) => s.vehicleType === 'bus')
   );
 
-  // Multi-Stage Milestones Setup (Only multi-modal if actual transfer between taxi/bus and train/flight)
+  const mainTransitIcon = isFlight ? '✈️' : isTrain ? '🚆' : isBus ? '🚌' : '🚆';
+  const ingressIcon = '🚖';
+  const egressIcon = '🚖';
+
+  // Strict Intermodal Determination: ONLY intercity / long-distance train, flight, or multi-bus journeys have transfer hubs
+  const isIntermodalJourney = Boolean(
+    activeJourney?.travelScope !== 'local' &&
+    (isFlight || isTrain || activeJourney?.routeId === 'MULTI_BUS_COMBINATION') &&
+    (activeJourney?.travelScope === 'regional' || activeJourney?.travelScope === 'domestic' || activeJourney?.travelScope === 'international')
+  );
+
   const intermediateStops = activeJourney?.intermediateStops || [];
-  const isMultiModalTransit = (isFlight || isTrain) && intermediateStops.length >= 2;
+  const transitPath = activeJourney?.geometry?.transitPath || [];
+  const originToBoardWalk = activeJourney?.geometry?.originToBoardWalk || [];
+  const alightToDestWalk = activeJourney?.geometry?.alightToDestWalk || [];
+
+  const hasOriginTransfer = Boolean(
+    isIntermodalJourney &&
+    ((originToBoardWalk.length > 0 && transitPath.length > 0) || transitPath.length >= 2)
+  );
+
+  const hasDestTransfer = Boolean(
+    isIntermodalJourney &&
+    ((alightToDestWalk.length > 0 && transitPath.length > 0) || transitPath.length >= 2)
+  );
+
+  const isMultiModalTransit = isIntermodalJourney && (hasOriginTransfer || hasDestTransfer);
+
+  const originHubCoord: [number, number] | null =
+    isIntermodalJourney && transitPath.length > 0
+      ? transitPath[0]
+      : isIntermodalJourney && originToBoardWalk.length > 0
+      ? originToBoardWalk[originToBoardWalk.length - 1]
+      : null;
+
+  const destHubCoord: [number, number] | null =
+    isIntermodalJourney && transitPath.length > 0
+      ? transitPath[transitPath.length - 1]
+      : isIntermodalJourney && alightToDestWalk.length > 0
+      ? alightToDestWalk[0]
+      : null;
+
+  const originHubName =
+    activeJourney?.transitChainInfo?.originHubName ||
+    (isFlight ? 'Departure Airport' : isTrain ? 'Boarding Railway Station' : 'Transit Interchange');
+  const destHubName =
+    activeJourney?.transitChainInfo?.destHubName ||
+    (isFlight ? 'Arrival Airport' : isTrain ? 'Arrival Railway Station' : 'Destination Transit Hub');
 
   // Derive target milestone based on current stage & whether user is heading to Start Location
   let targetLocationName = activeJourney?.destinationName || 'Destination';
@@ -202,15 +257,15 @@ export default function ActiveJourneyPage() {
     stageStageCount = 3;
     if (activeStageIndex === 0) {
       // Stage 1: Ingress to Departure Station / Airport
-      targetLocationName = intermediateStops[0].name;
-      targetCoords = [intermediateStops[0].latitude, intermediateStops[0].longitude];
-      currentStageTitle = `Stage 1: Transfer to ${intermediateStops[0].name}`;
+      targetLocationName = originHubName;
+      targetCoords = originHubCoord || originCoords;
+      currentStageTitle = `Stage 1: Transfer to ${originHubName}`;
       
       // Strictly set booking action ONLY if genuine Flight or Train
       if (isFlight) {
         nextTransportAction = {
           title: activeJourney?.transitChainInfo?.flightOrTrainNumber || 'Flight Ticket',
-          subtitle: `Departing from ${intermediateStops[0].name}`,
+          subtitle: `Departing from ${originHubName}`,
           bookingUrl: activeJourney?.transitChainInfo?.bookingUrl || 'https://www.google.com/travel/flights',
           bookingLabel: 'Book Flight Ticket',
           modeIcon: '✈️',
@@ -218,8 +273,8 @@ export default function ActiveJourneyPage() {
       } else if (isTrain) {
         nextTransportAction = {
           title: activeJourney?.transitChainInfo?.flightOrTrainNumber || 'Train Ticket',
-          subtitle: `Departing from ${intermediateStops[0].name}`,
-          bookingUrl: activeJourney?.transitChainInfo?.bookingUrl || 'https://www.irctc.co.in/',
+          subtitle: `Departing from ${originHubName}`,
+          bookingUrl: activeJourney?.transitChainInfo?.bookingUrl || `https://www.makemytrip.com/railways/listing?srcStn=${activeJourney?.transitChainInfo?.originHubCode || 'BBS'}&destStn=${activeJourney?.transitChainInfo?.destHubCode || 'NDLS'}`,
           bookingLabel: 'Book IRCTC Ticket',
           modeIcon: '🚆',
         };
@@ -228,11 +283,8 @@ export default function ActiveJourneyPage() {
       }
     } else if (activeStageIndex === 1) {
       // Stage 2: Main Transit on Train / Flight
-      targetLocationName = intermediateStops[intermediateStops.length - 1].name;
-      targetCoords = [
-        intermediateStops[intermediateStops.length - 1].latitude,
-        intermediateStops[intermediateStops.length - 1].longitude,
-      ];
+      targetLocationName = destHubName;
+      targetCoords = destHubCoord || destCoords;
       currentStageTitle = `Stage 2: ${isFlight ? 'Flight Transit' : isTrain ? 'Train Transit' : 'Transit Corridor'}`;
       nextTransportAction = null;
     } else {
@@ -251,7 +303,47 @@ export default function ActiveJourneyPage() {
   }
 
   // =========================================================================
-  // STRICT REAL-WORLD GPS TRACKING (NO SIMULATION / ONLY REAL LOCATION)
+  // PROFESSIONAL MAP MATCHING & ROAD NETWORK DISTANCE ENGINE
+  // =========================================================================
+  const rawGpsPos: [number, number] = userLocation || originCoords;
+
+  const snappedResult = snapPointToPolyline(
+    rawGpsPos[0],
+    rawGpsPos[1],
+    continuousRoute,
+    75 // 75m orthogonal corridor threshold
+  );
+
+  // Snapped to road network when in-transit, raw GPS when walking to pickup
+  const livePos: [number, number] = hasReachedStartOrigin
+    ? (snappedResult.isMatchedToRoad ? snappedResult.snappedPoint : rawGpsPos)
+    : rawGpsPos;
+
+  const liveDistToStartMeters = Math.round(
+    haversineDistanceClient(rawGpsPos[0], rawGpsPos[1], originCoords[0], originCoords[1])
+  );
+
+  const walkingEtaToStartMins = calculatePreciseRoadETA(liveDistToStartMeters, 'walking', 'local');
+
+  const effectiveRemainingDistMeters = hasReachedStartOrigin
+    ? snappedResult.distanceToEndMeters
+    : liveDistToStartMeters;
+
+  const vehicleSpeedCategory =
+    activeJourney?.segments?.[0]?.vehicleType ||
+    (isTrain ? 'train' : isFlight ? 'flight' : isBus ? 'bus' : 'campus-vehicle');
+
+  const liveRemainingEtaMins = calculatePreciseRoadETA(
+    effectiveRemainingDistMeters,
+    vehicleSpeedCategory,
+    activeJourney?.travelScope || 'local'
+  );
+
+  const routeProgressPercent = hasReachedStartOrigin ? snappedResult.progressPercentage : 0;
+  const totalRoadDistanceMeters = computePolylineTotalDistance(continuousRoute);
+
+  // =========================================================================
+  // STRICT REAL-WORLD GPS TRACKING WITH ROAD NETWORK SNAPPING
   // =========================================================================
   useEffect(() => {
     if (!activeJourney || hasArrivedSafely) return;
@@ -268,13 +360,12 @@ export default function ActiveJourneyPage() {
           setDistToStartOriginMeters(distToOrigin);
 
           if (!hasReachedStartOrigin) {
-            if (distToOrigin <= 45) {
+            if (distToOrigin <= 40) {
               setHasReachedStartOrigin(true);
               addToast('info', `📍 Arrived at Start Location (${activeJourney?.originName})! Commencing journey.`);
             }
             setRemainingDistMeters(distToOrigin);
           } else {
-            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
             const distToTarget = Math.round(haversineDistanceClient(lat, lng, targetCoords[0], targetCoords[1]));
             setRemainingDistMeters(distToTarget);
 
@@ -283,8 +374,9 @@ export default function ActiveJourneyPage() {
               advanceToNextStage();
             }
 
-            // Strictly complete journey ONLY when GPS is at the final destination
-            if (distToDest <= 40 && !hasArrivedSafely) {
+            // Strictly complete journey ONLY when within 35m of destination
+            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
+            if ((distToDest <= 35 || snappedResult.distanceToEndMeters <= 35) && !hasArrivedSafely) {
               triggerSafeArrival();
             }
           }
@@ -307,13 +399,12 @@ export default function ActiveJourneyPage() {
           setDistToStartOriginMeters(distToOrigin);
 
           if (!hasReachedStartOrigin) {
-            if (distToOrigin <= 45) {
+            if (distToOrigin <= 40) {
               setHasReachedStartOrigin(true);
               addToast('info', `📍 Arrived at Start Location (${activeJourney?.originName})! Commencing journey.`);
             }
             setRemainingDistMeters(distToOrigin);
           } else {
-            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
             const distToTarget = Math.round(haversineDistanceClient(lat, lng, targetCoords[0], targetCoords[1]));
             setRemainingDistMeters(distToTarget);
 
@@ -322,8 +413,9 @@ export default function ActiveJourneyPage() {
               advanceToNextStage();
             }
 
-            // Strictly complete journey ONLY when GPS is at the final destination
-            if (distToDest <= 40 && !hasArrivedSafely) {
+            // Strictly complete journey ONLY when within 35m of destination
+            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
+            if ((distToDest <= 35 || snappedResult.distanceToEndMeters <= 35) && !hasArrivedSafely) {
               triggerSafeArrival();
             }
           }
@@ -338,7 +430,7 @@ export default function ActiveJourneyPage() {
     } else {
       if (!userLocation) setUserLocation(originCoords);
     }
-  }, [activeJourney, destCoords, originCoords, targetCoords, hasArrivedSafely, hasReachedStartOrigin, userLocation, activeStageIndex, stageStageCount, isMultiModalTransit]);
+  }, [activeJourney, destCoords, originCoords, targetCoords, hasArrivedSafely, hasReachedStartOrigin, userLocation, activeStageIndex, stageStageCount, isMultiModalTransit, snappedResult.distanceToEndMeters]);
 
   // Advance stage helper
   const advanceToNextStage = () => {
@@ -434,7 +526,7 @@ export default function ActiveJourneyPage() {
     addToast('success', `⚠️ Issue reported: "${issueLabel}". Dispatch team alerted.`);
   };
 
-  const livePos: [number, number] = userLocation || originCoords;
+  const isGuest = isGuestAccount(state.currentUser);
 
   const activeContact = state.currentUser?.emergencyContact || {
     name: 'Emergency Contact',
@@ -448,6 +540,12 @@ export default function ActiveJourneyPage() {
 
   // Emergency SOS Trigger
   const handleSosClick = async () => {
+    if (isGuest) {
+      setShowGuestSosModal(true);
+      addToast('info', '🔒 Please log in to activate Emergency SOS & live contact alerts.');
+      return;
+    }
+
     setSosActive(true);
 
     const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
@@ -659,59 +757,95 @@ export default function ActiveJourneyPage() {
         </div>
       )}
 
+      {/* Guest Mode SOS & Real-Time Alert Notice */}
+      {isGuest && (
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-3.5 flex items-center justify-between text-xs text-amber-950 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-800 shadow-2xs">
+              <Shield className="w-4 h-4" />
+            </div>
+            <div className="text-[11px] leading-tight">
+              <span className="font-black text-amber-950">Guest Mode: </span>
+              <span className="text-amber-900 font-medium">Log in to enable Emergency SOS & live alerts with your emergency contacts.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/login?returnTo=/journey')}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[11px] shrink-0 ml-2 shadow-xs transition-colors cursor-pointer"
+          >
+            Log In ➔
+          </button>
+        </div>
+      )}
+
       {/* Top Turn-by-Turn Stage Instruction Banner */}
       <div className="bg-black text-white p-4 sm:p-5 rounded-3xl shadow-lg space-y-3">
         <div className="flex items-center justify-between text-xs text-neutral-400">
           <span className="flex items-center gap-1.5 font-bold text-white">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            {currentStageTitle}
+            {!hasReachedStartOrigin && liveDistToStartMeters > 40
+              ? '🚶 Heading to Pickup / Start Point'
+              : currentStageTitle}
           </span>
           <div className="flex items-center gap-2">
             <span className="bg-neutral-800 text-emerald-400 font-bold px-2.5 py-0.5 rounded-full text-[11px]">
-              {remainingDistMeters > 1000
-                ? `${(remainingDistMeters / 1000).toFixed(1)} km to ${targetLocationName.split('(')[0]}`
-                : `${remainingDistMeters}m to ${targetLocationName.split('(')[0]}`}
+              {!hasReachedStartOrigin && liveDistToStartMeters > 40
+                ? `${liveDistToStartMeters}m to Start (~${walkingEtaToStartMins} min)`
+                : `${effectiveRemainingDistMeters >= 1000 ? (effectiveRemainingDistMeters / 1000).toFixed(1) + ' km' : effectiveRemainingDistMeters + ' m'} (~${liveRemainingEtaMins} min)`}
             </span>
             <button
               onClick={() => setShowLeaveModal(true)}
-              className="px-2.5 py-0.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-bold transition-colors flex items-center gap-1"
+              className="px-2.5 py-0.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
             >
               <LogOut className="w-3 h-3" />
-              <span>Leave Journey</span>
+              <span>Leave</span>
             </button>
           </div>
         </div>
 
         {/* Action Instruction */}
         <div className="pt-1 flex items-center justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
-              {!hasReachedStartOrigin && distToStartOriginMeters > 50 ? 'Approach to Start Point:' : 'Current Target:'}
+              {!hasReachedStartOrigin && liveDistToStartMeters > 40 ? 'Start / Pickup Location:' : 'Destination Milestone:'}
             </span>
-            <p className="text-base sm:text-lg font-black text-white leading-snug mt-0.5">
-              {targetLocationName}
+            <p className="text-base sm:text-lg font-black text-white leading-snug mt-0.5 truncate">
+              {!hasReachedStartOrigin && liveDistToStartMeters > 40 ? activeJourney?.originName : targetLocationName}
             </p>
-            <p className="text-xs text-neutral-300 mt-1 font-medium">
-              {!hasReachedStartOrigin && distToStartOriginMeters > 50
-                ? `Walk/travel ${distToStartOriginMeters}m to reach your chosen pickup location.`
-                : currentStep}
+            <p className="text-xs text-neutral-300 mt-1 font-medium leading-relaxed">
+              {!hasReachedStartOrigin && liveDistToStartMeters > 40
+                ? `You are ${liveDistToStartMeters}m away from ${activeJourney?.originName}. Follow the pedestrian path (~${walkingEtaToStartMins} min) to reach the boarding stand.`
+                : `${snappedResult.distanceFromStartMeters}m traveled along road • ${routeProgressPercent}% completed`}
             </p>
           </div>
 
-          {!hasReachedStartOrigin && distToStartOriginMeters > 50 && (
+          {!hasReachedStartOrigin && liveDistToStartMeters > 40 && (
             <button
               type="button"
               onClick={() => {
                 setHasReachedStartOrigin(true);
-                addToast('success', `📍 Start Location confirmed! Beginning navigation.`);
+                addToast('success', `📍 Start Location confirmed! Commencing road navigation.`);
               }}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 shadow-md transition-all ml-2"
+              className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shrink-0 flex items-center gap-1.5 shadow-md transition-all ml-3 cursor-pointer active:scale-95"
             >
-              <Check className="w-3.5 h-3.5" />
+              <Check className="w-4 h-4" />
               <span>I'm at Start Point</span>
             </button>
           )}
         </div>
+
+        {/* Real-Time Road Journey Progress Bar */}
+        {hasReachedStartOrigin && (
+          <div className="pt-1">
+            <div className="w-full bg-neutral-900 border border-neutral-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-emerald-400 h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.max(4, routeProgressPercent)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* CartoDB Voyager Live Interactive Map */}
@@ -730,7 +864,7 @@ export default function ActiveJourneyPage() {
           <NavBoundsController coordinates={continuousRoute} currentPos={livePos} />
 
           {/* 0. Live Approach Polyline to Decided Start Point (If not yet at Start) */}
-          {!hasReachedStartOrigin && distToStartOriginMeters > 50 && (
+          {!hasReachedStartOrigin && liveDistToStartMeters > 40 && (
             <Polyline
               positions={[livePos, originCoords]}
               pathOptions={{
@@ -742,20 +876,13 @@ export default function ActiveJourneyPage() {
             />
           )}
 
-          {/* Start Marker A */}
-          <Marker position={originCoords} icon={originPin}>
-            <Popup>
-              <span className="text-xs font-bold">Start (A): {activeJourney?.originName}</span>
-            </Popup>
-          </Marker>
-
           {/* 1. Backdrop Casing Polyline */}
           <Polyline
-            positions={continuousRoute}
+            positions={activeJourney?.geometry?.fullRoute || continuousRoute}
             pathOptions={{
-              color: '#0f172a',
-              weight: 7,
-              opacity: 0.25,
+              color: '#000000',
+              weight: 8,
+              opacity: 0.15,
               lineCap: 'round',
               lineJoin: 'round',
             }}
@@ -801,39 +928,68 @@ export default function ActiveJourneyPage() {
             />
           )}
 
-          {/* Intermediate Transport Change Symbol Markers */}
-          {intermediateStops.map((stop, sIdx) => {
-            const isFirst = sIdx === 0;
-            const fromIcon = isFirst ? (isBus ? '🚶' : '🚖') : (isFlight ? '✈️' : '🚆');
-            const toIcon = isFirst ? (isFlight ? '✈️' : isTrain ? '🚆' : '🚌') : (isBus ? '🚶' : '🚖');
+          {/* Origin Start Marker (A) - Displayed once user begins moving */}
+          {haversineDistanceClient(livePos[0], livePos[1], originCoords[0], originCoords[1]) > 50 && (
+            <Marker position={originCoords} icon={originPin}>
+              <Popup>
+                <div className="p-1.5 text-xs space-y-1">
+                  <strong className="block font-black text-emerald-700">🟢 Start Location (A)</strong>
+                  <div className="font-bold text-neutral-900">{activeJourney?.originName || 'Journey Start'}</div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
 
-            return (
-              <Marker
-                key={stop.id || sIdx}
-                position={[stop.latitude, stop.longitude]}
-                icon={createTransferPin(fromIcon, toIcon, stop.name)}
-              >
-                <Popup>
-                  <div className="p-1 text-xs space-y-1">
-                    <strong className="block font-black text-amber-700">🔄 Transport Change Hub</strong>
-                    <div className="font-bold text-neutral-900">{stop.name}</div>
-                    <div className="text-[10px] text-neutral-600">
-                      Switch mode: {fromIcon} ➔ {toIcon}
-                    </div>
+          {/* Multi-Modal Interchange Markers (Transfer 1 & Transfer 2) */}
+          {hasOriginTransfer && originHubCoord && (
+            <Marker
+              position={originHubCoord}
+              icon={createTransferPin(ingressIcon, mainTransitIcon, originHubName)}
+            >
+              <Popup>
+                <div className="p-1.5 text-xs space-y-1 min-w-[200px]">
+                  <strong className="block font-black text-neutral-900">🔄 Mode Switch Hub</strong>
+                  <div className="font-bold text-neutral-800">{originHubName}</div>
+                  <div className="text-[11px] font-bold text-neutral-700 bg-neutral-100 p-1.5 rounded-lg border border-neutral-200">
+                    {ingressIcon} Ingress Cab ➔ {mainTransitIcon} {isFlight ? 'Flight' : isTrain ? 'Train' : 'Transit'}
                   </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+                </div>
+              </Popup>
+            </Marker>
+          )}
 
-          {/* Real-Time Live User GPS Pin */}
+          {hasDestTransfer && destHubCoord && (
+            <Marker
+              position={destHubCoord}
+              icon={createTransferPin(mainTransitIcon, egressIcon, destHubName)}
+            >
+              <Popup>
+                <div className="p-1.5 text-xs space-y-1 min-w-[200px]">
+                  <strong className="block font-black text-neutral-900">🔄 Mode Switch Hub</strong>
+                  <div className="font-bold text-neutral-800">{destHubName}</div>
+                  <div className="text-[11px] font-bold text-neutral-700 bg-neutral-100 p-1.5 rounded-lg border border-neutral-200">
+                    {mainTransitIcon} {isFlight ? 'Flight' : isTrain ? 'Train' : 'Transit'} ➔ {egressIcon} Destination Cab
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Real-Time Live User GPS Pin with precise along-track metrics */}
           <Marker position={livePos} icon={userGpsPin}>
             <Popup>
-              <div className="p-1 text-xs space-y-1">
+              <div className="p-1.5 text-xs space-y-1 min-w-[175px]">
                 <strong className="block font-black text-black">📍 Your Live Position</strong>
-                <span className="text-[10px] text-neutral-600 block">
-                  {remainingDistMeters}m to {targetLocationName.split('(')[0]}
-                </span>
+                <div className="text-[11px] font-bold text-neutral-800">
+                  {!hasReachedStartOrigin
+                    ? `${liveDistToStartMeters}m to Start (~${walkingEtaToStartMins} min walk)`
+                    : `${effectiveRemainingDistMeters >= 1000 ? (effectiveRemainingDistMeters / 1000).toFixed(1) + ' km' : effectiveRemainingDistMeters + ' m'} to ${targetLocationName.split('(')[0]}`}
+                </div>
+                {hasReachedStartOrigin && (
+                  <div className="text-[10px] text-neutral-500 font-medium">
+                    {snappedResult.distanceFromStartMeters}m traveled • {routeProgressPercent}% completed
+                  </div>
+                )}
               </div>
             </Popup>
           </Marker>
@@ -841,7 +997,10 @@ export default function ActiveJourneyPage() {
           {/* Destination Marker B */}
           <Marker position={destCoords} icon={destPin}>
             <Popup>
-              <span className="text-xs font-bold">Destination (B): {activeJourney?.destinationName}</span>
+              <div className="p-1.5 text-xs space-y-1">
+                <strong className="block font-black text-red-600">🔴 Destination (B)</strong>
+                <div className="font-bold text-neutral-900">{activeJourney?.destinationName || 'Destination'}</div>
+              </div>
             </Popup>
           </Marker>
         </MapContainer>
@@ -901,13 +1060,19 @@ export default function ActiveJourneyPage() {
 
       {/* Safety & Action Controls HUD */}
       <div className="grid grid-cols-3 gap-2.5">
-        {/* Red SOS Button */}
+        {/* Red SOS Button (Protected by Login) */}
         <button
           onClick={handleSosClick}
-          className="p-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs shadow-md active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-1.5"
+          className={`p-3.5 ${
+            !isGuest ? 'bg-red-600 hover:bg-red-700' : 'bg-neutral-800 hover:bg-neutral-700'
+          } text-white rounded-2xl font-black text-xs shadow-md active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer`}
         >
-          <AlertOctagon className="w-5 h-5 text-white" />
-          <span>Emergency SOS</span>
+          {!isGuest ? (
+            <AlertOctagon className="w-5 h-5 text-white animate-pulse" />
+          ) : (
+            <Lock className="w-5 h-5 text-amber-400" />
+          )}
+          <span>{!isGuest ? 'Emergency SOS' : 'SOS (Login Req)'}</span>
         </button>
 
         {/* Report Issue */}
@@ -1064,6 +1229,59 @@ export default function ActiveJourneyPage() {
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Submit Custom Report</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* =========================================================================
+          GUEST SOS ACCESS RESTRICTION MODAL
+          ========================================================================= */}
+      {showGuestSosModal && (
+        <Modal
+          open={showGuestSosModal}
+          onClose={() => setShowGuestSosModal(false)}
+          title="🔒 Log In to Activate Emergency SOS"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2 text-red-950">
+              <div className="flex items-center gap-2 font-black text-red-900 text-sm">
+                <AlertOctagon className="w-5 h-5 text-red-600 shrink-0" />
+                <span>Emergency Contact Alert Dispatch</span>
+              </div>
+              <p className="text-neutral-700 leading-relaxed text-xs">
+                Emergency SOS automatically dispatches real-time SMS alerts and live Google Maps GPS coordinates to your registered emergency contacts and transit authorities.
+              </p>
+            </div>
+
+            <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3 text-neutral-600 text-[11px] space-y-1.5">
+              <div className="font-bold text-neutral-900">Why is a logged-in account required?</div>
+              <div className="flex items-center gap-1.5 text-neutral-700">
+                <span>✓</span>
+                <span>Instant 1-tap SMS sent to your verified family or emergency contact.</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-neutral-700">
+                <span>✓</span>
+                <span>Direct coordination with Transit Safety Dispatch and Police (112).</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowGuestSosModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-neutral-200 font-bold text-neutral-700 hover:bg-neutral-50 cursor-pointer"
+              >
+                Continue as Guest
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/login?returnTo=/journey')}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1"
+              >
+                <span>Log In / Register</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

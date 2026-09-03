@@ -35,7 +35,7 @@ const ProfileSchema = z.object({
 });
 
 const EvaluateSchema = z.object({
-  profileType: z.enum(['WHEELCHAIR', 'ELDERLY', 'VISUALLY_IMPAIRED', 'NIGHT_TRAVELLER', 'GENERAL']).optional(),
+  profileType: z.enum(['WHEELCHAIR', 'ELDERLY', 'VISUALLY_IMPAIRED', 'HEARING_IMPAIRED', 'SENSORY_SENSITIVE', 'NIGHT_TRAVELLER', 'GENERAL']).optional(),
   customProfile: ProfileSchema.optional(),
   route: z.object({
     wheelchairAccessible: z.boolean().default(false),
@@ -58,6 +58,9 @@ const EvaluateSchema = z.object({
     delayMinutes: z.number().default(0),
     fareEstimateINR: z.number().nullable().default(20),
     travelTimeMinutes: z.number().default(25),
+    activeObstructionReports: z.number().default(0),
+    verifiedAccessibleBoardings: z.number().default(0),
+    communityAuditsCount: z.number().default(1),
   }),
 });
 

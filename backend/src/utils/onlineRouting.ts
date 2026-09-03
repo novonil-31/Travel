@@ -26,49 +26,145 @@ export interface RouteGeometryResult {
 }
 
 /**
- * Search places online using OpenStreetMap Nominatim.
+ * Search places online using OpenStreetMap Nominatim (India Prioritized), Photon & Gemini AI.
  */
-export async function searchPlacesOnline(query: string): Promise<GeocodedPlace[]> {
-  if (!query || query.trim().length < 2) return [];
+export async function searchPlacesOnline(query: string, userLat?: number, userLng?: number): Promise<GeocodedPlace[]> {
+  if (!query || query.trim().length < 1) return [];
+
+  const results: GeocodedPlace[] = [];
+  const encodedQ = encodeURIComponent(query.trim());
+  const latBias = userLat !== undefined ? userLat : 20.5937;
+  const lonBias = userLng !== undefined ? userLng : 78.9629;
 
   try {
-    const { default: fetch } = await import('node-fetch');
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=7&addressdetails=1`;
+    // 1. Query OpenStreetMap Nominatim with India countrycode filter
+    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&countrycodes=in&limit=8&addressdetails=1`;
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${latBias}&lon=${lonBias}&limit=8`;
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'ACCESS-Public-Transport-Assistant/1.0',
-        'Accept-Language': 'en',
-      },
-      signal: AbortSignal.timeout(5000),
-    });
+    const [nomRes, photonRes] = await Promise.allSettled([
+      fetch(nomUrl, {
+        headers: {
+          'User-Agent': 'ACCESS-Public-Transport-Assistant/2.0 (contact@access-transit.in)',
+          'Accept-Language': 'en',
+        },
+        signal: AbortSignal.timeout(3500),
+      }),
+      fetch(photonUrl, { signal: AbortSignal.timeout(3500) }),
+    ]);
 
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'Nominatim geocoding error');
-      return [];
+    if (nomRes.status === 'fulfilled' && nomRes.value.ok) {
+      const data = (await nomRes.value.json()) as Array<{
+        display_name: string;
+        name?: string;
+        lat: string;
+        lon: string;
+        type: string;
+        importance?: number;
+      }>;
+
+      data.forEach((item) => {
+        const primary = item.name || item.display_name.split(',')[0] || query;
+        const parts = item.display_name.split(',').slice(1, 4).map((p) => p.trim()).filter(Boolean);
+        const sub = parts.join(', ');
+        results.push({
+          displayName: sub ? `📍 ${primary}, ${sub}` : `📍 ${primary}`,
+          name: primary,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lon),
+          type: item.type || 'place',
+          importance: item.importance,
+        });
+      });
     }
 
-    const data = (await response.json()) as Array<{
-      display_name: string;
-      name?: string;
-      lat: string;
-      lon: string;
-      type: string;
-      importance?: number;
-    }>;
+    if (photonRes.status === 'fulfilled' && photonRes.value.ok) {
+      const pData = (await photonRes.value.json()) as {
+        features: Array<{
+          geometry: { coordinates: [number, number] };
+          properties: { name?: string; street?: string; city?: string; state?: string; country?: string; osm_value?: string };
+        }>;
+      };
 
-    return data.map((item) => ({
-      displayName: item.display_name,
-      name: item.name || item.display_name.split(',')[0] || query,
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      type: item.type,
-      importance: item.importance,
-    }));
+      pData.features?.forEach((f) => {
+        const name = f.properties.name || f.properties.street || query;
+        const locParts = [f.properties.city, f.properties.state, f.properties.country].filter(Boolean).join(', ');
+        results.push({
+          displayName: locParts ? `📍 ${name}, ${locParts}` : `📍 ${name}`,
+          name,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0],
+          type: f.properties.osm_value || 'place',
+        });
+      });
+    }
   } catch (err) {
-    logger.warn({ err }, 'Failed to fetch geocoding from Nominatim');
-    return [];
+    logger.warn({ err }, 'Failed to fetch geocoding from Nominatim/Photon');
   }
+
+  // 2. If nothing found for query, try Gemini AI Indian Geocoder Fallback
+  if (results.length === 0 && process.env.GEMINI_API_KEY) {
+    try {
+      const key = process.env.GEMINI_API_KEY;
+      const prompt = `You are a real-time India GIS location and monument geocoding engine.
+Resolve the location in India for: "${query}".
+Return JSON:
+{
+  "name": "Proper Place / City / Monument Name",
+  "displayName": "📍 Name, District, State, India",
+  "state": "State Name",
+  "district": "District Name",
+  "lat": 28.6139,
+  "lng": 77.2090,
+  "type": "city" or "town" or "monument" or "village"
+}`;
+
+      const aiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+          }),
+          signal: AbortSignal.timeout(4000),
+        },
+      );
+
+      if (aiRes.ok) {
+        const json = (await aiRes.json()) as any;
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          const p = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (p && p.lat && p.lng) {
+            results.push({
+              displayName: p.displayName || `📍 ${p.name || query}, ${p.state || 'India'}`,
+              name: p.name || query,
+              lat: Number(p.lat),
+              lng: Number(p.lng),
+              type: p.type || 'place',
+            });
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Deduplicate
+  const seen = new Set<string>();
+  const unique: GeocodedPlace[] = [];
+  for (const r of results) {
+    const key = `${r.lat.toFixed(3)}_${r.lng.toFixed(3)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(r);
+    }
+  }
+
+  return unique;
 }
 
 /**

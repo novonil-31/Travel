@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { Button } from '../../components/ui';
 import { journeysApi, stopsApi } from '../../api';
 import {
   Navigation, MapPin, ArrowDownUp, Search, Clock,
   Crosshair, Loader2, Sparkles, AlertCircle, CheckCircle,
-  Bus, Car, Shield, Accessibility
+  Bus, Car, Shield, Accessibility, History, ArrowRight, Compass
 } from 'lucide-react';
 import type { GeocodedPlace } from '../../utils/onlineRouting';
+import { getLastSearchedDestination, getRecentSearches, saveRecentSearch } from '../../utils/recentSearches';
+import { isLoggedInAccount } from '../../utils/authUtils';
+import { useUserLocation } from '../../hooks/useUserLocation';
+import { LocationRegionBanner } from '../../components/LocationRegionBanner';
 
 interface LocationState {
   name: string;
@@ -20,6 +24,9 @@ export default function TripPlannerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { setSearchResults, state, updateProfile } = useAppStore();
+  const { userLocation, requestLocation, setManualCity } = useUserLocation();
+
+  const isAuth = isLoggedInAccount(state.currentUser);
 
   const urlOrigin = searchParams.get('origin');
   const urlDest = searchParams.get('destination');
@@ -29,19 +36,31 @@ export default function TripPlannerPage() {
   const urlDestLat = searchParams.get('destLat') ? parseFloat(searchParams.get('destLat')!) : null;
   const urlDestLng = searchParams.get('destLng') ? parseFloat(searchParams.get('destLng')!) : null;
 
-  // Location inputs state (Default: QC 1 to Campus 3 OAT)
-  const [originInput, setOriginInput] = useState<string>(urlOrigin || "Queen's Castle 1 (QC 1)");
+  // Retrieve last searched destination only for authentic logged in users
+  const lastSavedSearch = isAuth && state.currentUser ? getLastSearchedDestination(state.currentUser.id) : null;
+  const userRecentSearches = isAuth && state.currentUser ? getRecentSearches(state.currentUser.id) : [];
+
+  // Location inputs state
+  const initialOriginName = urlOrigin || (isAuth && lastSavedSearch?.origin?.name ? lastSavedSearch.origin.name : "Queen's Castle 1 (QC 1)");
+  const initialOriginLat = urlOriginLat ?? (isAuth && lastSavedSearch?.origin?.lat ? lastSavedSearch.origin.lat : 20.352367250329067);
+  const initialOriginLng = urlOriginLng ?? (isAuth && lastSavedSearch?.origin?.lng ? lastSavedSearch.origin.lng : 85.81937388473358);
+
+  const initialDestName = urlDest || (isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT');
+  const initialDestLat = urlDestLat ?? (isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : 20.352708891788033);
+  const initialDestLng = urlDestLng ?? (isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : 85.81637927996144);
+
+  const [originInput, setOriginInput] = useState<string>(initialOriginName);
   const [originLocation, setOriginLocation] = useState<LocationState>({
-    name: urlOrigin || "Queen's Castle 1 (QC 1)",
-    lat: urlOriginLat ?? 20.352367250329067,
-    lng: urlOriginLng ?? 85.81937388473358,
+    name: initialOriginName,
+    lat: initialOriginLat,
+    lng: initialOriginLng,
   });
 
-  const [destinationInput, setDestinationInput] = useState<string>(urlDest || 'Campus 3 OAT');
+  const [destinationInput, setDestinationInput] = useState<string>(initialDestName);
   const [destinationLocation, setDestinationLocation] = useState<LocationState>({
-    name: urlDest || 'Campus 3 OAT',
-    lat: urlDestLat ?? 20.352708891788033,
-    lng: urlDestLng ?? 85.81637927996144,
+    name: initialDestName,
+    lat: initialDestLat,
+    lng: initialDestLng,
   });
 
   // Autocomplete Suggestions State
@@ -77,13 +96,13 @@ export default function TripPlannerPage() {
     }
   }, [urlOrigin, urlDest, urlMobility]);
 
-  // Immediate & debounced search for Origin (Loads instant KIIT recommendations on focus or typing)
+  // Immediate & debounced search for Origin (Loads instant regional recommendations based on active user location)
   useEffect(() => {
     const query = originInput?.trim() || '';
     const timeout = setTimeout(async () => {
       setIsSearchingOrigin(true);
       try {
-        const places = await stopsApi.searchPlaces(query);
+        const places = await stopsApi.searchPlaces(query, userLocation);
         setOriginSuggestions(places);
       } catch (err) {
         console.error('Origin search error:', err);
@@ -92,15 +111,15 @@ export default function TripPlannerPage() {
       }
     }, query.length === 0 ? 0 : 100);
     return () => clearTimeout(timeout);
-  }, [originInput]);
+  }, [originInput, userLocation]);
 
-  // Immediate & debounced search for Destination (Loads instant KIIT recommendations on focus or typing)
+  // Immediate & debounced search for Destination (Loads instant regional recommendations based on active user location)
   useEffect(() => {
     const query = destinationInput?.trim() || '';
     const timeout = setTimeout(async () => {
       setIsSearchingDest(true);
       try {
-        const places = await stopsApi.searchPlaces(query);
+        const places = await stopsApi.searchPlaces(query, userLocation);
         setDestinationSuggestions(places);
       } catch (err) {
         console.error('Destination search error:', err);
@@ -109,7 +128,7 @@ export default function TripPlannerPage() {
       }
     }, query.length === 0 ? 0 : 100);
     return () => clearTimeout(timeout);
-  }, [destinationInput]);
+  }, [destinationInput, userLocation]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -216,6 +235,11 @@ export default function TripPlannerPage() {
         }
       }
 
+      // Save recent search for authentic logged-in user
+      if (isAuth && state.currentUser) {
+        saveRecentSearch(state.currentUser.id, finalOrigin, finalDest);
+      }
+
       let finalDepartureTime = new Date();
       if (timeMode !== 'now' && departTime) {
         const [hh, mm] = departTime.split(':').map(Number);
@@ -266,6 +290,43 @@ export default function TripPlannerPage() {
         </p>
       </div>
 
+      {/* Active Navigation Card (If trip active) */}
+      {state.activeJourney && (
+        <div className="bg-black text-white p-4 sm:p-5 rounded-3xl border border-neutral-800 shadow-xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative flex items-center justify-center shrink-0">
+              <span className="w-3.5 h-3.5 rounded-full bg-white animate-ping absolute opacity-40" />
+              <span className="w-3 h-3 rounded-full bg-white relative" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] uppercase font-black text-neutral-400 tracking-wider">
+                  Active Ride in Progress
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-neutral-900 text-neutral-300 border border-neutral-800">
+                  Live
+                </span>
+              </div>
+              <span className="text-sm sm:text-base font-black text-white block truncate">
+                {state.activeJourney.routeName} → {state.activeJourney.destinationName}
+              </span>
+            </div>
+          </div>
+          <Link to={`/journey/${state.activeJourney.id}`} className="shrink-0">
+            <button
+              type="button"
+              className="px-4 py-2.5 bg-white hover:bg-neutral-100 text-black font-black rounded-2xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer"
+            >
+              <span>Open Navigation</span>
+              <ArrowRight className="w-3.5 h-3.5 text-black" />
+            </button>
+          </Link>
+        </div>
+      )}
+
+      {/* Location & Regional Priority Banner */}
+      <LocationRegionBanner />
+
       {/* Main Search Card (Uber / Ola Style) */}
       <div ref={dropdownRef} className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">
         <form onSubmit={handleSearch} className="space-y-3">
@@ -311,6 +372,10 @@ export default function TripPlannerPage() {
             {/* Origin Autocomplete Dropdown */}
             {activeDropdown === 'origin' && originSuggestions.length > 0 && (
               <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
+                <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                  <span>Priority in {userLocation.cityName}</span>
+                  <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                </div>
                 {originSuggestions.map((place, idx) => (
                   <button
                     key={idx}
@@ -325,6 +390,8 @@ export default function TripPlannerPage() {
                        place.displayName.startsWith('📚') ? '📚' :
                        place.displayName.startsWith('✈️') ? '✈️' :
                        place.displayName.startsWith('🚆') ? '🚆' :
+                       place.displayName.startsWith('🛕') ? '🛕' :
+                       place.displayName.startsWith('🏛️') ? '🏛️' :
                        <MapPin className="w-4 h-4 text-neutral-400 mt-0.5" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -336,8 +403,13 @@ export default function TripPlannerPage() {
                         {place.type === 'qc_hostel' && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
                         )}
+                        {place.distanceLabel && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
+                            {place.distanceLabel}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'KIIT / Bhubaneswar Corridor'}</div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || `${userLocation.cityName} Region`}</div>
                     </div>
                   </button>
                 ))}
@@ -382,9 +454,63 @@ export default function TripPlannerPage() {
               </div>
             </div>
 
+            {/* Logged-in User Last Destination Quick Pill */}
+            {isAuth && lastSavedSearch?.destination && (
+              <div className="flex items-center gap-2 pl-11 pt-1.5">
+                <span className="text-[10px] font-bold text-neutral-500 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-neutral-400" />
+                  <span>Last Destination:</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestinationInput(lastSavedSearch.destination.name);
+                    setDestinationLocation(lastSavedSearch.destination);
+                  }}
+                  className="px-2.5 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer truncate max-w-[260px] border border-neutral-200"
+                >
+                  <span>📍 {lastSavedSearch.destination.name}</span>
+                </button>
+              </div>
+            )}
+
             {/* Destination Autocomplete Dropdown */}
-            {activeDropdown === 'dest' && destinationSuggestions.length > 0 && (
+            {activeDropdown === 'dest' && (
               <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
+                {/* Recent Searches for Logged-In User */}
+                {isAuth && userRecentSearches.length > 0 && destinationInput.trim().length === 0 && (
+                  <div className="bg-neutral-50/80">
+                    <div className="px-4 py-1.5 text-[10px] font-black text-neutral-400 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-100">
+                      <Clock className="w-3 h-3" />
+                      <span>Recent Destinations</span>
+                    </div>
+                    {userRecentSearches.map((rec, rIdx) => (
+                      <button
+                        key={`rec-${rIdx}`}
+                        type="button"
+                        onClick={() => {
+                          setDestinationInput(rec.destination.name);
+                          setDestinationLocation(rec.destination);
+                          setActiveDropdown(null);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-neutral-100/80 flex items-center gap-2.5 transition-colors text-xs border-b border-neutral-100/60"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        <div className="truncate flex-1">
+                          <div className="font-bold text-neutral-900 text-xs truncate">{rec.destination.name}</div>
+                          <div className="text-[10px] text-neutral-400 truncate">From {rec.origin?.name || 'Origin'}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Regional Priority Header */}
+                <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                  <span>Priority in {userLocation.cityName}</span>
+                  <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                </div>
+
                 {destinationSuggestions.map((place, idx) => (
                   <button
                     key={idx}
@@ -399,6 +525,8 @@ export default function TripPlannerPage() {
                        place.displayName.startsWith('📚') ? '📚' :
                        place.displayName.startsWith('✈️') ? '✈️' :
                        place.displayName.startsWith('🚆') ? '🚆' :
+                       place.displayName.startsWith('🛕') ? '🛕' :
+                       place.displayName.startsWith('🏛️') ? '🏛️' :
                        <MapPin className="w-4 h-4 text-neutral-400 mt-0.5" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -410,8 +538,13 @@ export default function TripPlannerPage() {
                         {place.type === 'qc_hostel' && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
                         )}
+                        {place.distanceLabel && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
+                            {place.distanceLabel}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || 'KIIT / Bhubaneswar Corridor'}</div>
+                      <div className="text-[11px] text-neutral-500 line-clamp-1">{place.displayName || `${userLocation.cityName} Region`}</div>
                     </div>
                   </button>
                 ))}
