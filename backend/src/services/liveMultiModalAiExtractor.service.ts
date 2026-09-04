@@ -75,7 +75,7 @@ async function callGeminiAiJson<T>(prompt: string): Promise<T | null> {
   const key = getApiKey();
   if (!key) return null;
 
-  const models = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.7-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
   for (const model of models) {
     try {
       const controller = new AbortController();

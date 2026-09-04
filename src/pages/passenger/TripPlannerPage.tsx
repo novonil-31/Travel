@@ -8,7 +8,7 @@ import {
   Crosshair, Loader2, Sparkles, AlertCircle, CheckCircle,
   Bus, Car, Shield, Accessibility, History, ArrowRight, Compass
 } from 'lucide-react';
-import type { GeocodedPlace } from '../../utils/onlineRouting';
+import { type GeocodedPlace, getRegionalDefaultRecommendations, clearSearchPlacesCache } from '../../utils/onlineRouting';
 import { getLastSearchedDestination, getRecentSearches, saveRecentSearch } from '../../utils/recentSearches';
 import { isLoggedInAccount } from '../../utils/authUtils';
 import { useUserLocation } from '../../hooks/useUserLocation';
@@ -335,7 +335,18 @@ export default function TripPlannerPage() {
       )}
 
       {/* Location & Regional Priority Banner */}
-      <LocationRegionBanner />
+      <LocationRegionBanner
+        onLocationChanged={() => {
+          clearSearchPlacesCache();
+          const recs = getRegionalDefaultRecommendations(userLocation);
+          if (recs && recs.length >= 2) {
+            setOriginInput(recs[0].name);
+            setOriginLocation({ name: recs[0].name, lat: recs[0].lat, lng: recs[0].lng });
+            setDestinationInput(recs[1].name);
+            setDestinationLocation({ name: recs[1].name, lat: recs[1].lat, lng: recs[1].lng });
+          }
+        }}
+      />
 
       {/* Main Search Card (Uber / Ola Style) */}
       <div ref={dropdownRef} className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">

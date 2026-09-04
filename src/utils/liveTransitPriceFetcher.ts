@@ -12,6 +12,7 @@
  */
 
 import { haversineDistanceClient, resolveExactTrainSchedule } from './onlineRouting';
+import { searchRealTrainsWithGemini } from './liveTrainGeminiService';
 
 export interface LiveTrainFareResult {
   trainNumber: string;
@@ -24,15 +25,15 @@ export interface LiveTrainFareResult {
   durationHours: number;
   classes: Array<{ code: string; name: string; fare: number }>;
   baseFare: number;
-  source: 'live-internet' | 'verified-irctc-tariff';
+  source: 'live-internet' | 'verified-irctc-tariff' | 'gemini-ai-live';
   bookingUrl: string;
   departureDateStr?: string;
   isNextDay?: boolean;
+  intermediateStops?: Array<{ code: string; name: string; lat?: number; lng?: number; latitude?: number; longitude?: number }>;
   runsOnDay?: boolean;
   operatingDay?: string;
   isEstimated?: boolean;
   popularity?: CorridorPopularityInfo;
-  intermediateStops?: Array<{ code: string; name: string; lat?: number; lng?: number; latitude?: number; longitude?: number }>;
 }
 
 export interface LiveFlightFareResult {
@@ -432,11 +433,44 @@ export async function fetchLiveTrainPricing(
     return cached.data;
   }
 
-  // 1. Query backend live internet proxy endpoint
+  // 1. Try Gemini AI Live Train Search for authentic operating trains and exact IRCTC fares
+  try {
+    const aiTrains = await searchRealTrainsWithGemini(orig, dest, originCity, destCity, depDate, distanceKm);
+    if (aiTrains && aiTrains.length > 0) {
+      const best = aiTrains[0];
+      const baseFare = best.classes?.[0]?.fare || Math.round(140 + distanceKm * 0.4);
+      const result: LiveTrainFareResult = {
+        trainNumber: best.trainNumber,
+        trainName: best.trainName,
+        trainType: best.trainType,
+        originCode: orig,
+        destCode: dest,
+        departureTime: best.departureTime,
+        arrivalTime: best.arrivalTime,
+        durationHours: best.durationHours,
+        classes: best.classes,
+        baseFare,
+        source: 'gemini-ai-live',
+        bookingUrl: best.bookingUrl || `https://www.confirmtkt.com/rbooking/`,
+        departureDateStr: dateStr,
+        isNextDay: false,
+        runsOnDay: true,
+        operatingDay: searchDayName,
+        popularity: detectCorridorPopularity(orig, dest, depDate),
+        intermediateStops: best.intermediateStops,
+      };
+      trainPriceCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
+    }
+  } catch (err) {
+    console.warn('Gemini train search fallback:', err);
+  }
+
+  // 2. Query backend live internet proxy endpoint
   try {
     const backendUrl = `http://localhost:3000/api/fares/live-transit?type=train&origin=${orig}&destination=${dest}&date=${dateStr}&originCity=${encodeURIComponent(originCity)}&destCity=${encodeURIComponent(destCity)}&distanceKm=${distanceKm}`;
     const bController = new AbortController();
-    const bTimeout = setTimeout(() => bController.abort(), 12000);
+    const bTimeout = setTimeout(() => bController.abort(), 3500);
 
     const bRes = await fetch(backendUrl, { signal: bController.signal });
     clearTimeout(bTimeout);
@@ -453,7 +487,7 @@ export async function fetchLiveTrainPricing(
     // continue to national timetable schedule resolution
   }
 
-  // 2. Direct Live Schedule & Running Days Resolution
+  // 3. Direct Live Schedule & Running Days Resolution
   const tariff = calculateAllIndiaTrainTariff(orig, dest, distanceKm, depDate);
   const popularity = detectCorridorPopularity(orig, dest, depDate);
 

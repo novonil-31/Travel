@@ -220,6 +220,16 @@ export const REGIONAL_LANDMARKS: Array<{
  */
 const searchCache = new Map<string, GeocodedPlace[]>();
 
+export function clearSearchPlacesCache(): void {
+  searchCache.clear();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('access_user_location_changed', () => {
+    searchCache.clear();
+  });
+}
+
 /**
  * Universal Real-World Place Search Engine
  * Seamlessly searches across local landmarks, transit stops, railway stations, airports,
@@ -1216,8 +1226,11 @@ export function findNearestRailwayStation(lat: number, lng: number, fallbackCity
   return closest;
 }
 
+// Ultra-fast in-memory cache for road network geometry
+const roadGeometryCache = new Map<string, RouteGeometryResult>();
+
 /**
- * Calculate actual road network geometry using OSRM with automatic mirror failovers
+ * Calculate actual road network geometry using OSRM with automatic mirror failovers & instant cache
  */
 export async function fetchRoadGeometryLive(
   startLat: number,
@@ -1226,14 +1239,19 @@ export async function fetchRoadGeometryLive(
   endLng: number,
   mode: 'driving' | 'walking' = 'driving',
 ): Promise<RouteGeometryResult | null> {
+  const cacheKey = `${mode}_${startLat.toFixed(4)}_${startLng.toFixed(4)}_${endLat.toFixed(4)}_${endLng.toFixed(4)}`;
+  const cached = roadGeometryCache.get(cacheKey);
+  if (cached) return cached;
+
   const endpoints = [
     `https://router.project-osrm.org/route/v1/${mode}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`,
     `https://routing.openstreetmap.de/routed-${mode === 'walking' ? 'foot' : 'car'}/route/v1/${mode === 'walking' ? 'foot' : 'driving'}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`,
   ];
 
+  // Try mirrors with quick 2s timeout
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         const data = (await res.json()) as {
           code: string;
@@ -1268,12 +1286,14 @@ export async function fetchRoadGeometryLive(
             }
           }
 
-          return {
+          const result: RouteGeometryResult = {
             coordinates,
             distanceM: Math.round(route.distance),
             durationMin: Math.max(1, Math.round(route.duration / 60)),
             instructions,
           };
+          roadGeometryCache.set(cacheKey, result);
+          return result;
         }
       }
     } catch {
@@ -1281,12 +1301,14 @@ export async function fetchRoadGeometryLive(
     }
   }
 
-  // Fallback to curved road interpolation
-  return {
+  // Instant fallback to high-resolution curved road interpolation
+  const fallbackResult: RouteGeometryResult = {
     coordinates: interpolateCurvedPoints(startLat, startLng, endLat, endLng, 16),
     distanceM: Math.round(haversineDistanceClient(startLat, startLng, endLat, endLng)),
     durationMin: Math.max(1, Math.round(haversineDistanceClient(startLat, startLng, endLat, endLng) / (mode === 'walking' ? 70 : 350))),
   };
+  roadGeometryCache.set(cacheKey, fallbackResult);
+  return fallbackResult;
 }
 
 /**
@@ -1308,6 +1330,10 @@ export async function fetchMultiPointRoadGeometryLive(
     return fetchRoadGeometryLive(waypoints[0].lat, waypoints[0].lng, waypoints[1].lat, waypoints[1].lng, mode);
   }
 
+  const multiCacheKey = `${mode}_${waypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join('_')}`;
+  const multiCached = roadGeometryCache.get(multiCacheKey);
+  if (multiCached) return multiCached;
+
   const coordString = waypoints.map((p) => `${p.lng},${p.lat}`).join(';');
   const endpoints = [
     `https://router.project-osrm.org/route/v1/${mode}/${coordString}?overview=full&geometries=geojson&steps=true`,
@@ -1316,7 +1342,7 @@ export async function fetchMultiPointRoadGeometryLive(
 
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
       if (res.ok) {
         const data = (await res.json()) as {
           code: string;
@@ -1333,11 +1359,13 @@ export async function fetchMultiPointRoadGeometryLive(
             ([lon, lat]) => [lat, lon],
           );
 
-          return {
+          const result: RouteGeometryResult = {
             coordinates,
             distanceM: Math.round(route.distance),
             durationMin: Math.max(1, Math.round(route.duration / 60)),
           };
+          roadGeometryCache.set(multiCacheKey, result);
+          return result;
         }
       }
     } catch {

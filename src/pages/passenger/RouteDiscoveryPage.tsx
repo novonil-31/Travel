@@ -147,9 +147,9 @@ function MapCustomControls({
 
   return (
     <>
-      {/* Top-Right: Clean Google Map Style Layer Switcher */}
-      <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '10px' }}>
-        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-neutral-200 p-0.5 flex items-center gap-0.5 text-[11px] font-bold text-neutral-700">
+      {/* Bottom-Left: Clean Google Maps Style Layer Switcher (Avoids overlap with top navigation card, especially on mobile) */}
+      <div className="leaflet-bottom leaflet-left" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '12px' }}>
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-neutral-200 p-0.5 flex items-center gap-0.5 text-[10px] sm:text-[11px] font-bold text-neutral-700">
           <button
             type="button"
             onClick={() => setMapType('streets')}
@@ -1742,7 +1742,7 @@ export default function RouteDiscoveryPage() {
         <div className="order-1 lg:order-2 lg:col-span-7 sticky top-4">
           <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[250px] sm:h-[350px] lg:h-[620px] relative">
             {/* 🧭 Google Maps Style Turn-by-Turn Navigation Guidance Card */}
-            <div className="absolute top-3 left-3 z-[1000] pointer-events-auto max-w-[calc(100%-145px)] sm:max-w-md">
+            <div className="absolute top-3 left-3 right-3 sm:right-auto z-[1000] pointer-events-auto sm:max-w-md">
               <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-2xl p-2 sm:p-2.5 transition-all select-none">
                 <div className="flex items-center gap-2">
                   {/* High-Contrast Mode Icon */}
@@ -1827,6 +1827,9 @@ export default function RouteDiscoveryPage() {
                 }
                 subdomains={['0', '1', '2', '3']}
                 maxZoom={20}
+                keepBuffer={4}
+                updateWhenZooming={true}
+                updateWhenIdle={false}
               />
 
               <MapBoundsController coordinates={continuousRoute} />
@@ -2013,9 +2016,15 @@ export default function RouteDiscoveryPage() {
                 // Concise station name to avoid wide text overlapping
                 const cleanShortName = (stop.name || '')
                   .split('(')[0]
-                  .replace(/Central Transit Hub/gi, '')
+                  .replace(/Central Railway Station/gi, 'Central')
+                  .replace(/Railway Station/gi, 'Station')
+                  .replace(/Central Transit Hub/gi, 'Hub')
                   .replace(/Transit Station & Chowk/gi, 'Station')
                   .replace(/Transit Station/gi, 'Station')
+                  .replace(/International Airport/gi, 'Airport')
+                  .replace(/Medical Hospital Gate/gi, 'KIMS Hospital')
+                  .replace(/Medical College & Hospital/gi, 'Hospital')
+                  .replace(/Institute of Medical Sciences/gi, 'KIMS')
                   .replace(/Bus Terminal/gi, 'Terminal')
                   .replace(/Bus Stop/gi, '')
                   .replace(/Main Entrance/gi, '')
@@ -2045,6 +2054,14 @@ export default function RouteDiscoveryPage() {
                   );
                 }
 
+                // If this is boarding/alighting stop right on top of Origin (A) or Destination (B), avoid redundant text badge collision
+                const isVeryCloseToOrigin = Math.abs(stop.latitude - originCoords[0]) < 0.0004 && Math.abs(stop.longitude - originCoords[1]) < 0.0004;
+                const isVeryCloseToDest = Math.abs(stop.latitude - destCoords[0]) < 0.0004 && Math.abs(stop.longitude - destCoords[1]) < 0.0004;
+                if ((isFirst && isVeryCloseToOrigin) || (isLast && isVeryCloseToDest)) {
+                  // The distinct A/B pin already marks this exact location
+                  return null;
+                }
+
                 const roleBadge = isTransfer ? 'TRANSFER' : isFirst ? 'BOARD' : isLast ? 'ALIGHT' : 'STOP';
                 const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';
                 const stopEmoji = isTransfer ? '🔄' : isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
@@ -2062,21 +2079,24 @@ export default function RouteDiscoveryPage() {
                   pinSize = [20, 20];
                   pinAnchor = [10, 10];
                 } else if (currentMapZoom <= 13) {
-                  pinHtml = `<div style="display:flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 6px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;"><span>${stopEmoji}</span><span>${cleanShortName}</span></div>`;
-                  pinSize = [80, 22];
-                  pinAnchor = [40, 11];
+                  pinHtml = `<div style="display:inline-flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 7px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;max-width:140px;">
+                    <span>${stopEmoji}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:105px;" title="${stop.name}">${cleanShortName}</span>
+                  </div>`;
+                  pinSize = [140, 24];
+                  pinAnchor = [70, 12];
                 } else {
-                  // Zoom 14+ (Optimal viewing): Compact, crisp pill with short role and clean station name
-                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.3));">
-                    <div style="display:flex;align-items:center;gap:3.5px;background:${stopColor};color:white;border:${isTransfer ? '2px solid #fde047' : '1.5px solid white'};border-radius:14px;padding:2px 7px;font-weight:800;font-size:10.5px;white-space:nowrap;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
-                      <span style="font-size:12px;">${stopEmoji}</span>
-                      <span style="background:rgba(0,0,0,0.25);border-radius:3px;padding:0.5px 4px;font-size:8.5px;font-weight:900;">${roleBadge}</span>
-                      <span>${cleanShortName}</span>
+                  // Zoom 14+ (Optimal viewing): Compact, crisp pill with short role and clean station name with strict truncation
+                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.3));max-width:170px;">
+                    <div style="display:inline-flex;align-items:center;gap:3.5px;background:${stopColor};color:white;border:${isTransfer ? '2px solid #fde047' : '1.5px solid white'};border-radius:14px;padding:2.5px 8px;font-weight:800;font-size:10.5px;white-space:nowrap;max-width:165px;box-sizing:border-box;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
+                      <span style="font-size:12px;flex-shrink:0;">${stopEmoji}</span>
+                      <span style="background:rgba(0,0,0,0.25);border-radius:3px;padding:0.5px 4px;font-size:8.5px;font-weight:900;flex-shrink:0;">${roleBadge}</span>
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:90px;" title="${stop.name}">${cleanShortName}</span>
                     </div>
                     <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${stopColor};margin-top:-1px;"></div>
                   </div>`;
-                  pinSize = [110, 28];
-                  pinAnchor = [55, 26];
+                  pinSize = [170, 30];
+                  pinAnchor = [85, 28];
                 }
 
                 const stationIcon = L.divIcon({

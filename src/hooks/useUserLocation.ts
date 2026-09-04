@@ -42,10 +42,13 @@ export function useUserLocation() {
     }
   }, []);
 
-  // Automatically detect user GPS location on initial load before any search is performed
+  // Automatically detect user GPS location on initial load ONLY if user has not chosen a manual region
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      requestLocation().catch(() => {});
+      const saved = getSavedUserLocation();
+      if (!saved.isCustom) {
+        requestLocation().catch(() => {});
+      }
     }
   }, [requestLocation]);
 
