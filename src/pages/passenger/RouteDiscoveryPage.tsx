@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
@@ -130,8 +130,8 @@ function MapCustomControls({
   setMapType,
 }: {
   coordinates: Array<[number, number]>;
-  mapType: 'streets' | 'satellite';
-  setMapType: (t: 'streets' | 'satellite') => void;
+  mapType: 'streets' | 'satellite' | 'terrain';
+  setMapType: (t: 'streets' | 'satellite' | 'terrain') => void;
 }) {
   const map = useMap();
 
@@ -145,45 +145,61 @@ function MapCustomControls({
   };
 
   return (
-    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '8px' }}>
-      <div className="flex items-center gap-1.5">
-        {/* Minimalist 2-Option Layer Switcher */}
+    <>
+      {/* Top-Right: Clean Google Map Style Layer Switcher */}
+      <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '10px' }}>
         <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-neutral-200 p-0.5 flex items-center gap-0.5 text-[11px] font-bold text-neutral-700">
           <button
             type="button"
             onClick={() => setMapType('streets')}
-            className={`px-2 py-1 rounded-lg transition-all ${
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
               mapType === 'streets'
                 ? 'bg-neutral-900 text-white shadow-xs'
                 : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
             }`}
+            title="Google Maps Street View"
           >
-            🗺️ Roads
+            🗺️ Map
           </button>
           <button
             type="button"
             onClick={() => setMapType('satellite')}
-            className={`px-2 py-1 rounded-lg transition-all ${
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
               mapType === 'satellite'
                 ? 'bg-neutral-900 text-white shadow-xs'
                 : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
             }`}
+            title="Google Maps Hybrid Satellite (Aerial + Street Names)"
           >
             🛰️ Satellite
           </button>
+          <button
+            type="button"
+            onClick={() => setMapType('terrain')}
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+              mapType === 'terrain'
+                ? 'bg-neutral-900 text-white shadow-xs'
+                : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+            }`}
+            title="Google Maps Topo / Relief"
+          >
+            ⛰️ Terrain
+          </button>
         </div>
+      </div>
 
-        {/* Recenter Button */}
+      {/* Bottom-Right: Dedicated Recenter Crosshair (Google Maps style bottom-right positioning) */}
+      <div className="leaflet-bottom leaflet-right" style={{ pointerEvents: 'auto', zIndex: 1000, margin: '14px' }}>
         <button
           type="button"
           onClick={handleRecenter}
-          className="w-8 h-8 rounded-xl bg-white/95 backdrop-blur-md shadow-md border border-neutral-200 flex items-center justify-center hover:bg-neutral-50 text-neutral-700 transition-all cursor-pointer"
+          className="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-md shadow-md border border-neutral-200 flex items-center justify-center hover:bg-neutral-100 text-neutral-700 transition-all cursor-pointer active:scale-95"
           title="Recenter Map on Route"
         >
           <Crosshair className="w-4 h-4 text-neutral-800" />
         </button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -417,11 +433,119 @@ export default function RouteDiscoveryPage() {
   const urlTimeMode = searchParams.get('timeMode') || 'now';
   const urlDepartTime = searchParams.get('departTime') || '';
 
-  const [mapType, setMapType] = useState<'streets' | 'satellite'>('streets');
+  const [mapType, setMapType] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
+  const [showRouteOverview, setShowRouteOverview] = useState<boolean>(false);
 
   const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
+
+  // 🧭 Compute clean, Google-Maps-style next navigation instruction without congesting the map
+  const nextActionInfo = useMemo(() => {
+    if (!selectedRoute) {
+      return {
+        icon: '📍',
+        iconBg: 'bg-neutral-100 text-neutral-800 border-neutral-300',
+        action: 'Select a Route',
+        detail: 'Ready to navigate',
+        fareLabel: '₹0',
+      };
+    }
+    const rId = selectedRoute.route?.id || '';
+    const isWalkOnly = rId === 'CAMPUS_STEP_FREE_WALK' || (selectedRoute.route?.vehicleType as string) === 'foot' || (selectedRoute.route?.vehicleType as string) === 'walk';
+    const isCycle = rId === 'CAMPUS_SMART_CYCLE';
+    const isEvShuttle = selectedRoute.route?.vehicleType === 'campus-vehicle';
+    const isSharedRide = selectedRoute.route?.vehicleType === 'shared-transport';
+    const isCarpool = rId.includes('CARPOOL') || selectedRoute.route?.name?.toLowerCase().includes('carpool');
+    const isBikeTaxi = rId.includes('BIKE');
+
+    if (isWalkOnly) {
+      return {
+        icon: '🚶',
+        iconBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        action: 'Walk via Campus Footpath',
+        detail: `${selectedRoute.walkingDistance || 400}m • ${selectedRoute.duration} mins • Step-free paved track`,
+        fareLabel: 'Free (₹0)',
+      };
+    }
+    if (isCycle) {
+      return {
+        icon: '🚲',
+        iconBg: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+        action: 'Ride Campus Smart Cycle',
+        detail: `${selectedRoute.duration} mins • 0 wait • Student cycle hub`,
+        fareLabel: 'Free (₹0)',
+      };
+    }
+    if (isEvShuttle) {
+      return {
+        icon: '⚡',
+        iconBg: 'bg-teal-100 text-teal-800 border-teal-300',
+        action: 'Take KIIT Eco EV Shuttle',
+        detail: `${selectedRoute.duration} mins • Campus Stand • Departs every 5-8m`,
+        fareLabel: '₹10 / Free',
+      };
+    }
+    if (isCarpool) {
+      return {
+        icon: '🤝',
+        iconBg: 'bg-purple-100 text-purple-800 border-purple-300',
+        action: 'Student Carpool Split',
+        detail: `${selectedRoute.duration} mins • Co-rider pickup at Campus Gate`,
+        fareLabel: '₹15 split',
+      };
+    }
+    if (isBikeTaxi) {
+      return {
+        icon: '🏍️',
+        iconBg: 'bg-amber-100 text-amber-800 border-amber-300',
+        action: 'Campus Bike Taxi',
+        detail: `${selectedRoute.duration} mins • Direct ride to destination`,
+        fareLabel: `₹${selectedRoute.fare?.exact || 25}`,
+      };
+    }
+    if (isSharedRide) {
+      return {
+        icon: '🚖',
+        iconBg: 'bg-amber-100 text-amber-800 border-amber-300',
+        action: `Campus Auto (${selectedRoute.route.shortName})`,
+        detail: `${selectedRoute.duration} mins • Direct ride to destination`,
+        fareLabel: `₹${selectedRoute.fare?.exact || 30}`,
+      };
+    }
+
+    // Transit Bus / Rail / Flight
+    const isTrainRoute = selectedRoute.route?.vehicleType === 'train';
+    const isFlightRoute = selectedRoute.route?.vehicleType === 'flight';
+    const boardStop = selectedRoute.intermediateStops?.[0]?.name?.split('(')[0]?.trim() || 'Campus Gate';
+    const alightStop = selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 0
+      ? selectedRoute.intermediateStops[selectedRoute.intermediateStops.length - 1]?.name?.split('(')[0]?.trim() || 'Destination'
+      : 'Destination';
+    const hasTransfer = selectedRoute.transfers > 0 && selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 2;
+    const transferStop = hasTransfer && selectedRoute.intermediateStops ? selectedRoute.intermediateStops[1]?.name?.split('(')[0]?.trim() : null;
+
+    if (hasTransfer && transferStop) {
+      return {
+        icon: '🔄',
+        iconBg: 'bg-amber-100 text-amber-900 border-amber-300',
+        action: `Board Bus ${selectedRoute.route.shortName} ➔ Transfer at ${transferStop}`,
+        detail: `Then connect to ${alightStop} • Total ${selectedRoute.duration}m`,
+        fareLabel: `₹${selectedRoute.fare?.exact || 25}`,
+      };
+    }
+
+    return {
+      icon: isTrainRoute ? '🚆' : isFlightRoute ? '✈️' : '🚏',
+      iconBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      action: isTrainRoute
+        ? `Board Train at ${boardStop}`
+        : isFlightRoute
+        ? `Fly from ${boardStop}`
+        : `Walk ${selectedRoute.walkingDistance || 120}m ➔ Board Bus ${selectedRoute.route.shortName} at ${boardStop}`,
+      detail: `Alight at ${alightStop} • ${selectedRoute.duration} mins total`,
+      fareLabel: `₹${selectedRoute.fare?.exact || 15}`,
+    };
+  }, [selectedRoute]);
 
   // Interactive Search States
   const [originInput, setOriginInput] = useState<string>(urlOrigin || '');
@@ -1538,85 +1662,70 @@ export default function RouteDiscoveryPage() {
         {/* Map Column: Clean OpenStreetMap (Top on mobile, Right 7 cols on desktop) */}
         <div className="order-1 lg:order-2 lg:col-span-7 sticky top-4">
           <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[250px] sm:h-[350px] lg:h-[620px] relative">
-            {/* Floating Step-by-Step Route Guidance Ribbon */}
-            <div className="absolute top-3 left-3 z-[1000] pointer-events-none flex items-center max-w-[calc(100%-125px)] sm:max-w-[calc(100%-140px)]">
-              <div className="pointer-events-auto bg-white/95 backdrop-blur-md border border-neutral-200/90 shadow-md rounded-xl px-2.5 py-1.5 text-xs flex items-center gap-1.5 overflow-x-auto select-none no-scrollbar">
-                <span className="font-bold text-emerald-800 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                  <span>🚩</span>
-                  <span className="truncate max-w-[75px] sm:max-w-[110px]">{(selectedRoute.originName || '').split('(')[0].trim() || 'Start'}</span>
-                </span>
+            {/* 🧭 Google Maps Style Turn-by-Turn Navigation Guidance Card */}
+            <div className="absolute top-3 left-3 z-[1000] pointer-events-auto max-w-[calc(100%-145px)] sm:max-w-md">
+              <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-2xl p-2 sm:p-2.5 transition-all select-none">
+                <div className="flex items-center gap-2">
+                  {/* High-Contrast Mode Icon */}
+                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-base shadow-xs border ${nextActionInfo.iconBg}`}>
+                    {nextActionInfo.icon}
+                  </div>
 
-                {selectedRoute.route?.id === 'CAMPUS_STEP_FREE_WALK' ? (
-                  <>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                      <span>🚶</span>
-                      <span>Paved Footpath ({selectedRoute.duration}m)</span>
+                  {/* Clean Action Instruction */}
+                  <div className="flex-1 min-w-0 pr-1">
+                    <div className="flex items-center gap-1.5 leading-tight">
+                      <span className="font-extrabold text-neutral-900 text-xs sm:text-[13px] truncate block">
+                        {nextActionInfo.action}
+                      </span>
+                    </div>
+                    <div className="text-[10px] sm:text-[11px] text-neutral-500 truncate mt-0.5 flex items-center gap-1 font-medium">
+                      <span>{nextActionInfo.detail}</span>
+                    </div>
+                  </div>
+
+                  {/* Summary & Steps Toggle */}
+                  <div className="shrink-0 flex flex-col items-end gap-0.5 pl-1.5 border-l border-neutral-100">
+                    <span className="text-[11px] sm:text-xs font-black text-neutral-900 leading-tight">
+                      {selectedRoute.duration} min
                     </span>
-                  </>
-                ) : selectedRoute.route?.id === 'CAMPUS_SMART_CYCLE' ? (
-                  <>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-cyan-700 flex items-center gap-1 shrink-0 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200 text-[11px]">
-                      <span>🚲</span>
-                      <span>Cycle Track ({selectedRoute.duration}m)</span>
-                    </span>
-                  </>
-                ) : selectedRoute.route?.vehicleType === 'campus-vehicle' ? (
-                  <>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
-                      <span>🚶</span>
-                      <span>Walk</span>
-                    </span>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                      <span>⚡</span>
-                      <span className="truncate max-w-[85px] sm:max-w-[120px]">EV Shuttle</span>
-                    </span>
-                  </>
-                ) : selectedRoute.route?.vehicleType === 'shared-transport' ? (
-                  <>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-amber-700 flex items-center gap-1 shrink-0 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[11px]">
-                      <span>{selectedRoute.route.id.includes('BIKE') ? '🏍️' : selectedRoute.route.id.includes('CARPOOL') ? '🤝' : '🚖'}</span>
-                      <span>{selectedRoute.route.shortName} ({selectedRoute.duration}m)</span>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
-                      <span>🚶</span>
-                      <span>Walk</span>
-                    </span>
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                      <span>🚏</span>
-                      <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[0]?.name.split('(')[0].trim() || 'Board'}</span>
-                    </span>
-                    {selectedRoute.transfers > 0 && selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 2 && (
-                      <>
-                        <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                        <span className="font-black text-amber-800 flex items-center gap-1 shrink-0 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 text-[10px] animate-pulse">
-                          <span>🔄</span>
-                          <span className="truncate max-w-[85px] sm:max-w-[120px]">Change: {selectedRoute.intermediateStops[1]?.name.split('(')[0].trim()}</span>
-                        </span>
-                      </>
+                    <button
+                      type="button"
+                      onClick={() => setShowRouteOverview((prev) => !prev)}
+                      className="text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer flex items-center gap-0.5"
+                    >
+                      <span>{showRouteOverview ? 'Hide ▴' : 'Steps ▾'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Optional Expandable Steps Drawer */}
+                {showRouteOverview && (
+                  <div className="mt-2 pt-2 border-t border-neutral-100 space-y-1.5 max-h-48 overflow-y-auto pr-1 text-xs">
+                    <div className="flex items-center gap-1.5 text-neutral-700 font-bold text-[11px]">
+                      <span>🚩</span>
+                      <span className="truncate">{selectedRoute.originName}</span>
+                    </div>
+
+                    {selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 0 ? (
+                      selectedRoute.intermediateStops.map((st, i) => (
+                        <div key={st.id || i} className="flex items-center gap-1.5 pl-3 border-l-2 border-dashed border-emerald-400 text-neutral-600 text-[11px]">
+                          <span>{i === 0 ? '🚏' : i === selectedRoute.intermediateStops!.length - 1 ? '🏁' : '•'}</span>
+                          <span className="truncate">{st.name}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex items-center gap-1.5 pl-3 border-l-2 border-dashed border-emerald-400 text-neutral-600 text-[11px]">
+                        <span>➔</span>
+                        <span>Direct corridor travel to destination</span>
+                      </div>
                     )}
-                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-bold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
-                      <span>🚏</span>
-                      <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[selectedRoute.intermediateStops.length - 1]?.name.split('(')[0].trim() || 'Alight'}</span>
-                    </span>
-                  </>
-                )}
 
-                <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                <span className="font-bold text-red-800 flex items-center gap-1 shrink-0 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 text-[11px]">
-                  <span>🏁</span>
-                  <span className="truncate max-w-[75px] sm:max-w-[110px]">{(selectedRoute.destinationName || '').split('(')[0].trim() || 'Destination'}</span>
-                </span>
+                    <div className="flex items-center gap-1.5 text-neutral-700 font-bold text-[11px]">
+                      <span>🏁</span>
+                      <span className="truncate">{selectedRoute.destinationName}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1632,10 +1741,13 @@ export default function RouteDiscoveryPage() {
                 key={mapType}
                 url={
                   mapType === 'satellite'
-                    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+                    ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                    : mapType === 'terrain'
+                    ? 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
+                    : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
                 }
-                maxZoom={19}
+                subdomains={['0', '1', '2', '3']}
+                maxZoom={20}
               />
 
               <MapBoundsController coordinates={continuousRoute} />
@@ -1806,11 +1918,18 @@ export default function RouteDiscoveryPage() {
 
               {/* 🚉 REAL INTERMEDIATE TRANSIT STATIONS & AIRPORTS ON MAP (Concise, Uncluttered Badges) */}
               {selectedRoute.intermediateStops && selectedRoute.intermediateStops.map((stop, sIdx) => {
+                // Prevent duplicate overlapping markers if already rendered by transferPoints
+                const isNearTransfer = transferPoints.some(
+                  (tp) => Math.abs(tp.latitude - stop.latitude) < 0.0008 && Math.abs(tp.longitude - stop.longitude) < 0.0008
+                );
+                if (isNearTransfer) return null;
+
                 const isTrainStop = isTrain || selectedRoute.route?.vehicleType === 'train';
                 const isFlightStop = isFlight || selectedRoute.route?.vehicleType === 'flight';
                 const isFirst = sIdx === 0;
                 const isLast = sIdx === selectedRoute.intermediateStops!.length - 1;
                 const isTransfer = stop.stopRole === 'transfer' || (selectedRoute.transfers > 0 && sIdx > 0 && sIdx < selectedRoute.intermediateStops!.length - 1);
+                const isCrucialActionStop = isFirst || isLast || isTransfer;
 
                 // Concise station name to avoid wide text overlapping
                 const cleanShortName = (stop.name || '')
@@ -1822,6 +1941,30 @@ export default function RouteDiscoveryPage() {
                   .replace(/Bus Stop/gi, '')
                   .replace(/Main Entrance/gi, '')
                   .trim();
+
+                // Clean, subtle milestone dot for non-critical pass-through stops (avoids cluttering the map)
+                if (!isCrucialActionStop) {
+                  const dotIcon = L.divIcon({
+                    html: `<div style="width:8px;height:8px;background:#ffffff;border:2.5px solid #059669;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.4);cursor:pointer;" title="${cleanShortName}"></div>`,
+                    className: 'custom-milestone-pin',
+                    iconSize: [8, 8],
+                    iconAnchor: [4, 4],
+                  });
+                  return (
+                    <Marker
+                      key={`station-stop-${stop.id}-${sIdx}`}
+                      position={[stop.latitude, stop.longitude]}
+                      icon={dotIcon}
+                    >
+                      <Popup>
+                        <div className="text-xs p-1 font-bold">
+                          <span className="text-emerald-700">🚏 Pass-through: </span>
+                          <span className="text-neutral-900">{stop.name}</span>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                }
 
                 const roleBadge = isTransfer ? 'TRANSFER' : isFirst ? 'BOARD' : isLast ? 'ALIGHT' : 'STOP';
                 const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';

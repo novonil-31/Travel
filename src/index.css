@@ -56,6 +56,14 @@
     z-index: 10;
   }
 
+  /* High-DPI Crisp Tile Optimization for Google Maps Tiles */
+  .leaflet-tile-pane {
+    image-rendering: -webkit-optimize-contrast;
+  }
+  .leaflet-tile {
+    filter: contrast(102%) saturate(104%);
+  }
+
   /* Completely hide Leaflet attribution widget so it doesn't clutter or cover mobile screens */
   .leaflet-control-attribution {
     display: none !important;

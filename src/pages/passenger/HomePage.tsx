@@ -209,7 +209,9 @@ export default function HomePage() {
             style={{ zIndex: 1 }}
           >
             <TileLayer
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+              url="https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+              subdomains={['0', '1', '2', '3']}
+              maxZoom={20}
             />
 
             {/* Public Bus Stops */}
