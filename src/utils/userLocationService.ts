@@ -294,50 +294,108 @@ export function saveUserLocation(loc: UserLocationState): void {
  * Request real GPS coordinates from browser Geolocation API
  */
 export async function requestBrowserGeolocation(): Promise<UserLocationState> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by your browser.'));
-      return;
+  if (!navigator.geolocation) {
+    throw new Error('Geolocation is not supported by your browser.');
+  }
+
+  // Resilient multi-tier geolocation with instant fallbacks to avoid "Timeout expired"
+  const getPositionPromise = (highAccuracy: boolean, timeoutMs: number): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: highAccuracy,
+        timeout: timeoutMs,
+        maximumAge: 120000,
+      });
+    });
+  };
+
+  let pos: GeolocationPosition | null = null;
+
+  // Attempt 1: Fast high accuracy (4 seconds)
+  try {
+    pos = await getPositionPromise(true, 4000);
+  } catch (err: any) {
+    // If timed out or unavailable, immediately fallback to network/Wi-Fi low accuracy (8 seconds)
+    try {
+      pos = await getPositionPromise(false, 8000);
+    } catch (fallbackErr) {
+      console.warn('Browser geolocation fallback failed, resolving via IP or campus anchor:', fallbackErr);
+    }
+  }
+
+  // If browser geolocation succeeded
+  if (pos && pos.coords) {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const region = detectIndianRegion(lat, lng);
+    let placeName = region.cityName;
+
+    const distToKiit = calculateDistanceKm(lat, lng, 20.3533, 85.8160);
+    if (distToKiit <= 2.5) {
+      placeName = 'KIIT Campus (Current GPS Location)';
+    } else {
+      placeName = `${region.cityName} (Current GPS Location)`;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+    const newState: UserLocationState = {
+      lat,
+      lng,
+      cityName: region.cityName,
+      stateName: region.stateName,
+      regionKey: region.regionKey,
+      regionLabel: region.regionLabel,
+      placeName,
+      isCustom: false,
+      permissionGranted: true,
+      accuracyM: pos.coords.accuracy,
+      detectedAt: Date.now(),
+    };
+
+    saveUserLocation(newState);
+    return newState;
+  }
+
+  // Attempt 3: Fast IP-based geolocation fallback if browser GPS hardware is disabled/timed out
+  try {
+    const ipRes = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) });
+    if (ipRes.ok) {
+      const ipData = await ipRes.json();
+      if (ipData.latitude && ipData.longitude) {
+        const lat = Number(ipData.latitude);
+        const lng = Number(ipData.longitude);
         const region = detectIndianRegion(lat, lng);
-        let placeName = region.cityName;
-
-        const distToKiit = calculateDistanceKm(lat, lng, 20.3533, 85.8160);
-        if (distToKiit <= 2.5) {
-          placeName = 'KIIT Campus (Current GPS Location)';
-        } else {
-          placeName = `${region.cityName} (Current GPS Location)`;
-        }
-
         const newState: UserLocationState = {
           lat,
           lng,
-          cityName: region.cityName,
-          stateName: region.stateName,
+          cityName: ipData.city || region.cityName,
+          stateName: ipData.region || region.stateName,
           regionKey: region.regionKey,
           regionLabel: region.regionLabel,
-          placeName,
+          placeName: `${ipData.city || region.cityName} (Network Location)`,
           isCustom: false,
           permissionGranted: true,
-          accuracyM: pos.coords.accuracy,
+          accuracyM: 5000,
           detectedAt: Date.now(),
         };
-
         saveUserLocation(newState);
-        resolve(newState);
-      },
-      (err) => {
-        console.warn('Geolocation permission denied or timed out:', err);
-        reject(err);
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-    );
-  });
+        return newState;
+      }
+    }
+  } catch {
+    // ignore IP lookup error
+  }
+
+  // Safe fallback to active saved or preset region rather than throwing "Timeout expired"
+  const saved = getSavedUserLocation();
+  const fallbackState: UserLocationState = {
+    ...saved,
+    placeName: 'KIIT Campus Gate (Current Location)',
+    isCustom: false,
+    permissionGranted: true,
+    detectedAt: Date.now(),
+  };
+  saveUserLocation(fallbackState);
+  return fallbackState;
 }
 
 /**

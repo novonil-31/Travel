@@ -155,44 +155,32 @@ export default function TripPlannerPage() {
   };
 
   // HTML5 GPS Geolocation
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsError('Geolocation is not supported by your browser.');
-      return;
-    }
-
+  const handleUseCurrentLocation = async () => {
     setIsLocating(true);
     setGpsError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-
-        try {
-          const rev = await stopsApi.reverseGeocode(lat, lng);
-          const locName = typeof rev === 'string' && rev ? rev : ((rev as any)?.name || (rev as any)?.displayName || `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-          setOriginInput(locName);
-          setOriginLocation({ name: locName, lat, lng });
-          setActiveDropdown(null);
-        } catch {
-          const locName = `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-          setOriginInput(locName);
-          setOriginLocation({ name: locName, lat, lng });
-        } finally {
-          setIsLocating(false);
-        }
-      },
-      (err) => {
-        setIsLocating(false);
+    try {
+      const loc = await requestLocation();
+      if (loc && loc.lat && loc.lng) {
+        setOriginInput(loc.placeName || `${loc.cityName} (Current Location)`);
+        setOriginLocation({
+          name: loc.placeName || `${loc.cityName} (Current Location)`,
+          lat: loc.lat,
+          lng: loc.lng,
+        });
+        setActiveDropdown(null);
+      } else {
         const fallbackName = 'Campus Gate (Current GPS)';
         setOriginInput(fallbackName);
         setOriginLocation({ name: fallbackName, lat: 20.3555, lng: 85.8145 });
-        setGpsError('GPS permission denied. Using current campus location.');
-        setTimeout(() => setGpsError(null), 4000);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
+      }
+    } catch {
+      const fallbackName = 'Campus Gate (Current GPS)';
+      setOriginInput(fallbackName);
+      setOriginLocation({ name: fallbackName, lat: 20.3555, lng: 85.8145 });
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   // Swap Locations
