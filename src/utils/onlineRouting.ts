@@ -844,29 +844,144 @@ export async function searchPlacesLive(
     return res;
   }
 
-  // 7. Parallel Live Online Geocoding via Backend API + Nominatim (with Viewbox) + Photon (Biased to User GPS)
+  // 7. Multi-Channel Dynamic Real-Life POI & Establishment Search (Like Google Maps)
+  // Queries live OpenStreetMap Photon + Bounded Nominatim to find ANY real-life shop, mall, salon, clinic, bakery, etc.
   const onlineResults: GeocodedPlace[] = [];
   try {
+    const userCity = activeUserLoc.cityName || '';
     const encodedQ = encodeURIComponent(query);
-    const backendSearchUrl = `http://localhost:3000/api/stops/places/search?q=${encodedQ}&lat=${activeUserLoc.lat}&lng=${activeUserLoc.lng}`;
-    // Use viewbox around active user GPS location to prioritize immediate region while keeping unbounded search flexibility
-    const vBoxMinLng = activeUserLoc.lng - 0.45;
-    const vBoxMaxLat = activeUserLoc.lat + 0.40;
-    const vBoxMaxLng = activeUserLoc.lng + 0.45;
-    const vBoxMinLat = activeUserLoc.lat - 0.40;
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&countrycodes=in&viewbox=${vBoxMinLng},${vBoxMaxLat},${vBoxMaxLng},${vBoxMinLat}&bounded=0&limit=16&addressdetails=1&accept-language=en`;
-    // Pass user lat/lon to Photon so OpenStreetMap ranks closest establishments first
-    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=25`;
+    const encodedCityQ = encodeURIComponent(`${query} ${userCity}`.trim());
 
-    const [backendRes, nomRes, photonRes] = await Promise.allSettled([
-      fetch(backendSearchUrl, { signal: AbortSignal.timeout(3000) }),
-      fetch(nominatimUrl, {
+    const vBoxMinLng = activeUserLoc.lng - 0.35;
+    const vBoxMaxLat = activeUserLoc.lat + 0.30;
+    const vBoxMaxLng = activeUserLoc.lng + 0.35;
+    const vBoxMinLat = activeUserLoc.lat - 0.30;
+
+    // Stream A: Local City POI Search via Photon (Finds every establishment in the city)
+    const photonCityUrl = `https://photon.komoot.io/api/?q=${encodedCityQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=20`;
+    // Stream B: Direct Spatial Photon Search biased to user GPS coordinates
+    const photonDirectUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=25`;
+    // Stream C: Nominatim City Structured Search
+    const nomCityUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedCityQ}&countrycodes=in&limit=15&addressdetails=1`;
+    // Stream D: Nominatim Strictly Bounded Viewbox Search (Surrounding 10-20km perimeter)
+    const nomBoundedUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&viewbox=${vBoxMinLng},${vBoxMaxLat},${vBoxMaxLng},${vBoxMinLat}&bounded=1&limit=15&addressdetails=1`;
+    // Stream E: Backend API Proxy Search
+    const backendSearchUrl = `http://localhost:3000/api/stops/places/search?q=${encodedQ}&lat=${activeUserLoc.lat}&lng=${activeUserLoc.lng}`;
+
+    const [pCityRes, pDirectRes, nCityRes, nBoundRes, backendRes] = await Promise.allSettled([
+      fetch(photonCityUrl, { signal: AbortSignal.timeout(3500) }),
+      fetch(photonDirectUrl, { signal: AbortSignal.timeout(3500) }),
+      fetch(nomCityUrl, {
         headers: { 'Accept-Language': 'en', 'User-Agent': 'ACCESS-Transit-Assistant/2.0' },
         signal: AbortSignal.timeout(3500),
       }),
-      fetch(photonUrl, { signal: AbortSignal.timeout(3500) }),
+      fetch(nomBoundedUrl, {
+        headers: { 'Accept-Language': 'en', 'User-Agent': 'ACCESS-Transit-Assistant/2.0' },
+        signal: AbortSignal.timeout(3500),
+      }),
+      fetch(backendSearchUrl, { signal: AbortSignal.timeout(2500) }),
     ]);
 
+    // Helper to resolve rich visual icon based on real-world OpenStreetMap tags
+    const resolvePoiIcon = (tag: string, name: string): string => {
+      const t = (tag + ' ' + name).toLowerCase();
+      if (t.includes('cinema') || t.includes('theatre') || t.includes('multiplex') || t.includes('movie')) return '🎬';
+      if (t.includes('supermarket') || t.includes('grocery') || t.includes('convenience') || t.includes('mart') || t.includes('kirana')) return '🛒';
+      if (t.includes('mall') || t.includes('shopping') || t.includes('bazaar') || t.includes('complex')) return '🛍️';
+      if (t.includes('clothes') || t.includes('fashion') || t.includes('apparel') || t.includes('boutique') || t.includes('wear')) return '👗';
+      if (t.includes('shoes') || t.includes('footwear')) return '👟';
+      if (t.includes('bakery') || t.includes('cake') || t.includes('pastry') || t.includes('confectionery') || t.includes('sweet')) return '🥖';
+      if (t.includes('cafe') || t.includes('coffee') || t.includes('tea') || t.includes('chai')) return '☕';
+      if (t.includes('pizza') || t.includes('burger') || t.includes('fast_food') || t.includes('restaurant') || t.includes('dhaba') || t.includes('eatery')) return '🍽️';
+      if (t.includes('pharmacy') || t.includes('chemist') || t.includes('medicine') || t.includes('drugstore') || t.includes('medical')) return '💊';
+      if (t.includes('hospital') || t.includes('emergency')) return '🏥';
+      if (t.includes('dentist') || t.includes('dental')) return '🦷';
+      if (t.includes('clinic') || t.includes('doctor') || t.includes('health') || t.includes('lab')) return '🩺';
+      if (t.includes('salon') || t.includes('beauty') || t.includes('hairdresser') || t.includes('parlour') || t.includes('spa')) return '💇';
+      if (t.includes('gym') || t.includes('fitness') || t.includes('workout') || t.includes('sports')) return '🏋️';
+      if (t.includes('bank') || t.includes('atm') || t.includes('cash')) return '🏦';
+      if (t.includes('hardware') || t.includes('doityourself') || t.includes('repair') || t.includes('tools')) return '🔧';
+      if (t.includes('stationery') || t.includes('craft') || t.includes('book') || t.includes('xerox')) return '📚';
+      if (t.includes('bus_stop') || t.includes('platform') || t.includes('stand')) return '🚏';
+      if (t.includes('station') || t.includes('rail') || t.includes('train')) return '🚆';
+      if (t.includes('airport') || t.includes('aerodrome')) return '✈️';
+      return '🏬';
+    };
+
+    // Process Photon City Features
+    if (pCityRes.status === 'fulfilled' && pCityRes.value.ok) {
+      const data = (await pCityRes.value.json()) as any;
+      data.features?.forEach((f: any) => {
+        const itemLat = f.geometry.coordinates[1];
+        const itemLng = f.geometry.coordinates[0];
+        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
+        const name = f.properties.name || f.properties.street || query;
+        const locParts = [f.properties.street, f.properties.city || userCity, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
+        const osmVal = f.properties.osm_value || f.properties.osm_key || 'shop';
+        const icon = resolvePoiIcon(osmVal, name);
+
+        onlineResults.push({
+          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
+          name,
+          lat: itemLat,
+          lng: itemLng,
+          type: osmVal,
+          distanceKm: dKm,
+        });
+      });
+    }
+
+    // Process Photon Direct Features
+    if (pDirectRes.status === 'fulfilled' && pDirectRes.value.ok) {
+      const data = (await pDirectRes.value.json()) as any;
+      data.features?.forEach((f: any) => {
+        const itemLat = f.geometry.coordinates[1];
+        const itemLng = f.geometry.coordinates[0];
+        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
+        const name = f.properties.name || f.properties.street || query;
+        const locParts = [f.properties.street, f.properties.city, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
+        const osmVal = f.properties.osm_value || f.properties.osm_key || 'shop';
+        const icon = resolvePoiIcon(osmVal, name);
+
+        onlineResults.push({
+          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
+          name,
+          lat: itemLat,
+          lng: itemLng,
+          type: osmVal,
+          distanceKm: dKm,
+        });
+      });
+    }
+
+    // Process Nominatim City & Bounded Results
+    for (const resPromise of [nCityRes, nBoundRes]) {
+      if (resPromise.status === 'fulfilled' && resPromise.value.ok) {
+        const data = (await resPromise.value.json()) as any[];
+        if (Array.isArray(data)) {
+          data.forEach((item) => {
+            const itemLat = parseFloat(item.lat);
+            const itemLng = parseFloat(item.lon);
+            const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
+            const primary = item.name || item.display_name.split(',')[0] || query;
+            const parts = item.display_name.split(',').slice(1, 3).map((p: string) => p.trim()).filter(Boolean);
+            const sub = parts.join(', ');
+            const icon = resolvePoiIcon(item.type || '', primary);
+
+            onlineResults.push({
+              displayName: sub ? `${icon} ${primary}, ${sub}` : `${icon} ${primary}`,
+              name: primary,
+              lat: itemLat,
+              lng: itemLng,
+              type: item.type || 'shop',
+              distanceKm: dKm,
+            });
+          });
+        }
+      }
+    }
+
+    // Process Backend Results
     if (backendRes.status === 'fulfilled' && backendRes.value.ok) {
       const bJson = (await backendRes.value.json()) as any;
       const bList = bJson?.data || bJson;
@@ -887,89 +1002,8 @@ export async function searchPlacesLive(
         });
       }
     }
-
-    if (nomRes.status === 'fulfilled' && nomRes.value.ok) {
-      const data = (await nomRes.value.json()) as Array<{
-        display_name: string;
-        name?: string;
-        lat: string;
-        lon: string;
-        type: string;
-        address?: Record<string, string>;
-      }>;
-
-      data.forEach((item) => {
-        const itemLat = parseFloat(item.lat);
-        const itemLng = parseFloat(item.lon);
-        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
-        const primary = item.name || item.display_name.split(',')[0] || query;
-        const parts = item.display_name.split(',').slice(1, 3).map((p) => p.trim()).filter(Boolean);
-        const sub = parts.join(', ');
-
-        let icon = '📍';
-        const typeL = (item.type || '').toLowerCase();
-        if (typeL.includes('cinema') || typeL.includes('theatre')) icon = '🎬';
-        else if (typeL.includes('supermarket') || typeL.includes('grocery')) icon = '🛒';
-        else if (typeL.includes('cafe') || typeL.includes('coffee')) icon = '☕';
-        else if (typeL.includes('restaurant') || typeL.includes('fast_food')) icon = '🍔';
-        else if (typeL.includes('pharmacy') || typeL.includes('chemist')) icon = '💊';
-        else if (typeL.includes('hospital') || typeL.includes('clinic')) icon = '🏥';
-        else if (typeL.includes('bank') || typeL.includes('atm')) icon = '🏦';
-        else if (typeL.includes('gym')) icon = '🏋️';
-
-        onlineResults.push({
-          displayName: sub ? `${icon} ${primary}, ${sub}` : `${icon} ${primary}`,
-          name: primary,
-          lat: itemLat,
-          lng: itemLng,
-          type: item.type || 'place',
-          distanceKm: dKm,
-        });
-      });
-    }
-
-    if (photonRes.status === 'fulfilled' && photonRes.value.ok) {
-      const pData = (await photonRes.value.json()) as {
-        features: Array<{
-          geometry: { coordinates: [number, number] };
-          properties: { name?: string; street?: string; city?: string; state?: string; country?: string; osm_value?: string; osm_key?: string };
-        }>;
-      };
-
-      pData.features?.forEach((f) => {
-        const itemLat = f.geometry.coordinates[1];
-        const itemLng = f.geometry.coordinates[0];
-        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
-        const name = f.properties.name || f.properties.street || query;
-        const locParts = [f.properties.street, f.properties.city, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
-
-        const osmVal = (f.properties.osm_value || '').toLowerCase();
-        let icon = '📍';
-        if (['cinema', 'theatre'].includes(osmVal)) icon = '🎬';
-        else if (['supermarket', 'grocery'].includes(osmVal)) icon = '🛒';
-        else if (['convenience', 'department_store', 'general', 'mall', 'clothes'].includes(osmVal)) icon = '🛍️';
-        else if (['cafe', 'coffee_shop'].includes(osmVal)) icon = '☕';
-        else if (['fast_food', 'restaurant', 'food_court'].includes(osmVal)) icon = '🍔';
-        else if (['pharmacy', 'chemist'].includes(osmVal)) icon = '💊';
-        else if (['hospital', 'clinic', 'doctors'].includes(osmVal)) icon = '🏥';
-        else if (['bank', 'atm'].includes(osmVal)) icon = '🏦';
-        else if (['fitness_centre', 'sports_centre', 'gym'].includes(osmVal)) icon = '🏋️';
-        else if (['bakery'].includes(osmVal)) icon = '🥐';
-        else if (['bus_stop', 'platform'].includes(osmVal)) icon = '🚏';
-        else if (['station', 'halt'].includes(osmVal)) icon = '🚆';
-
-        onlineResults.push({
-          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
-          name,
-          lat: itemLat,
-          lng: itemLng,
-          type: f.properties.osm_value || 'place',
-          distanceKm: dKm,
-        });
-      });
-    }
   } catch (err) {
-    console.warn('Live geocoding fallback warning:', err);
+    console.warn('Live real-life POI search warning:', err);
   }
 
   // 8. Deduplicate and Apply Continuous Proximity-First Priority Ranking
