@@ -11,10 +11,10 @@ import {
   ChevronRight, ExternalLink, ShieldCheck, CheckCircle2,
   Car, Bus, Train, Plane, RefreshCw, AlertCircle, Users,
   Plus, Check, X, Phone, UserCheck, Trash2, Sparkles, Share2,
-  CreditCard, Ticket, Crosshair, Layers, Info
+  CreditCard, Ticket, Crosshair, Layers, Info, Search, ArrowLeftRight
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
-import { journeysApi } from '../../api';
+import { journeysApi, stopsApi } from '../../api';
 import {
   getMatchingCarpools,
   registerCarpoolRequest,
@@ -421,6 +421,134 @@ export default function RouteDiscoveryPage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
 
+  const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
+
+  // Interactive Search States
+  const [originInput, setOriginInput] = useState<string>(urlOrigin || '');
+  const [destInput, setDestInput] = useState<string>(urlDest || '');
+  const [originSuggestions, setOriginSuggestions] = useState<any[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
+  const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
+  const [isSearchingRoute, setIsSearchingRoute] = useState<boolean>(false);
+
+  // Synchronize inputs if URL changes
+  useEffect(() => {
+    if (urlOrigin) setOriginInput(urlOrigin);
+    else if (selectedRoute?.originName) setOriginInput(selectedRoute.originName);
+  }, [urlOrigin, selectedRoute?.originName]);
+
+  useEffect(() => {
+    if (urlDest) setDestInput(urlDest);
+    else if (selectedRoute?.destinationName) setDestInput(selectedRoute.destinationName);
+  }, [urlDest, selectedRoute?.destinationName]);
+
+  // Autocomplete debounced listeners
+  useEffect(() => {
+    if (!originInput || activeDropdown !== 'origin') {
+      setOriginSuggestions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const places = await stopsApi.searchPlaces(originInput);
+        setOriginSuggestions(places);
+      } catch (err) {
+        console.error('Origin search error:', err);
+      }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [originInput, activeDropdown]);
+
+  useEffect(() => {
+    if (!destInput || activeDropdown !== 'dest') {
+      setDestSuggestions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const places = await stopsApi.searchPlaces(destInput);
+        setDestSuggestions(places);
+      } catch (err) {
+        console.error('Dest search error:', err);
+      }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [destInput, activeDropdown]);
+
+  // Execute Dynamic Route Search
+  const handleExecuteSearch = async (
+    fromText: string,
+    toText: string,
+    explicitOrigin?: { lat: number; lng: number },
+    explicitDest?: { lat: number; lng: number }
+  ) => {
+    const f = fromText.trim();
+    const t = toText.trim();
+    if (!f || !t) {
+      addToast('info', 'Please enter both origin and destination');
+      return;
+    }
+
+    setIsSearchingRoute(true);
+    setActiveDropdown(null);
+
+    try {
+      let origCoord = explicitOrigin;
+      if (!origCoord) {
+        const matches = await stopsApi.searchPlaces(f);
+        if (matches && matches.length > 0) {
+          origCoord = { lat: matches[0].lat, lng: matches[0].lng };
+        } else {
+          origCoord = { lat: 20.3523, lng: 85.8193 };
+        }
+      }
+
+      let destCoord = explicitDest;
+      if (!destCoord) {
+        const matches = await stopsApi.searchPlaces(t);
+        if (matches && matches.length > 0) {
+          destCoord = { lat: matches[0].lat, lng: matches[0].lng };
+        } else {
+          destCoord = { lat: 20.3527, lng: 85.8163 };
+        }
+      }
+
+      const planRes = await journeysApi.plan({
+        origin: { lat: origCoord.lat, lng: origCoord.lng, name: f },
+        destination: { lat: destCoord.lat, lng: destCoord.lng, name: t },
+        profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+      });
+
+      if (planRes && planRes.options && planRes.options.length > 0) {
+        setSearchResults(planRes.options);
+        setSelectedIndex(0);
+        addToast('success', `Found ${planRes.options.length} route options for ${t}`);
+      }
+
+      const params = new URLSearchParams(searchParams);
+      params.set('origin', f);
+      params.set('destination', t);
+      params.set('originLat', origCoord.lat.toString());
+      params.set('originLng', origCoord.lng.toString());
+      params.set('destLat', destCoord.lat.toString());
+      params.set('destLng', destCoord.lng.toString());
+      navigate(`/routes?${params.toString()}`, { replace: true });
+    } catch (err) {
+      console.error('Direct route search failed:', err);
+      addToast('error', 'Failed to calculate route. Please try another place.');
+    } finally {
+      setIsSearchingRoute(false);
+    }
+  };
+
+  const handleSwapInputs = () => {
+    const tempO = originInput;
+    const tempD = destInput;
+    setOriginInput(tempD);
+    setDestInput(tempO);
+    handleExecuteSearch(tempD, tempO);
+  };
+
   // Automatically fetch & synchronize routes whenever URL origin / destination changes
   useEffect(() => {
     if (urlOrigin && urlDest) {
@@ -431,24 +559,49 @@ export default function RouteDiscoveryPage() {
         (currentOrigin && currentOrigin !== urlOrigin) ||
         (currentDest && currentDest !== urlDest)
       ) {
-        journeysApi.plan({
-          origin: {
+        (async () => {
+          let origCoord: { lat: number; lng: number } = {
             lat: urlOriginLat ?? 20.3523,
             lng: urlOriginLng ?? 85.8193,
-            name: urlOrigin,
-          },
-          destination: {
+          };
+          let destCoord: { lat: number; lng: number } = {
             lat: urlDestLat ?? 20.3527,
             lng: urlDestLng ?? 85.8163,
-            name: urlDest,
-          },
-          profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
-        }).then((res) => {
+          };
+
+          if (!urlOriginLat || !urlOriginLng) {
+            const matches = await stopsApi.searchPlaces(urlOrigin);
+            if (matches && matches.length > 0) {
+              origCoord = { lat: matches[0].lat, lng: matches[0].lng };
+            }
+          }
+
+          if (!urlDestLat || !urlDestLng) {
+            const matches = await stopsApi.searchPlaces(urlDest);
+            if (matches && matches.length > 0) {
+              destCoord = { lat: matches[0].lat, lng: matches[0].lng };
+            }
+          }
+
+          const res = await journeysApi.plan({
+            origin: {
+              lat: origCoord.lat,
+              lng: origCoord.lng,
+              name: urlOrigin,
+            },
+            destination: {
+              lat: destCoord.lat,
+              lng: destCoord.lng,
+              name: urlDest,
+            },
+            profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+          });
+
           if (res && res.options && res.options.length > 0) {
             setSearchResults(res.options);
             setSelectedIndex(0);
           }
-        }).catch((err) => {
+        })().catch((err) => {
           console.warn('Failed to dynamically sync route from query params:', err);
         });
       }
@@ -482,8 +635,6 @@ export default function RouteDiscoveryPage() {
       setSelectedIndex(0);
     }
   }, [searchResults, selectedIndex]);
-
-  const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
 
   // Coordinates extraction
   const fullRouteArr: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
@@ -739,35 +890,170 @@ export default function RouteDiscoveryPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 space-y-4 font-sans">
-      {/* Top Header Bar */}
-      <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-neutral-900 font-bold overflow-hidden">
-          <span className="truncate max-w-[180px] sm:max-w-[240px]">{selectedRoute?.originName || 'Origin'}</span>
-          <ArrowRight className="w-4 h-4 text-neutral-400 shrink-0" />
-          <span className="truncate max-w-[180px] sm:max-w-[240px]">{selectedRoute?.destinationName || 'Destination'}</span>
-          <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg shrink-0 ml-1">
-            {urlTimeMode === 'now' || !urlDepartTime ? '⚡ Leave Now' : `⏰ ${urlDepartTime}`}
-          </span>
-        </div>
+      {/* Top Header Bar with Live Interactive Route Search */}
+      <div className="bg-white border border-neutral-200 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleExecuteSearch(originInput, destInput);
+          }}
+          className="flex flex-col md:flex-row items-stretch md:items-center gap-2 relative"
+        >
+          {/* Origin Field */}
+          <div className="relative flex-1">
+            <div className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 focus-within:border-black focus-within:bg-white transition-colors">
+              <span className="text-emerald-600 text-sm font-black">🚩</span>
+              <input
+                type="text"
+                value={originInput}
+                onChange={(e) => {
+                  setOriginInput(e.target.value);
+                  setActiveDropdown('origin');
+                }}
+                onFocus={() => setActiveDropdown('origin')}
+                placeholder="From (Campus, Hostel, Stand...)"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+              />
+              {originInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOriginInput('');
+                    setActiveDropdown('origin');
+                  }}
+                  className="text-neutral-400 hover:text-neutral-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* Carpool Hub Action Button */}
+            {/* Origin Autocomplete Suggestions */}
+            {activeDropdown === 'origin' && originSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {originSuggestions.map((place, idx) => (
+                  <button
+                    key={`${place.name}-${idx}`}
+                    type="button"
+                    onClick={() => {
+                      setOriginInput(place.name);
+                      setActiveDropdown(null);
+                      if (destInput.trim()) {
+                        handleExecuteSearch(place.name, destInput, { lat: place.lat, lng: place.lng });
+                      }
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center gap-2.5 transition-colors group"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
+                      {place.description && (
+                        <div className="text-[10px] text-neutral-500 truncate">{place.description}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Swap Button */}
           <button
-            onClick={() => setShowCarpoolModal(true)}
-            className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+            type="button"
+            onClick={handleSwapInputs}
+            title="Swap Origin and Destination"
+            className="self-center p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-black transition-colors shrink-0"
           >
-            <Users className="w-3.5 h-3.5 text-purple-600" />
-            <span>Carpool Hub ({matchingCarpools.length} nearby)</span>
+            <ArrowLeftRight className="w-4 h-4" />
           </button>
 
-          <button
-            onClick={() => navigate('/plan')}
-            className="text-xs font-bold text-neutral-700 hover:text-black bg-neutral-100 hover:bg-neutral-200 px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Change</span>
-          </button>
-        </div>
+          {/* Destination Field */}
+          <div className="relative flex-1">
+            <div className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 focus-within:border-black focus-within:bg-white transition-colors">
+              <span className="text-red-600 text-sm font-black">🏁</span>
+              <input
+                type="text"
+                value={destInput}
+                onChange={(e) => {
+                  setDestInput(e.target.value);
+                  setActiveDropdown('dest');
+                }}
+                onFocus={() => setActiveDropdown('dest')}
+                placeholder="Where to? (Campus, Station, City...)"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+              />
+              {destInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestInput('');
+                    setActiveDropdown('dest');
+                  }}
+                  className="text-neutral-400 hover:text-neutral-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Destination Autocomplete Suggestions */}
+            {activeDropdown === 'dest' && destSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-56 overflow-y-auto divide-y divide-neutral-100">
+                {destSuggestions.map((place, idx) => (
+                  <button
+                    key={`${place.name}-${idx}`}
+                    type="button"
+                    onClick={() => {
+                      setDestInput(place.name);
+                      setActiveDropdown(null);
+                      if (originInput.trim()) {
+                        handleExecuteSearch(originInput, place.name, undefined, { lat: place.lat, lng: place.lng });
+                      }
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center gap-2.5 transition-colors group"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-red-600 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
+                      {place.description && (
+                        <div className="text-[10px] text-neutral-500 truncate">{place.description}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="submit"
+              disabled={isSearchingRoute}
+              className="flex-1 md:flex-none text-xs font-black text-white bg-black hover:bg-neutral-800 disabled:bg-neutral-400 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              {isSearchingRoute ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Search className="w-3.5 h-3.5" />
+              )}
+              <span>{isSearchingRoute ? 'Searching...' : 'Find Routes'}</span>
+            </button>
+
+            {/* Carpool Hub Action Button */}
+            <button
+              type="button"
+              onClick={() => setShowCarpoolModal(true)}
+              className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm shrink-0"
+            >
+              <Users className="w-3.5 h-3.5 text-purple-600" />
+              <span className="hidden sm:inline">Carpool Hub</span>
+              <span className="inline-block bg-purple-200/80 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                {matchingCarpools.length}
+              </span>
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Active Carpool Requests Section */}
@@ -1259,30 +1545,73 @@ export default function RouteDiscoveryPage() {
                   <span>🚩</span>
                   <span className="truncate max-w-[75px] sm:max-w-[110px]">{(selectedRoute.originName || '').split('(')[0].trim() || 'Start'}</span>
                 </span>
-                <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
-                  <span>🚶</span>
-                  <span>Walk</span>
-                </span>
-                <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                  <span>🚏</span>
-                  <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[0]?.name.split('(')[0].trim() || 'Board'}</span>
-                </span>
-                {selectedRoute.transfers > 0 && selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 2 && (
+
+                {selectedRoute.route?.id === 'CAMPUS_STEP_FREE_WALK' ? (
                   <>
                     <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                    <span className="font-black text-amber-800 flex items-center gap-1 shrink-0 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 text-[10px] animate-pulse">
-                      <span>🔄</span>
-                      <span className="truncate max-w-[85px] sm:max-w-[120px]">Change: {selectedRoute.intermediateStops[1]?.name.split('(')[0].trim()}</span>
+                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                      <span>🚶</span>
+                      <span>Paved Footpath ({selectedRoute.duration}m)</span>
+                    </span>
+                  </>
+                ) : selectedRoute.route?.id === 'CAMPUS_SMART_CYCLE' ? (
+                  <>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-bold text-cyan-700 flex items-center gap-1 shrink-0 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200 text-[11px]">
+                      <span>🚲</span>
+                      <span>Cycle Track ({selectedRoute.duration}m)</span>
+                    </span>
+                  </>
+                ) : selectedRoute.route?.vehicleType === 'campus-vehicle' ? (
+                  <>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
+                      <span>🚶</span>
+                      <span>Walk</span>
+                    </span>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                      <span>⚡</span>
+                      <span className="truncate max-w-[85px] sm:max-w-[120px]">EV Shuttle</span>
+                    </span>
+                  </>
+                ) : selectedRoute.route?.vehicleType === 'shared-transport' ? (
+                  <>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-bold text-amber-700 flex items-center gap-1 shrink-0 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[11px]">
+                      <span>{selectedRoute.route.id.includes('BIKE') ? '🏍️' : selectedRoute.route.id.includes('CARPOOL') ? '🤝' : '🚖'}</span>
+                      <span>{selectedRoute.route.shortName} ({selectedRoute.duration}m)</span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-semibold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[10px]">
+                      <span>🚶</span>
+                      <span>Walk</span>
+                    </span>
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-bold text-emerald-700 flex items-center gap-1 shrink-0 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                      <span>🚏</span>
+                      <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[0]?.name.split('(')[0].trim() || 'Board'}</span>
+                    </span>
+                    {selectedRoute.transfers > 0 && selectedRoute.intermediateStops && selectedRoute.intermediateStops.length > 2 && (
+                      <>
+                        <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                        <span className="font-black text-amber-800 flex items-center gap-1 shrink-0 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 text-[10px] animate-pulse">
+                          <span>🔄</span>
+                          <span className="truncate max-w-[85px] sm:max-w-[120px]">Change: {selectedRoute.intermediateStops[1]?.name.split('(')[0].trim()}</span>
+                        </span>
+                      </>
+                    )}
+                    <span className="text-neutral-400 font-black text-[10px]">➔</span>
+                    <span className="font-bold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
+                      <span>🚏</span>
+                      <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[selectedRoute.intermediateStops.length - 1]?.name.split('(')[0].trim() || 'Alight'}</span>
                     </span>
                   </>
                 )}
-                <span className="text-neutral-400 font-black text-[10px]">➔</span>
-                <span className="font-bold text-blue-700 flex items-center gap-1 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
-                  <span>🚏</span>
-                  <span className="truncate max-w-[85px] sm:max-w-[120px]">{selectedRoute.intermediateStops?.[selectedRoute.intermediateStops.length - 1]?.name.split('(')[0].trim() || 'Alight'}</span>
-                </span>
+
                 <span className="text-neutral-400 font-black text-[10px]">➔</span>
                 <span className="font-bold text-red-800 flex items-center gap-1 shrink-0 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 text-[11px]">
                   <span>🏁</span>

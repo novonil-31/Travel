@@ -354,8 +354,52 @@ export const journeysApi = {
     destination: { lat: number; lng: number; name: string };
     options: RouteSearchResult[];
   }> => {
-    const originName = data.origin.name || (await reverseGeocodeLive(data.origin.lat, data.origin.lng)) || 'Origin';
-    const destName = data.destination.name || (await reverseGeocodeLive(data.destination.lat, data.destination.lng)) || 'Destination';
+    let finalOriginLat = data.origin.lat;
+    let finalOriginLng = data.origin.lng;
+    let finalOriginName = data.origin.name;
+
+    let finalDestLat = data.destination.lat;
+    let finalDestLng = data.destination.lng;
+    let finalDestName = data.destination.name;
+
+    // Resolve exact coordinates if destination name was provided and coords are fallback or missing
+    if (finalDestName && finalDestName !== 'Destination') {
+      try {
+        const destMatches = await searchPlacesLive(finalDestName);
+        if (destMatches && destMatches.length > 0) {
+          const topDest = destMatches[0];
+          const isDefaultDestCoord = Math.abs(finalDestLat - 20.3527) < 0.001 && Math.abs(finalDestLng - 85.8163) < 0.001;
+          if (!finalDestLat || !finalDestLng || (isDefaultDestCoord && !finalDestName.toLowerCase().includes('campus 3') && !finalDestName.toLowerCase().includes('oat'))) {
+            finalDestLat = topDest.lat;
+            finalDestLng = topDest.lng;
+            finalDestName = topDest.name;
+          }
+        }
+      } catch (err) {
+        console.warn('Geocoding destination name fallback:', err);
+      }
+    }
+
+    // Resolve exact coordinates if origin name was provided and coords are fallback or missing
+    if (finalOriginName && finalOriginName !== 'Origin') {
+      try {
+        const origMatches = await searchPlacesLive(finalOriginName);
+        if (origMatches && origMatches.length > 0) {
+          const topOrig = origMatches[0];
+          const isDefaultOrigCoord = Math.abs(finalOriginLat - 20.3523) < 0.001 && Math.abs(finalOriginLng - 85.8193) < 0.001;
+          if (!finalOriginLat || !finalOriginLng || (isDefaultOrigCoord && !finalOriginName.toLowerCase().includes('queen') && !finalOriginName.toLowerCase().includes('qc'))) {
+            finalOriginLat = topOrig.lat;
+            finalOriginLng = topOrig.lng;
+            finalOriginName = topOrig.name;
+          }
+        }
+      } catch (err) {
+        console.warn('Geocoding origin name fallback:', err);
+      }
+    }
+
+    const originName = finalOriginName || (await reverseGeocodeLive(finalOriginLat, finalOriginLng)) || 'Origin';
+    const destName = finalDestName || (await reverseGeocodeLive(finalDestLat, finalDestLng)) || 'Destination';
 
     // Compute nearby stands for origin
     const nearbyStands = DEMO_TRANSPORT_STANDS.map((s) => ({
@@ -366,7 +410,7 @@ export const journeysApi = {
       longitude: s.longitude,
       address: s.address,
       operatingHours: s.operatingHours,
-      distanceM: Math.round(haversineDistanceClient(data.origin.lat, data.origin.lng, s.latitude, s.longitude)),
+      distanceM: Math.round(haversineDistanceClient(finalOriginLat, finalOriginLng, s.latitude, s.longitude)),
       typicalFareMin: s.typicalFareMin,
       typicalFareMax: s.typicalFareMax,
       currency: s.currency,
@@ -376,17 +420,17 @@ export const journeysApi = {
       ? new Date((data as any).departureTime)
       : new Date();
 
-    // Generate comprehensive real-world multimodal options (Bus 10, Express Bus 11, Direct Auto, Shared Stand, Bike Taxi)
+    // Generate comprehensive real-world multimodal options
     const options = await generateDynamicSearchResults(
-      { lat: data.origin.lat, lng: data.origin.lng, name: originName },
-      { lat: data.destination.lat, lng: data.destination.lng, name: destName },
+      { lat: finalOriginLat, lng: finalOriginLng, name: originName },
+      { lat: finalDestLat, lng: finalDestLng, name: destName },
       data.profileType || 'none',
       departureDate,
     );
 
     return {
-      origin: { lat: data.origin.lat, lng: data.origin.lng, name: originName },
-      destination: { lat: data.destination.lat, lng: data.destination.lng, name: destName },
+      origin: { lat: finalOriginLat, lng: finalOriginLng, name: originName },
+      destination: { lat: finalDestLat, lng: finalDestLng, name: destName },
       options,
     };
   },

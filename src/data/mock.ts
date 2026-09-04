@@ -286,7 +286,7 @@ export async function generateDynamicSearchResults(
 
   // Calculate geodesic distance
   const directDistanceM = Math.round(haversineDistanceClient(origin.lat, origin.lng, destination.lat, destination.lng));
-  const directDistanceKm = Math.max(0.5, directDistanceM / 1000);
+  const directDistanceKm = Math.max(0.05, directDistanceM / 1000);
 
   // Check geographic boundaries
   const isDestInIndia = destination.lat >= 6.5 && destination.lat <= 37.5 && destination.lng >= 68.0 && destination.lng <= 97.5;
@@ -1615,7 +1615,719 @@ export async function generateDynamicSearchResults(
   }
 
   // =========================================================================
-  // TIER 1: LOCAL URBAN (DISTANCE <= 45KM WITHIN CRUT MO BUS NETWORK)
+  // TIER 1A: SHORT DISTANCE & INTRA-CAMPUS COMMUTE (< 2.2KM OR UNIVERSITY / HOSTEL SITES)
+  // =========================================================================
+  const isCampusTrip = directDistanceKm <= 2.2 || (
+    directDistanceKm <= 5.0 && (
+      (origin.name.toLowerCase().includes('campus') || origin.name.toLowerCase().includes('kp') || origin.name.toLowerCase().includes('qc') || origin.name.toLowerCase().includes('kiit') || origin.name.toLowerCase().includes('hostel') || origin.name.toLowerCase().includes('palace') || origin.name.toLowerCase().includes('castle')) &&
+      (destination.name.toLowerCase().includes('campus') || destination.name.toLowerCase().includes('kp') || destination.name.toLowerCase().includes('qc') || destination.name.toLowerCase().includes('kiit') || destination.name.toLowerCase().includes('hostel') || destination.name.toLowerCase().includes('palace') || destination.name.toLowerCase().includes('castle'))
+    )
+  );
+
+  if (isCampusTrip) {
+    // 1. Fetch real road driving & walking geometries for campus
+    const [directDrivingRes, walkRoadRes] = await Promise.all([
+      fetchRoadGeometryLive(origin.lat, origin.lng, destination.lat, destination.lng, 'driving'),
+      fetchRoadGeometryLive(origin.lat, origin.lng, destination.lat, destination.lng, 'walking'),
+    ]);
+    const directDrivingPath = directDrivingRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, destination.lat, destination.lng, 16);
+    const directDrivingDistM = directDrivingRes?.distanceM || directDistanceM;
+    const directDrivingDurationMin = directDrivingRes?.durationMin || Math.max(2, Math.ceil(directDrivingDistM / 400));
+
+    const walkPath = (walkRoadRes?.coordinates && walkRoadRes.coordinates.length >= 2) ? walkRoadRes.coordinates : directDrivingPath;
+    const walkDistM = walkRoadRes?.distanceM || directDistanceM;
+    const walkDurationMin = walkRoadRes?.durationMin || Math.max(2, Math.round(walkDistM / 70));
+
+    // Closest transport stands for campus
+    const nearbyStandsList = DEMO_TRANSPORT_STANDS.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      address: s.address,
+      operatingHours: s.operatingHours,
+      distanceM: Math.round(haversineDistanceClient(origin.lat, origin.lng, s.latitude, s.longitude)),
+      typicalFareMin: s.typicalFareMin,
+      typicalFareMax: s.typicalFareMax,
+      currency: s.currency,
+    })).sort((a, b) => a.distanceM - b.distanceM).slice(0, 3);
+
+    const nearestCampusStand = nearbyStandsList[0] || {
+      id: 'stand_campus_hub',
+      name: 'KIIT Campus Hub Stand',
+      latitude: 20.3540,
+      longitude: 85.8168,
+      distanceM: 60,
+    };
+
+    // =========================================================================
+    // OFFICIAL KIIT ECO EV CAMPUS SHUTTLE FLEET (EV Loop 0, EV-1, EV-2, EV-3, EV-4, EV-5)
+    // =========================================================================
+    const ALL_CAMPUS_EV_LINES = [
+      {
+        id: 'KIIT_EV_LOOP_0',
+        lineName: 'KIIT Eco EV Main Campus Loop',
+        shortName: '⚡ Eco EV Loop',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367250329067, lng: 85.81937388473358, type: 'start_terminus', description: 'Origin EV Starting Stand' },
+          { id: 'ev_stop_c17_qc5', name: 'KIIT Campus 17 (QC 5)', lat: 20.349176095105356, lng: 85.8193992505475, type: 'stop', description: 'Campus 17 & QC-5 EV Boarding Bay' },
+          { id: 'ev_stop_c15a', name: 'KIIT Campus 15A', lat: 20.348642601889445, lng: 85.81588352004134, type: 'stop', description: 'Campus 15A EV Boarding Bay' },
+          { id: 'ev_stop_c3_oat', name: 'KIIT Campus 3 OAT', lat: 20.352708891788033, lng: 85.81637927996144, type: 'end_terminus', description: 'Final Drop Terminus (Open Air Theatre)' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_1',
+        lineName: 'KIIT EV-1 (Campus 25 Block C ➔ Campus 13 Entrance)',
+        shortName: '⚡ EV-1 Shuttle',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c13', name: 'KIIT Campus 13 Entrance', lat: 20.356383, lng: 85.818454, type: 'end_terminus', description: 'Campus 13 Fashion & Media Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_2',
+        lineName: 'KIIT EV-2 (Campus 25 Block C ➔ Campus 14 Architecture)',
+        shortName: '⚡ EV-2 Shuttle',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture & Planning Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_3',
+        lineName: 'KIIT EV-3 Express (Campus 25 Block C ➔ Campus 14 Architecture)',
+        shortName: '⚡ EV-3 Express',
+        stops: [
+          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
+          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_4',
+        lineName: 'KIIT EV-4 (QC 1 ➔ Campus 11 Biotechnology)',
+        shortName: '⚡ EV-4 Shuttle',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
+          { id: 'ev_stop_c11', name: 'KIIT Campus 11 (Biotechnology)', lat: 20.358310, lng: 85.821621, type: 'end_terminus', description: 'Campus 11 Biotechnology & TBI Drop Bay' },
+        ],
+      },
+      {
+        id: 'KIIT_EV_LINE_5',
+        lineName: 'KIIT EV-5 (QC 1 ➔ Campus 12 Film & Media)',
+        shortName: '⚡ EV-5 Shuttle',
+        stops: [
+          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
+          { id: 'ev_stop_c12', name: 'KIIT Campus 12 (Film & Media)', lat: 20.355100, lng: 85.819100, type: 'end_terminus', description: 'Campus 12 Film & Media Sciences Stand' },
+        ],
+      },
+    ];
+
+    let selectedEvLine: typeof ALL_CAMPUS_EV_LINES[0] | null = null;
+    let bestEvBoardStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
+    let bestEvAlightStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
+    let bestJourneyBenefitScore = -Infinity;
+    let bestBoardDist = Infinity;
+    let bestAlightDist = Infinity;
+
+    if (directDistanceM >= 200) {
+      for (const line of ALL_CAMPUS_EV_LINES) {
+        for (let i = 0; i < line.stops.length; i++) {
+          for (let j = 0; j < line.stops.length; j++) {
+            if (i === j) continue;
+            const stBoard = line.stops[i];
+            const stAlight = line.stops[j];
+
+            const boardWalkDist = haversineDistanceClient(origin.lat, origin.lng, stBoard.lat, stBoard.lng);
+            const alightWalkDist = haversineDistanceClient(destination.lat, destination.lng, stAlight.lat, stAlight.lng);
+
+            if (boardWalkDist > 550 || alightWalkDist > 550) continue;
+
+            const distFromBoardToDest = haversineDistanceClient(stBoard.lat, stBoard.lng, destination.lat, destination.lng);
+            const distFromAlightToDest = haversineDistanceClient(stAlight.lat, stAlight.lng, destination.lat, destination.lng);
+            const forwardProgress = distFromBoardToDest - distFromAlightToDest;
+
+            if (forwardProgress < 80) continue;
+
+            const benefitScore = forwardProgress * 1.5 - (boardWalkDist + alightWalkDist);
+            if (benefitScore > bestJourneyBenefitScore) {
+              bestJourneyBenefitScore = benefitScore;
+              selectedEvLine = line;
+              bestEvBoardStop = stBoard;
+              bestEvAlightStop = stAlight;
+              bestBoardDist = boardWalkDist;
+              bestAlightDist = alightWalkDist;
+            }
+          }
+        }
+      }
+    }
+
+    const isEvNearby = selectedEvLine !== null && bestEvBoardStop !== null && bestEvAlightStop !== null;
+    let campusEvShuttleOption: RouteSearchResult | null = null;
+
+    if (isEvNearby && selectedEvLine && bestEvBoardStop && bestEvAlightStop) {
+      const boardIndex = selectedEvLine.stops.findIndex((s) => s.id === bestEvBoardStop.id);
+      const alightIndex = selectedEvLine.stops.findIndex((s) => s.id === bestEvAlightStop.id);
+
+      let evWaypoints: Array<{ lat: number; lng: number }> = [];
+      let evStopsSlice = selectedEvLine.stops;
+
+      if (boardIndex !== -1 && alightIndex !== -1) {
+        if (boardIndex < alightIndex) {
+          evStopsSlice = selectedEvLine.stops.slice(boardIndex, alightIndex + 1);
+        } else {
+          evStopsSlice = selectedEvLine.stops.slice(alightIndex, boardIndex + 1).slice().reverse();
+        }
+      }
+      evWaypoints = evStopsSlice.map((s) => ({ lat: s.lat, lng: s.lng }));
+
+      const [evWalkToBoardRes, evTransitRes, evWalkToDestRes] = await Promise.all([
+        fetchRoadGeometryLive(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 'walking'),
+        fetchMultiPointRoadGeometryLive(evWaypoints, 'driving'),
+        fetchRoadGeometryLive(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 'walking'),
+      ]);
+
+      const evWalkToBoard = evWalkToBoardRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 4);
+      const evTransitPath = evTransitRes?.coordinates || evWaypoints.map((w) => [w.lat, w.lng]);
+      const evWalkToDest = evWalkToDestRes?.coordinates || interpolateCurvedPoints(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 4);
+      const fullEvRoute = [...evWalkToBoard, ...evTransitPath, ...evWalkToDest];
+
+      const evWalkToBoardDistM = evWalkToBoardRes?.distanceM || Math.round(bestBoardDist);
+      const evWalkToDestDistM = evWalkToDestRes?.distanceM || Math.round(bestAlightDist);
+      const evTransitTimeMin = evTransitRes?.durationMin || 4;
+      const evTotalTimeMin = Math.max(3, (evWalkToBoardRes?.durationMin || 1) + evTransitTimeMin + (evWalkToDestRes?.durationMin || 1));
+
+      campusEvShuttleOption = {
+        route: {
+          id: selectedEvLine.id,
+          name: 'Campus EV',
+          shortName: 'Campus EV',
+          vehicleType: 'campus-vehicle',
+          color: '#10b981',
+          description: `Free campus electric vehicle. Leaves from ${bestEvBoardStop.name} ➔ Drops at ${bestEvAlightStop.name}`,
+          active: true,
+          stops: [],
+        },
+        eta: evTotalTimeMin,
+        duration: evTotalTimeMin,
+        walkingDistance: evWalkToBoardDistM + evWalkToDestDistM,
+        transfers: 0,
+        stairs: 0,
+        crowding: 'LOW' as CrowdingLevel,
+        vehicleAccessible: true,
+        delay: 0,
+        travelScope: 'local',
+        originCoords: { lat: origin.lat, lng: origin.lng },
+        destinationCoords: { lat: destination.lat, lng: destination.lng },
+        originName: origin.name,
+        destinationName: destination.name,
+        scores: {
+          accessibility: 98,
+          safety: 98,
+          reliability: 98,
+          comfort: 95,
+          overall: 98,
+        },
+        algorithmMetadata: {
+          algorithm: 'A*',
+          nodesExplored: Math.max(4, evStopsSlice.length * 2),
+          executionTimeMs: 0.35,
+          heuristicEfficiency: '88% search space pruned via Admissible Haversine heuristic',
+        },
+        fare: {
+          type: 'exact',
+          exact: 0,
+          currency: 'INR',
+          confidence: 1.0,
+          source: 'Free Campus EV Service',
+          status: 'confirmed',
+          notes: `100% Free Campus Transit • Departs from ${bestEvBoardStop.name}`,
+        },
+        nearbyStands: nearbyStandsList,
+        priceBreakdown: {
+          mainTicketFare: 0,
+          totalPrice: 0,
+          currency: 'INR',
+          itemizedLegs: [
+            { mode: 'bus', title: `Campus EV (${bestEvBoardStop.name.split('(')[0].trim()} ➔ ${bestEvAlightStop.name.split('(')[0].trim()})`, from: bestEvBoardStop.name, to: bestEvAlightStop.name, fare: 0, bookingLabel: 'Free Campus EV' },
+          ],
+        },
+        recommendation: {
+          recommended: true,
+          rank: 1,
+          reasons: [
+            'Free campus electric vehicle: ₹0 fare',
+            `Leaves from nearby EV stop: ${bestEvBoardStop.name} (${evWalkToBoardDistM}m walk)`,
+            `Drops at ${bestEvAlightStop.name} (${evWalkToDestDistM}m to destination)`,
+            'Zero carbon emission & certified low-floor access',
+          ],
+          tradeoff: `Walk ${evWalkToBoardDistM}m to ${bestEvBoardStop.name}.`,
+        },
+        geometry: {
+          originToBoardWalk: evWalkToBoard,
+          transitPath: evTransitPath,
+          alightToDestWalk: evWalkToDest,
+          fullRoute: fullEvRoute,
+        },
+        intermediateStops: evStopsSlice.slice(1, -1).map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          latitude: s.lat,
+          longitude: s.lng,
+          sequence: idx + 1,
+          hasRamp: true,
+        })),
+        turnByTurn: [
+          `Walk ${evWalkToBoardDistM}m from ${origin.name} to ${bestEvBoardStop.name} EV Stand`,
+          `Board Campus EV at ${bestEvBoardStop.name} (Free service)`,
+          ...(evStopsSlice.length > 2
+            ? [`Route via ${evStopsSlice.slice(1, -1).map((s) => s.name).join(' ➔ ')}`]
+            : []),
+          `Ride EV for ~${evTransitTimeMin} mins to ${bestEvAlightStop.name}`,
+          `Alight at ${bestEvAlightStop.name} and walk ${evWalkToDestDistM}m to ${destination.name}`,
+        ],
+        segments: [
+          { type: 'walk', from: origin.name, to: bestEvBoardStop.name, distance: evWalkToBoardDistM, duration: evWalkToBoardRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Level campus sidewalk' },
+          { type: 'board', from: bestEvBoardStop.name, to: 'Campus EV', duration: 1, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle' },
+          { type: 'ride', from: bestEvBoardStop.name, to: bestEvAlightStop.name, duration: evTransitTimeMin, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle', crowding: 'LOW' },
+          { type: 'alight', from: 'Campus EV', to: bestEvAlightStop.name, duration: 1, accessible: true, stairs: 0 },
+          { type: 'walk', from: bestEvAlightStop.name, to: destination.name, distance: evWalkToDestDistM, duration: evWalkToDestRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Paved walkway' },
+        ],
+        condition: DEMO_CONDITIONS.CV1,
+      };
+    }
+
+    // Step-Free Paved Campus Footpath (Walk) Option
+    const campusWalkOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_STEP_FREE_WALK',
+        name: 'Step-Free Paved Campus Walkway',
+        shortName: '🚶 Campus Walk',
+        vehicleType: 'campus-vehicle',
+        color: '#10b981',
+        description: 'Tree-shaded paved footpath with ramp-equipped road crossings & street illumination',
+        active: true,
+        stops: [],
+      },
+      eta: walkDurationMin,
+      duration: walkDurationMin,
+      walkingDistance: walkDistM,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 96,
+        safety: 95,
+        reliability: 99,
+        comfort: 90,
+        overall: 95,
+      },
+      algorithmMetadata: {
+        algorithm: 'A*',
+        nodesExplored: 6,
+        executionTimeMs: 0.18,
+        heuristicEfficiency: 'Pedestrian sidewalk corridor lower-bound search',
+      },
+      fare: {
+        type: 'exact',
+        exact: 0,
+        currency: 'INR',
+        confidence: 1.0,
+        source: 'Free Pedestrian Walkway Corridor',
+        status: 'confirmed',
+        notes: '0 min wait time • Step-free level pathway',
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 0,
+        totalPrice: 0,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'walk', title: 'Step-Free Campus Footpath', from: origin.name, to: destination.name, fare: 0 },
+        ],
+      },
+      recommendation: {
+        recommended: !isWheelchair && !campusEvShuttleOption && directDistanceKm <= 1.2,
+        rank: !campusEvShuttleOption && directDistanceKm <= 1.2 ? 1 : 2,
+        reasons: [
+          'Zero wait time & 100% free direct walking commute',
+          'Continuous paved footpath with ramp curb cuts',
+          'Well-lit & secure campus avenue',
+        ],
+        tradeoff: `Walking commute of ${walkDistM}m (~${walkDurationMin} min).`,
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: walkPath,
+        alightToDestWalk: [],
+        fullRoute: walkPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Walk along paved sidewalk from ${origin.name}`,
+        `Follow illuminated campus avenue for ${walkDistM}m`,
+        `Arrive at ${destination.name} entrance`,
+      ],
+      segments: [
+        { type: 'walk', from: origin.name, to: destination.name, distance: walkDistM, duration: walkDurationMin, accessible: true, stairs: 0, notes: 'Level paved sidewalk' },
+      ],
+      condition: DEMO_CONDITIONS.CV1,
+    };
+
+    // Campus Smart Cycle Option
+    const cycleDurationMin = Math.max(2, Math.round(directDistanceKm * 3.5));
+    const campusCycleOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_SMART_CYCLE',
+        name: 'Campus Smart Cycle Track',
+        shortName: '🚲 Smart Cycle',
+        vehicleType: 'campus-vehicle',
+        color: '#06b6d4',
+        description: 'Free university public bicycle share with dock-less parking at all campus gates',
+        active: true,
+        stops: [],
+      },
+      eta: cycleDurationMin,
+      duration: cycleDurationMin,
+      walkingDistance: 20,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 90,
+        safety: 95,
+        reliability: 98,
+        comfort: 92,
+        overall: 94,
+      },
+      algorithmMetadata: {
+        algorithm: 'A*',
+        nodesExplored: 8,
+        executionTimeMs: 0.15,
+        heuristicEfficiency: 'Dedicated campus cycle lane routing',
+      },
+      fare: {
+        type: 'exact',
+        exact: 0,
+        currency: 'INR',
+        confidence: 1.0,
+        source: 'Free Campus Green Mobility Initiative',
+        status: 'confirmed',
+        notes: 'Free for students & staff • Dock anywhere on campus',
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 0,
+        totalPrice: 0,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'walk', title: 'Campus Smart Cycle', from: origin.name, to: destination.name, fare: 0 },
+        ],
+      },
+      recommendation: {
+        recommended: !isWheelchair && !campusEvShuttleOption && directDistanceKm > 1.2,
+        rank: !campusEvShuttleOption && directDistanceKm > 1.2 ? 1 : 3,
+        reasons: [
+          'Eco-friendly & active transit: 0 emissions',
+          'Free university bicycle sharing at all academic gates',
+          'Dedicated cycle tracks bypass pedestrian congestion',
+        ],
+        tradeoff: 'Self-pedaled bicycle.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Pick up cycle from ${origin.name} dock stand`,
+        `Cycle along dedicated green track for ${directDistanceM}m (~${cycleDurationMin} min)`,
+        `Park at ${destination.name} bicycle station`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: cycleDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_CYCLE', routeName: 'Smart Cycle', vehicleType: 'campus-vehicle', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.CV1,
+    };
+
+    // Student Carpool Option
+    const campusCarpoolOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_CARPOOL_MATCH',
+        name: 'Student Carpool',
+        shortName: 'Carpool',
+        vehicleType: 'shared-transport',
+        color: '#9333ea',
+        description: `Share an auto/cab with fellow students traveling between ${origin.name.split('(')[0]} and ${destination.name.split('(')[0]}`,
+        active: true,
+        stops: [],
+      },
+      eta: directDrivingDurationMin,
+      duration: directDrivingDurationMin,
+      walkingDistance: 20,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 96,
+        safety: 96,
+        reliability: 95,
+        comfort: 94,
+        overall: 96,
+      },
+      algorithmMetadata: {
+        algorithm: 'Dijkstra',
+        nodesExplored: 16,
+        executionTimeMs: 0.42,
+        heuristicEfficiency: 'Multi-criteria shortest edge relaxation',
+      },
+      fare: {
+        type: 'exact',
+        exact: 15,
+        currency: 'INR',
+        confidence: 0.98,
+        source: 'Verified Student Carpool Split Rate',
+        status: 'estimated',
+        notes: `₹15 split fare per seat (Save ₹15 compared to solo auto)`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: 15,
+        carpoolSplitSavings: 15,
+        totalPrice: 15,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'carpool', title: `Campus Carpool (${origin.name.split('(')[0]} ➔ ${destination.name.split('(')[0]})`, from: origin.name, to: destination.name, fare: 15, bookingLabel: 'Match Student Co-Riders' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 4,
+        reasons: [
+          'Most economical student commute: ₹15 flat split fare',
+          'Instant match with students going to the same hostel/campus',
+          'Safe & verified university corridor riders',
+        ],
+        tradeoff: 'Meet co-riders at the nearest gate/hostel entrance.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Meet student co-riders at ${origin.name} entrance`,
+        `Short campus ride for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
+        `Direct drop-off at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_CARPOOL', routeName: 'Student Carpool', vehicleType: 'shared-transport', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    // Live tariffs for bike & auto
+    const localBikeTariff = calculateLiveTaxiTariff(origin.lat, origin.lng, destination.lat, destination.lng, 'bike');
+    const localAutoTariff = calculateLiveTaxiTariff(origin.lat, origin.lng, destination.lat, destination.lng, 'auto');
+
+    // Campus Auto / E-Rickshaw Option
+    const campusAutoOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_AUTO_TAXI',
+        name: 'Auto / E-Rickshaw',
+        shortName: '🚖 Campus Auto',
+        vehicleType: 'shared-transport',
+        color: '#f59e0b',
+        description: `Direct private cab or auto rickshaw from nearest stand (${nearestCampusStand.name.split('/')[0]})`,
+        active: true,
+        stops: [],
+      },
+      eta: directDrivingDurationMin,
+      duration: directDrivingDurationMin,
+      walkingDistance: nearestCampusStand.distanceM || 30,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: true,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: 95,
+        safety: 93,
+        reliability: 95,
+        comfort: 90,
+        overall: 94,
+      },
+      fare: {
+        type: 'exact',
+        exact: localAutoTariff.fareInr,
+        currency: 'INR',
+        confidence: 0.98,
+        source: `Live Auto Tariff (Base ₹30 + ₹12/km, ${nearestCampusStand.name.split('/')[0]})`,
+        status: 'estimated',
+        notes: `Direct point-to-point ride for ${directDistanceKm.toFixed(1)} km`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: localAutoTariff.fareInr,
+        totalPrice: localAutoTariff.fareInr,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: `Campus Auto (${nearestCampusStand.name.split('/')[0]})`, from: origin.name, to: destination.name, fare: localAutoTariff.fareInr, bookingUrl: localAutoTariff.bookingUrl, bookingLabel: 'Book Auto' },
+        ],
+      },
+      recommendation: {
+        recommended: isWheelchair && !campusEvShuttleOption,
+        rank: isWheelchair ? 1 : 5,
+        reasons: [
+          'Direct point-to-point ride with zero walking required',
+          `Available immediately at ${nearestCampusStand.name.split('/')[0]} stand`,
+          'Protected from rain and direct sun',
+        ],
+        tradeoff: 'Higher fare compared to shared carpool.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Board auto rickshaw at ${origin.name}`,
+        `Direct ride for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
+        `Arrive at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'walk', from: origin.name, to: nearestCampusStand.name, distance: nearestCampusStand.distanceM || 30, duration: 1, accessible: true, stairs: 0 },
+        { type: 'ride', from: nearestCampusStand.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_AUTO', routeName: 'Auto Rickshaw', vehicleType: 'shared-transport', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    // Campus Bike Taxi Option
+    const campusBikeTaxiOption: RouteSearchResult = {
+      route: {
+        id: 'CAMPUS_BIKE_TAXI',
+        name: 'Rapido / Moto Bike Taxi',
+        shortName: '🏍️ Bike Taxi',
+        vehicleType: 'shared-transport',
+        color: '#eab308',
+        description: 'Single-passenger two-wheeler ride via Rapido / Uber Moto',
+        active: true,
+        stops: [],
+      },
+      eta: localBikeTariff.durationMin,
+      duration: localBikeTariff.durationMin,
+      walkingDistance: 0,
+      transfers: 0,
+      stairs: 0,
+      crowding: 'LOW' as CrowdingLevel,
+      vehicleAccessible: false,
+      delay: 0,
+      travelScope: 'local',
+      originCoords: { lat: origin.lat, lng: origin.lng },
+      destinationCoords: { lat: destination.lat, lng: destination.lng },
+      originName: origin.name,
+      destinationName: destination.name,
+      scores: {
+        accessibility: isWheelchair ? 25 : 90,
+        safety: 88,
+        reliability: 95,
+        comfort: 80,
+        overall: isWheelchair ? 45 : 91,
+      },
+      fare: {
+        type: 'exact',
+        exact: localBikeTariff.fareInr,
+        currency: 'INR',
+        confidence: 0.98,
+        source: 'Live Bike Tariff (Base ₹20 + ₹8.50/km)',
+        status: 'estimated',
+        notes: `Quick solo ride for ${directDistanceKm.toFixed(1)} km`,
+      },
+      nearbyStands: nearbyStandsList,
+      priceBreakdown: {
+        mainTicketFare: localBikeTariff.fareInr,
+        totalPrice: localBikeTariff.fareInr,
+        currency: 'INR',
+        itemizedLegs: [
+          { mode: 'taxi', title: 'Instant Bike Ride (Rapido / Uber)', from: origin.name, to: destination.name, fare: localBikeTariff.fareInr, bookingUrl: localBikeTariff.bookingUrl, bookingLabel: 'Book Ride' },
+        ],
+      },
+      recommendation: {
+        recommended: false,
+        rank: 6,
+        reasons: [
+          `Fastest travel time: ~${localBikeTariff.durationMin} mins point-to-point`,
+          'Doorstep pickup directly at hostel/campus gate',
+          'Avoids traffic and road delays',
+        ],
+        tradeoff: 'Single rider motorcycle commute.',
+      },
+      geometry: {
+        originToBoardWalk: [],
+        transitPath: directDrivingPath,
+        alightToDestWalk: [],
+        fullRoute: directDrivingPath,
+      },
+      intermediateStops: [],
+      turnByTurn: [
+        `Board bike taxi at ${origin.name} gate`,
+        `Direct quick hop for ${directDistanceKm.toFixed(1)} km (~${localBikeTariff.durationMin} mins)`,
+        `Arrive at ${destination.name}`,
+      ],
+      segments: [
+        { type: 'ride', from: origin.name, to: destination.name, duration: localBikeTariff.durationMin, accessible: false, stairs: 0, routeId: 'CAMPUS_BIKE', routeName: 'Bike Taxi', crowding: 'LOW' },
+      ],
+      condition: DEMO_CONDITIONS.S1,
+    };
+
+    const campusResults: RouteSearchResult[] = [
+      ...(campusEvShuttleOption ? [campusEvShuttleOption] : []),
+      campusWalkOption,
+      campusCycleOption,
+      campusCarpoolOption,
+      campusAutoOption,
+      campusBikeTaxiOption,
+    ];
+
+    // STRICTLY RETURN ONLY CAMPUS RESULTS — NO CITY PUBLIC TRANSIT BUSES FOR CAMPUS COMMUTES!
+    return campusResults;
+  }
+
+  // =========================================================================
+  // TIER 1B: CITY TRANSIT BUS NETWORK (DISTANCE >= 2.0KM OUT-OF-CAMPUS)
   // =========================================================================
 
   // 1. DYNAMIC MATCHING ENGINE: Find matching official bus lines in the transit network
@@ -1663,18 +2375,22 @@ export async function generateDynamicSearchResults(
       }
     }
 
-    // Only accept if both stops are reasonably accessible (< 3.5km walk)
-    if (bestBoard && bestAlight && minBoardDist <= 3500 && minAlightDist <= 3500) {
-      const totalWalk = minBoardDist + minAlightDist;
-      allCandidateRoutes.push({
-        route: rt,
-        boardStop: bestBoard,
-        alightStop: bestAlight,
-        originWalkDistM: minBoardDist,
-        destWalkDistM: minAlightDist,
-        totalWalkM: totalWalk,
-        score: totalWalk,
-      });
+    // Only accept if both stops are reasonably accessible (< 2.2km walk) and bus heads forward towards destination
+    if (bestBoard && bestAlight && minBoardDist <= 2200 && minAlightDist <= 2200) {
+      const bIdx = stopObjects.findIndex((s) => s.id === bestBoard!.id);
+      const aIdx = stopObjects.findIndex((s) => s.id === bestAlight!.id);
+      if (bIdx !== -1 && aIdx !== -1 && bIdx < aIdx) {
+        const totalWalk = minBoardDist + minAlightDist;
+        allCandidateRoutes.push({
+          route: rt,
+          boardStop: bestBoard,
+          alightStop: bestAlight,
+          originWalkDistM: minBoardDist,
+          destWalkDistM: minAlightDist,
+          totalWalkM: totalWalk,
+          score: totalWalk,
+        });
+      }
     }
   });
 
@@ -1786,22 +2502,8 @@ export async function generateDynamicSearchResults(
 
   allConnectingRoutes.sort((a, b) => a.score - b.score);
 
-  // Take top matching direct bus candidates
-  let topBusCandidates = allCandidateRoutes.slice(0, 1);
-  if (topBusCandidates.length === 0 && allConnectingRoutes.length === 0) {
-    // Default to Route 10 only if no direct or connecting matches
-    topBusCandidates = [
-      {
-        route: OFFICIAL_ROUTES['10'],
-        boardStop: OFFICIAL_STOPS[0],
-        alightStop: OFFICIAL_STOPS[OFFICIAL_STOPS.length - 1],
-        originWalkDistM: 100,
-        destWalkDistM: 100,
-        totalWalkM: 200,
-        score: 200,
-      },
-    ];
-  }
+  // Take top matching direct bus candidates (Never fabricate a fake bus if none connects!)
+  const topBusCandidates = allCandidateRoutes.slice(0, 1);
 
   // Generate Bus Route Results
   const busResults: RouteSearchResult[] = [];
@@ -2120,642 +2822,6 @@ export async function generateDynamicSearchResults(
     currency: s.currency,
   })).sort((a, b) => a.distanceM - b.distanceM).slice(0, 3);
 
-  // Check if this is a Campus / Hostel / Local Intra-University Trip
-  const isCampusTrip = directDistanceKm <= 4.5 && (
-    origin.name.toLowerCase().includes('campus') ||
-    origin.name.toLowerCase().includes('kp') ||
-    origin.name.toLowerCase().includes('qc') ||
-    origin.name.toLowerCase().includes('kiit') ||
-    origin.name.toLowerCase().includes('hostel') ||
-    origin.name.toLowerCase().includes('palace') ||
-    origin.name.toLowerCase().includes('castle') ||
-    destination.name.toLowerCase().includes('campus') ||
-    destination.name.toLowerCase().includes('kp') ||
-    destination.name.toLowerCase().includes('qc') ||
-    destination.name.toLowerCase().includes('kiit') ||
-    destination.name.toLowerCase().includes('hostel') ||
-    destination.name.toLowerCase().includes('palace') ||
-    destination.name.toLowerCase().includes('castle')
-  );
-
-  // Dedicated Campus & Hostel Commute Options
-  if (isCampusTrip) {
-    const nearestCampusStand = nearbyStandsList[0] || {
-      id: 'stand_campus_hub',
-      name: 'KIIT Campus Hub Stand',
-      latitude: 20.3540,
-      longitude: 85.8168,
-      distanceM: 60,
-    };
-
-    // =========================================================================
-    // OFFICIAL KIIT ECO EV CAMPUS SHUTTLE FLEET (EV Loop 0, EV-1, EV-2, EV-3, EV-4, EV-5)
-    // =========================================================================
-    const ALL_CAMPUS_EV_LINES = [
-      {
-        id: 'KIIT_EV_LOOP_0',
-        lineName: 'KIIT Eco EV Main Campus Loop',
-        shortName: '⚡ Eco EV Loop',
-        stops: [
-          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367250329067, lng: 85.81937388473358, type: 'start_terminus', description: 'Origin EV Starting Stand' },
-          { id: 'ev_stop_c17_qc5', name: 'KIIT Campus 17 (QC 5)', lat: 20.349176095105356, lng: 85.8193992505475, type: 'stop', description: 'Campus 17 & QC-5 EV Boarding Bay' },
-          { id: 'ev_stop_c15a', name: 'KIIT Campus 15A', lat: 20.348642601889445, lng: 85.81588352004134, type: 'stop', description: 'Campus 15A EV Boarding Bay' },
-          { id: 'ev_stop_c3_oat', name: 'KIIT Campus 3 OAT', lat: 20.352708891788033, lng: 85.81637927996144, type: 'end_terminus', description: 'Final Drop Terminus (Open Air Theatre)' },
-        ],
-      },
-      {
-        id: 'KIIT_EV_LINE_1',
-        lineName: 'KIIT EV-1 (Campus 25 Block C ➔ Campus 13 Entrance)',
-        shortName: '⚡ EV-1 Shuttle',
-        stops: [
-          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
-          { id: 'ev_stop_c13', name: 'KIIT Campus 13 Entrance', lat: 20.356383, lng: 85.818454, type: 'end_terminus', description: 'Campus 13 Fashion & Media Drop Bay' },
-        ],
-      },
-      {
-        id: 'KIIT_EV_LINE_2',
-        lineName: 'KIIT EV-2 (Campus 25 Block C ➔ Campus 14 Architecture)',
-        shortName: '⚡ EV-2 Shuttle',
-        stops: [
-          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
-          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture & Planning Drop Bay' },
-        ],
-      },
-      {
-        id: 'KIIT_EV_LINE_3',
-        lineName: 'KIIT EV-3 Express (Campus 25 Block C ➔ Campus 14 Architecture)',
-        shortName: '⚡ EV-3 Express',
-        stops: [
-          { id: 'ev_stop_c25', name: 'KIIT Campus 25 Block C', lat: 20.363654, lng: 85.817526, type: 'start_terminus', description: 'Campus 25 Block C Starting Stand' },
-          { id: 'ev_stop_c14', name: 'KIIT Campus 14 (Architecture)', lat: 20.355989, lng: 85.815397, type: 'end_terminus', description: 'Campus 14 Architecture Drop Bay' },
-        ],
-      },
-      {
-        id: 'KIIT_EV_LINE_4',
-        lineName: 'KIIT EV-4 (QC 1 ➔ Campus 11 Biotechnology)',
-        shortName: '⚡ EV-4 Shuttle',
-        stops: [
-          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
-          { id: 'ev_stop_c11', name: 'KIIT Campus 11 (Biotechnology)', lat: 20.358310, lng: 85.821621, type: 'end_terminus', description: 'Campus 11 Biotechnology & TBI Drop Bay' },
-        ],
-      },
-      {
-        id: 'KIIT_EV_LINE_5',
-        lineName: 'KIIT EV-5 (QC 1 ➔ Campus 12 Film & Media)',
-        shortName: '⚡ EV-5 Shuttle',
-        stops: [
-          { id: 'ev_stop_qc1', name: "Queen's Castle 1 (QC 1)", lat: 20.352367, lng: 85.819374, type: 'start_terminus', description: 'QC 1 Starting Stand' },
-          { id: 'ev_stop_c12', name: 'KIIT Campus 12 (Film & Media)', lat: 20.355100, lng: 85.819100, type: 'end_terminus', description: 'Campus 12 Film & Media Sciences Stand' },
-        ],
-      },
-    ];
-
-    // =========================================================================
-    // Find an EV pair (board stop -> alight stop) that GENUINELY HELPS the user's specific journey
-    // =========================================================================
-    let selectedEvLine: typeof ALL_CAMPUS_EV_LINES[0] | null = null;
-    let bestEvBoardStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
-    let bestEvAlightStop: typeof ALL_CAMPUS_EV_LINES[0]['stops'][0] | null = null;
-    let bestJourneyBenefitScore = -Infinity;
-    let bestBoardDist = Infinity;
-    let bestAlightDist = Infinity;
-
-    // Minimum direct journey distance required for EV to even be considered (>= 200m)
-    if (directDistanceM >= 200) {
-      for (const line of ALL_CAMPUS_EV_LINES) {
-        for (let i = 0; i < line.stops.length; i++) {
-          for (let j = 0; j < line.stops.length; j++) {
-            if (i === j) continue; // Must be distinct stops
-
-            const stBoard = line.stops[i];
-            const stAlight = line.stops[j];
-
-            const boardWalkDist = haversineDistanceClient(origin.lat, origin.lng, stBoard.lat, stBoard.lng);
-            const alightWalkDist = haversineDistanceClient(destination.lat, destination.lng, stAlight.lat, stAlight.lng);
-
-            // 1. Proximity Check: User must be within comfortable campus walking range (<= 550m) of boarding & drop stops
-            if (boardWalkDist > 550 || alightWalkDist > 550) {
-              continue;
-            }
-
-            // 2. Forward Progress Check: EV ride must move the commuter towards destination
-            const distFromBoardToDest = haversineDistanceClient(stBoard.lat, stBoard.lng, destination.lat, destination.lng);
-            const distFromAlightToDest = haversineDistanceClient(stAlight.lat, stAlight.lng, destination.lat, destination.lng);
-            const forwardProgress = distFromBoardToDest - distFromAlightToDest;
-
-            // Must cut down destination distance by at least 80 meters (strict positive forward movement)
-            if (forwardProgress < 80) {
-              continue;
-            }
-
-            // 3. Efficiency Benefit Score: Favor maximum forward progress with minimal walk legs
-            const benefitScore = forwardProgress * 1.5 - (boardWalkDist + alightWalkDist);
-            if (benefitScore > bestJourneyBenefitScore) {
-              bestJourneyBenefitScore = benefitScore;
-              selectedEvLine = line;
-              bestEvBoardStop = stBoard;
-              bestEvAlightStop = stAlight;
-              bestBoardDist = boardWalkDist;
-              bestAlightDist = alightWalkDist;
-            }
-          }
-        }
-      }
-    }
-
-    const isEvNearby = selectedEvLine !== null && bestEvBoardStop !== null && bestEvAlightStop !== null;
-
-    let campusEvShuttleOption: RouteSearchResult | null = null;
-
-    if (isEvNearby && selectedEvLine && bestEvBoardStop && bestEvAlightStop) {
-      // Find ordered slice of stops between board and alight
-      const boardIndex = selectedEvLine.stops.findIndex((s) => s.id === bestEvBoardStop.id);
-      const alightIndex = selectedEvLine.stops.findIndex((s) => s.id === bestEvAlightStop.id);
-
-      let evWaypoints: Array<{ lat: number; lng: number }> = [];
-      let evStopsSlice = selectedEvLine.stops;
-
-      if (boardIndex !== -1 && alightIndex !== -1) {
-        if (boardIndex < alightIndex) {
-          evStopsSlice = selectedEvLine.stops.slice(boardIndex, alightIndex + 1);
-        } else {
-          evStopsSlice = selectedEvLine.stops.slice(alightIndex, boardIndex + 1).slice().reverse();
-        }
-      }
-      evWaypoints = evStopsSlice.map((s) => ({ lat: s.lat, lng: s.lng }));
-
-      // Fetch road geometries for selected EV Shuttle with multi-waypoint road routing
-      const [evWalkToBoardRes, evTransitRes, evWalkToDestRes] = await Promise.all([
-        fetchRoadGeometryLive(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 'walking'),
-        fetchMultiPointRoadGeometryLive(evWaypoints, 'driving'),
-        fetchRoadGeometryLive(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 'walking'),
-      ]);
-
-      const evWalkToBoard = evWalkToBoardRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, bestEvBoardStop.lat, bestEvBoardStop.lng, 4);
-      const evTransitPath = evTransitRes?.coordinates || evWaypoints.map((w) => [w.lat, w.lng]);
-      const evWalkToDest = evWalkToDestRes?.coordinates || interpolateCurvedPoints(bestEvAlightStop.lat, bestEvAlightStop.lng, destination.lat, destination.lng, 4);
-      const fullEvRoute = [...evWalkToBoard, ...evTransitPath, ...evWalkToDest];
-
-      const evWalkToBoardDistM = evWalkToBoardRes?.distanceM || Math.round(bestBoardDist);
-      const evWalkToDestDistM = evWalkToDestRes?.distanceM || Math.round(bestAlightDist);
-      const evTransitTimeMin = evTransitRes?.durationMin || 4;
-      const evTotalTimeMin = Math.max(3, (evWalkToBoardRes?.durationMin || 1) + evTransitTimeMin + (evWalkToDestRes?.durationMin || 1));
-
-      campusEvShuttleOption = {
-        route: {
-          id: selectedEvLine.id,
-          name: 'Campus EV',
-          shortName: 'Campus EV',
-          vehicleType: 'campus-vehicle',
-          color: '#10b981',
-          description: `Free campus electric vehicle. Leaves from ${bestEvBoardStop.name} ➔ Drops at ${bestEvAlightStop.name}`,
-          active: true,
-          stops: [],
-        },
-        eta: evTotalTimeMin,
-        duration: evTotalTimeMin,
-        walkingDistance: evWalkToBoardDistM + evWalkToDestDistM,
-        transfers: 0,
-        stairs: 0,
-        crowding: 'LOW' as CrowdingLevel,
-        vehicleAccessible: true,
-        delay: 0,
-        travelScope: 'local',
-        originCoords: { lat: origin.lat, lng: origin.lng },
-        destinationCoords: { lat: destination.lat, lng: destination.lng },
-        originName: origin.name,
-        destinationName: destination.name,
-        scores: {
-          accessibility: 98,
-          safety: 98,
-          reliability: 98,
-          comfort: 95,
-          overall: 98,
-        },
-        algorithmMetadata: {
-          algorithm: 'A*',
-          nodesExplored: Math.max(4, evStopsSlice.length * 2),
-          executionTimeMs: 0.35,
-          heuristicEfficiency: '88% search space pruned via Admissible Haversine heuristic',
-        },
-        fare: {
-          type: 'exact',
-          exact: 0,
-          currency: 'INR',
-          confidence: 1.0,
-          source: 'Free Campus EV Service',
-          status: 'confirmed',
-          notes: `100% Free Campus Transit • Departs from ${bestEvBoardStop.name}`,
-        },
-        nearbyStands: nearbyStandsList,
-        priceBreakdown: {
-          mainTicketFare: 0,
-          totalPrice: 0,
-          currency: 'INR',
-          itemizedLegs: [
-            { mode: 'bus', title: `Campus EV (${bestEvBoardStop.name.split('(')[0].trim()} ➔ ${bestEvAlightStop.name.split('(')[0].trim()})`, from: bestEvBoardStop.name, to: bestEvAlightStop.name, fare: 0, bookingLabel: 'Free Campus EV' },
-          ],
-        },
-        recommendation: {
-          recommended: true,
-          rank: 1,
-          reasons: [
-            'Free campus electric vehicle: ₹0 fare',
-            `Leaves from nearby EV stop: ${bestEvBoardStop.name} (${evWalkToBoardDistM}m walk)`,
-            `Drops at ${bestEvAlightStop.name} (${evWalkToDestDistM}m to destination)`,
-            'Zero carbon emission & certified low-floor access',
-          ],
-          tradeoff: `Walk ${evWalkToBoardDistM}m to ${bestEvBoardStop.name}.`,
-        },
-        geometry: {
-          originToBoardWalk: evWalkToBoard,
-          transitPath: evTransitPath,
-          alightToDestWalk: evWalkToDest,
-          fullRoute: fullEvRoute,
-        },
-        intermediateStops: evStopsSlice.slice(1, -1).map((s, idx) => ({
-          id: s.id,
-          name: s.name,
-          latitude: s.lat,
-          longitude: s.lng,
-          sequence: idx + 1,
-          hasRamp: true,
-        })),
-        turnByTurn: [
-          `Walk ${evWalkToBoardDistM}m from ${origin.name} to ${bestEvBoardStop.name} EV Stand`,
-          `Board Campus EV at ${bestEvBoardStop.name} (Free service)`,
-          ...(evStopsSlice.length > 2
-            ? [`Route via ${evStopsSlice.slice(1, -1).map((s) => s.name).join(' ➔ ')}`]
-            : []),
-          `Ride EV for ~${evTransitTimeMin} mins to ${bestEvAlightStop.name}`,
-          `Alight at ${bestEvAlightStop.name} and walk ${evWalkToDestDistM}m to ${destination.name}`,
-        ],
-        segments: [
-          { type: 'walk', from: origin.name, to: bestEvBoardStop.name, distance: evWalkToBoardDistM, duration: evWalkToBoardRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Level campus sidewalk' },
-          { type: 'board', from: bestEvBoardStop.name, to: 'Campus EV', duration: 1, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle' },
-          { type: 'ride', from: bestEvBoardStop.name, to: bestEvAlightStop.name, duration: evTransitTimeMin, accessible: true, stairs: 0, routeId: selectedEvLine.id, routeName: 'Campus EV', vehicleType: 'campus-vehicle', crowding: 'LOW' },
-          { type: 'alight', from: 'Campus EV', to: bestEvAlightStop.name, duration: 1, accessible: true, stairs: 0 },
-          { type: 'walk', from: bestEvAlightStop.name, to: destination.name, distance: evWalkToDestDistM, duration: evWalkToDestRes?.durationMin || 1, accessible: true, stairs: 0, notes: 'Paved walkway' },
-        ],
-        condition: DEMO_CONDITIONS.CV1,
-      };
-    }
-
-    const campusCarpoolOption: RouteSearchResult = {
-      route: {
-        id: 'CAMPUS_CARPOOL_MATCH',
-        name: 'Student Carpool',
-        shortName: 'Carpool',
-        vehicleType: 'shared-transport',
-        color: '#9333ea',
-        description: `Share an auto/cab with fellow students traveling between ${origin.name.split('(')[0]} and ${destination.name.split('(')[0]}`,
-        active: true,
-        stops: [],
-      },
-      eta: directDrivingDurationMin,
-      duration: directDrivingDurationMin,
-      walkingDistance: 20,
-      transfers: 0,
-      stairs: 0,
-      crowding: 'LOW' as CrowdingLevel,
-      vehicleAccessible: true,
-      delay: 0,
-      travelScope: 'local',
-      originCoords: { lat: origin.lat, lng: origin.lng },
-      destinationCoords: { lat: destination.lat, lng: destination.lng },
-      originName: origin.name,
-      destinationName: destination.name,
-      scores: {
-        accessibility: 96,
-        safety: 96,
-        reliability: 95,
-        comfort: 94,
-        overall: 96,
-      },
-      algorithmMetadata: {
-        algorithm: 'Dijkstra',
-        nodesExplored: 16,
-        executionTimeMs: 0.42,
-        heuristicEfficiency: 'Multi-criteria shortest edge relaxation',
-      },
-      fare: {
-        type: 'exact',
-        exact: 15,
-        currency: 'INR',
-        confidence: 0.98,
-        source: 'Verified Student Carpool Split Rate',
-        status: 'estimated',
-        notes: `₹15 split fare per seat (Save ₹15 compared to solo auto)`,
-      },
-      nearbyStands: nearbyStandsList,
-      priceBreakdown: {
-        mainTicketFare: 15,
-        carpoolSplitSavings: 15,
-        totalPrice: 15,
-        currency: 'INR',
-        itemizedLegs: [
-          { mode: 'carpool', title: `Campus Carpool (${origin.name.split('(')[0]} ➔ ${destination.name.split('(')[0]})`, from: origin.name, to: destination.name, fare: 15, bookingLabel: 'Match Student Co-Riders' },
-        ],
-      },
-      recommendation: {
-        recommended: false,
-        rank: 2,
-        reasons: [
-          'Most economical student commute: ₹15 flat split fare',
-          'Instant match with students going to the same hostel/campus',
-          'Safe & verified university corridor riders',
-        ],
-        tradeoff: 'Meet co-riders at the nearest gate/hostel entrance.',
-      },
-      geometry: {
-        originToBoardWalk: [],
-        transitPath: directDrivingPath,
-        alightToDestWalk: [],
-        fullRoute: directDrivingPath,
-      },
-      intermediateStops: [],
-      turnByTurn: [
-        `Meet student co-riders at ${origin.name} entrance`,
-        `Short campus ride for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
-        `Direct drop-off at ${destination.name}`,
-      ],
-      segments: [
-        { type: 'ride', from: origin.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_CARPOOL', routeName: 'Student Carpool', vehicleType: 'shared-transport', crowding: 'LOW' },
-      ],
-      condition: DEMO_CONDITIONS.S1,
-    };
-
-    const localBikeTariff = calculateLiveTaxiTariff(origin.lat, origin.lng, destination.lat, destination.lng, 'bike');
-    const localAutoTariff = calculateLiveTaxiTariff(origin.lat, origin.lng, destination.lat, destination.lng, 'auto');
-
-    const campusBikeTaxiOption: RouteSearchResult = {
-      route: {
-        id: 'CAMPUS_BIKE_TAXI',
-        name: 'Rapido / Moto Bike Taxi',
-        shortName: '🏍️ Bike Taxi',
-        vehicleType: 'shared-transport',
-        color: '#eab308',
-        description: 'Single-passenger two-wheeler ride via Rapido / Uber Moto',
-        active: true,
-        stops: [],
-      },
-      eta: localBikeTariff.durationMin,
-      duration: localBikeTariff.durationMin,
-      walkingDistance: 0,
-      transfers: 0,
-      stairs: 0,
-      crowding: 'LOW' as CrowdingLevel,
-      vehicleAccessible: false,
-      delay: 0,
-      travelScope: 'local',
-      originCoords: { lat: origin.lat, lng: origin.lng },
-      destinationCoords: { lat: destination.lat, lng: destination.lng },
-      originName: origin.name,
-      destinationName: destination.name,
-      scores: {
-        accessibility: isWheelchair ? 25 : 90,
-        safety: 88,
-        reliability: 95,
-        comfort: 80,
-        overall: isWheelchair ? 45 : 91,
-      },
-      fare: {
-        type: 'exact',
-        exact: localBikeTariff.fareInr,
-        currency: 'INR',
-        confidence: 0.98,
-        source: 'Live Bike Tariff (Base ₹20 + ₹8.50/km)',
-        status: 'estimated',
-        notes: `Quick solo ride for ${directDistanceKm.toFixed(1)} km`,
-      },
-      nearbyStands: nearbyStandsList,
-      priceBreakdown: {
-        mainTicketFare: localBikeTariff.fareInr,
-        totalPrice: localBikeTariff.fareInr,
-        currency: 'INR',
-        itemizedLegs: [
-          { mode: 'taxi', title: 'Instant Bike Ride (Rapido / Uber)', from: origin.name, to: destination.name, fare: localBikeTariff.fareInr, bookingUrl: localBikeTariff.bookingUrl, bookingLabel: 'Book Ride' },
-        ],
-      },
-      recommendation: {
-        recommended: false,
-        rank: 3,
-        reasons: [
-          `Fastest travel time: ~${localBikeTariff.durationMin} mins point-to-point`,
-          'Doorstep pickup directly at hostel/campus gate',
-          'Avoids traffic and road delays',
-        ],
-        tradeoff: 'Single rider motorcycle commute.',
-      },
-      geometry: {
-        originToBoardWalk: [],
-        transitPath: directDrivingPath,
-        alightToDestWalk: [],
-        fullRoute: directDrivingPath,
-      },
-      intermediateStops: [],
-      turnByTurn: [
-        `Board bike taxi at ${origin.name} gate`,
-        `Direct quick hop for ${directDistanceKm.toFixed(1)} km (~${localBikeTariff.durationMin} mins)`,
-        `Arrive at ${destination.name}`,
-      ],
-      segments: [
-        { type: 'ride', from: origin.name, to: destination.name, duration: localBikeTariff.durationMin, accessible: false, stairs: 0, routeId: 'CAMPUS_BIKE', routeName: 'Bike Taxi', crowding: 'LOW' },
-      ],
-      condition: DEMO_CONDITIONS.S1,
-    };
-
-    const campusAutoOption: RouteSearchResult = {
-      route: {
-        id: 'CAMPUS_AUTO_TAXI',
-        name: 'Auto Rickshaw',
-        shortName: '🚖 Auto Rickshaw',
-        vehicleType: 'shared-transport',
-        color: '#f59e0b',
-        description: `Direct private cab or auto rickshaw from nearest stand (${nearestCampusStand.name.split('/')[0]})`,
-        active: true,
-        stops: [],
-      },
-      eta: directDrivingDurationMin,
-      duration: directDrivingDurationMin,
-      walkingDistance: nearestCampusStand.distanceM || 30,
-      transfers: 0,
-      stairs: 0,
-      crowding: 'LOW' as CrowdingLevel,
-      vehicleAccessible: true,
-      delay: 0,
-      travelScope: 'local',
-      originCoords: { lat: origin.lat, lng: origin.lng },
-      destinationCoords: { lat: destination.lat, lng: destination.lng },
-      originName: origin.name,
-      destinationName: destination.name,
-      scores: {
-        accessibility: 95,
-        safety: 93,
-        reliability: 95,
-        comfort: 90,
-        overall: 94,
-      },
-      fare: {
-        type: 'exact',
-        exact: localAutoTariff.fareInr,
-        currency: 'INR',
-        confidence: 0.98,
-        source: `Live Auto Tariff (Base ₹30 + ₹12/km, ${nearestCampusStand.name.split('/')[0]})`,
-        status: 'estimated',
-        notes: `Direct point-to-point ride for ${directDistanceKm.toFixed(1)} km`,
-      },
-      nearbyStands: nearbyStandsList,
-      priceBreakdown: {
-        mainTicketFare: localAutoTariff.fareInr,
-        totalPrice: localAutoTariff.fareInr,
-        currency: 'INR',
-        itemizedLegs: [
-          { mode: 'taxi', title: `Campus Auto (${nearestCampusStand.name.split('/')[0]})`, from: origin.name, to: destination.name, fare: localAutoTariff.fareInr, bookingUrl: localAutoTariff.bookingUrl, bookingLabel: 'Book Auto' },
-        ],
-      },
-      recommendation: {
-        recommended: isWheelchair,
-        rank: 4,
-        reasons: [
-          'Direct point-to-point ride with zero walking required',
-          `Available immediately at ${nearestCampusStand.name.split('/')[0]} stand`,
-          'Protected from rain and direct sun',
-        ],
-        tradeoff: 'Higher fare compared to shared carpool.',
-      },
-      geometry: {
-        originToBoardWalk: [],
-        transitPath: directDrivingPath,
-        alightToDestWalk: [],
-        fullRoute: directDrivingPath,
-      },
-      intermediateStops: [],
-      turnByTurn: [
-        `Board auto rickshaw at ${origin.name}`,
-        `Direct ride for ${directDistanceKm.toFixed(1)} km (~${directDrivingDurationMin} mins)`,
-        `Arrive at ${destination.name}`,
-      ],
-      segments: [
-        { type: 'walk', from: origin.name, to: nearestCampusStand.name, distance: nearestCampusStand.distanceM || 30, duration: 1, accessible: true, stairs: 0 },
-        { type: 'ride', from: nearestCampusStand.name, to: destination.name, duration: directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'CAMPUS_AUTO', routeName: 'Auto Rickshaw', vehicleType: 'shared-transport', crowding: 'LOW' },
-      ],
-      condition: DEMO_CONDITIONS.S1,
-    };
-
-    if (!campusEvShuttleOption) {
-      campusCarpoolOption.recommendation = {
-        recommended: true,
-        rank: 1,
-        reasons: [
-          'Most economical student commute: ₹15 flat split fare',
-          'Instant match with students going to the same hostel/campus',
-          'Safe & verified university corridor riders',
-        ],
-        tradeoff: 'Meet co-riders at the nearest gate/hostel entrance.',
-      };
-    }
-
-    const campusResults: RouteSearchResult[] = [
-      ...(campusEvShuttleOption ? [campusEvShuttleOption] : []),
-      campusCarpoolOption,
-      campusBikeTaxiOption,
-      campusAutoOption,
-    ];
-
-    // If short walk distance <= 1.4 km, also add Step-Free Campus Walkway option
-    if (directDistanceKm <= 1.4) {
-      const walkDurationMin = Math.max(3, Math.round((directDistanceM / 70)));
-      const campusWalkOption: RouteSearchResult = {
-        route: {
-          id: 'CAMPUS_STEP_FREE_WALK',
-          name: 'Step-Free Paved Campus Walkway',
-          shortName: '🚶 Campus Walk',
-          vehicleType: 'campus-vehicle',
-          color: '#10b981',
-          description: 'Tree-shaded paved footpath with ramp-equipped road crossings & street illumination',
-          active: true,
-          stops: [],
-        },
-        eta: walkDurationMin,
-        duration: walkDurationMin,
-        walkingDistance: directDistanceM,
-        transfers: 0,
-        stairs: 0,
-        crowding: 'LOW' as CrowdingLevel,
-        vehicleAccessible: true,
-        delay: 0,
-        travelScope: 'local',
-        originCoords: { lat: origin.lat, lng: origin.lng },
-        destinationCoords: { lat: destination.lat, lng: destination.lng },
-        originName: origin.name,
-        destinationName: destination.name,
-        scores: {
-          accessibility: 95,
-          safety: 94,
-          reliability: 98,
-          comfort: 88,
-          overall: 93,
-        },
-        algorithmMetadata: {
-          algorithm: 'A*',
-          nodesExplored: 6,
-          executionTimeMs: 0.18,
-          heuristicEfficiency: 'Pedestrian sidewalk corridor lower-bound search',
-        },
-        fare: {
-          type: 'exact',
-          exact: 0,
-          currency: 'INR',
-          confidence: 1.0,
-          source: 'Free Pedestrian Walkway Corridor',
-          status: 'confirmed',
-          notes: '0 min wait time • Step-free level pathway',
-        },
-        nearbyStands: nearbyStandsList,
-        priceBreakdown: {
-          mainTicketFare: 0,
-          totalPrice: 0,
-          currency: 'INR',
-          itemizedLegs: [
-            { mode: 'walk', title: 'Step-Free Campus Footpath', from: origin.name, to: destination.name, fare: 0 },
-          ],
-        },
-        recommendation: {
-          recommended: false,
-          rank: 5,
-          reasons: [
-            'Zero wait time & 100% free',
-            'Continuous paved footpath with ramp curb cuts',
-            'Well-lit & secure campus avenue',
-          ],
-          tradeoff: `Walking commute of ${directDistanceM}m (~${walkDurationMin} min).`,
-        },
-        geometry: {
-          originToBoardWalk: [],
-          transitPath: directDrivingPath,
-          alightToDestWalk: [],
-          fullRoute: directDrivingPath,
-        },
-        intermediateStops: [],
-        turnByTurn: [
-          `Walk along paved sidewalk from ${origin.name}`,
-          `Follow illuminated campus avenue for ${directDistanceM}m`,
-          `Arrive at ${destination.name} entrance`,
-        ],
-        segments: [
-          { type: 'walk', from: origin.name, to: destination.name, distance: directDistanceM, duration: walkDurationMin, accessible: true, stairs: 0, notes: 'Level paved sidewalk' },
-        ],
-        condition: DEMO_CONDITIONS.CV1,
-      };
-
-      campusResults.push(campusWalkOption);
-    }
-
-    // Combine Public Bus options with Campus Commute options so buses are ALWAYS available!
-    return [...busResults, ...campusResults];
-  }
-
   // Option: Local Carpool & Auto Split Match (For General City Trips)
   const carpoolOption: RouteSearchResult = {
     route: {
@@ -2799,8 +2865,8 @@ export async function generateDynamicSearchResults(
     },
     nearbyStands: nearbyStandsList,
     recommendation: {
-      recommended: false,
-      rank: 2,
+      recommended: busResults.length === 0,
+      rank: busResults.length === 0 ? 1 : 2,
       reasons: [
         `Save ₹${autoFareExact - carpoolSplitFare} by splitting fare with verified corridor co-riders`,
         'Door-to-door pickup at designated accessible meeting spot',
