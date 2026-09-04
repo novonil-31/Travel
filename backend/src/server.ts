@@ -29,6 +29,7 @@ import notificationsRouter from './routes/notifications.router.js';
 import locationsRouter from './routes/locations.router.js';
 import accessibilityRouter from './routes/accessibility.router.js';
 import adminRouter from './routes/admin.router.js';
+import carpoolsRouter from './routes/carpools.router.js';
 
 export const app = express();
 
@@ -97,6 +98,7 @@ const registerRoutes = (prefix: string) => {
   app.use(`${prefix}/accessibility`, accessibilityRouter);
   app.use(`${prefix}/admin`, adminRouter);
   app.use(`${prefix}/feedback`, feedbackRouter);
+  app.use(`${prefix}/carpools`, carpoolsRouter);
 };
 
 registerRoutes('');

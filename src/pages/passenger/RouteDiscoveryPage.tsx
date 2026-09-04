@@ -23,6 +23,7 @@ import {
   getUserActiveCarpoolRequest,
   getUserActiveCarpoolRequests,
   acceptCarpoolRequest,
+  syncCarpoolRegistryWithBackend,
   type CarpoolRide,
 } from '../../data/liveTimetable';
 import { buildMakeMyTripBusUrl, extractCityForBooking, detectCorridorPopularity } from '../../utils/liveTransitPriceFetcher';
@@ -822,23 +823,33 @@ export default function RouteDiscoveryPage() {
     return () => clearInterval(interval);
   }, [fetchLiveTelemetry]);
 
-  // Live Matching Carpools along this Corridor
-  const matchingCarpools = getMatchingCarpools(
-    originCoords[0],
-    originCoords[1],
-    destCoords[0],
-    destCoords[1],
+  // Live Matching Carpools along this Corridor (Recomputed whenever registry or user changes)
+  const matchingCarpools = useMemo(() => {
+    return getMatchingCarpools(
+      originCoords[0],
+      originCoords[1],
+      destCoords[0],
+      destCoords[1],
+      urlDepartTime,
+      currentUser?.id,
+      currentUser?.email
+    );
+  }, [
+    originCoords,
+    destCoords,
     urlDepartTime,
-    currentUser?.id
-  );
+    currentUser?.id,
+    currentUser?.email,
+    carpoolRegistryVersion,
+  ]);
 
   // Active Applied Carpool Requests by Current User
   const [activeUserCarpools, setActiveUserCarpools] = useState<CarpoolRide[]>([]);
 
   const refreshActiveCarpools = useCallback(() => {
-    const list = getUserActiveCarpoolRequests(currentUser?.id);
+    const list = getUserActiveCarpoolRequests(currentUser?.id, currentUser?.email);
     setActiveUserCarpools(list);
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.email]);
 
   useEffect(() => {
     refreshActiveCarpools();
@@ -850,6 +861,34 @@ export default function RouteDiscoveryPage() {
       refreshActiveCarpools();
     }, 15000);
     return () => clearInterval(interval);
+  }, [refreshActiveCarpools]);
+
+  // Cross-Window and Real-time Backend Synchronization for Carpools
+  useEffect(() => {
+    syncCarpoolRegistryWithBackend().then(() => {
+      setCarpoolRegistryVersion((v) => v + 1);
+    });
+
+    const handleRegistryUpdate = () => {
+      refreshActiveCarpools();
+      setCarpoolRegistryVersion((v) => v + 1);
+    };
+
+    window.addEventListener('access_carpool_updated', handleRegistryUpdate);
+    window.addEventListener('storage', handleRegistryUpdate);
+
+    // Poll backend every 5s so requests from other browsers/devices appear dynamically
+    const pollInterval = setInterval(() => {
+      syncCarpoolRegistryWithBackend().then(() => {
+        setCarpoolRegistryVersion((v) => v + 1);
+      });
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('access_carpool_updated', handleRegistryUpdate);
+      window.removeEventListener('storage', handleRegistryUpdate);
+      clearInterval(pollInterval);
+    };
   }, [refreshActiveCarpools]);
 
   // Listen for Live Acceptance Notifications
@@ -953,6 +992,12 @@ export default function RouteDiscoveryPage() {
   const handleAcceptCarpool = (carpool: CarpoolRide) => {
     setSelectedCarpoolMatch(carpool);
     setShowCarpoolModal(false);
+    acceptCarpoolRequest(
+      carpool.id,
+      currentUser?.name || 'Verified Co-Rider',
+      currentUser?.phoneNumber || '+91 94370 88900'
+    );
+    setCarpoolRegistryVersion((v) => v + 1);
     addToast(
       'success',
       `🤝 Matched with ${carpool.hostName}! Meeting spot: ${carpool.optimalMeetingPoint.name} at ${carpool.meetingTime}.`
@@ -967,6 +1012,7 @@ export default function RouteDiscoveryPage() {
 
     registerCarpoolRequest({
       userId: currentUser?.id || `usr-${Date.now()}`,
+      userEmail: currentUser?.email,
       userName: cleanName,
       userPhone: cleanPhone,
       role: poolRoleInput,

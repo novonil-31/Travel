@@ -952,7 +952,7 @@ export function getOnDemandTaxiLive(
     driverRating: 4.91,
     tripCount: 2420,
     fareCalculated: bikeFare,
-    bookingDeepLink: `https://rapido.onelink.me/`,
+    bookingDeepLink: 'https://rapido.onelink.me/',
     safetyFeatures: ['Verified Driver & Clean Helmet Provided', 'Fastest Road Transit', 'Live SOS Pin Sharing'],
   };
 }
@@ -961,6 +961,7 @@ export function getOnDemandTaxiLive(
 export interface CarpoolRide {
   id: string;
   userId?: string;
+  userEmail?: string;
   isCurrentUser?: boolean;
   role: 'driver' | 'passenger_split';
   status?: 'pending' | 'matched' | 'confirmed' | 'expired';
@@ -1005,6 +1006,7 @@ export interface CarpoolRide {
 
 export interface CarpoolRequestInput {
   userId?: string;
+  userEmail?: string;
   userName?: string;
   userPhone?: string;
   role?: 'driver' | 'passenger_split';
@@ -1085,14 +1087,46 @@ export function getStoredCarpoolRegistry(): CarpoolRide[] {
 }
 
 /**
- * Save updated carpool registry to persistent storage
+ * Save updated carpool registry to persistent storage and notify all windows/listeners
  */
 export function saveCarpoolRegistry(rides: CarpoolRide[]): void {
   try {
     localStorage.setItem('access_carpool_registry', JSON.stringify(rides));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('access_carpool_updated', { detail: rides }));
+    }
   } catch (e) {
     console.warn('Failed to persist carpool registry', e);
   }
+}
+
+/**
+ * Asynchronously sync carpool requests with backend server to enable cross-account & cross-browser matching
+ */
+export async function syncCarpoolRegistryWithBackend(): Promise<CarpoolRide[]> {
+  try {
+    const res = await fetch('http://localhost:3000/api/carpools', { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const json = await res.json();
+      const serverList = (json?.data || json) as CarpoolRide[];
+      if (Array.isArray(serverList)) {
+        const local = getStoredCarpoolRegistry();
+        const map = new Map<string, CarpoolRide>();
+        // Add local first, then merge server records
+        local.forEach((r) => map.set(r.id, r));
+        serverList.forEach((r) => map.set(r.id, r));
+        const merged = Array.from(map.values()).filter((r) => !isCarpoolRequestExpired(r));
+        localStorage.setItem('access_carpool_registry', JSON.stringify(merged));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('access_carpool_updated', { detail: merged }));
+        }
+        return merged;
+      }
+    }
+  } catch {
+    // Offline or server not running
+  }
+  return getStoredCarpoolRegistry();
 }
 
 /**
@@ -1111,32 +1145,35 @@ function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number
 }
 
 /**
- * Compute shortest angle difference between two bearings (0 - 180 degrees)
+ * Compute smallest difference between two angles in degrees (0 - 180)
  */
-function angleDifference(b1: number, b2: number): number {
-  let diff = Math.abs(b1 - b2) % 360;
-  if (diff > 180) diff = 360 - diff;
-  return diff;
+function angleDifference(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
 }
 
 /**
- * Find the optimal, accessible meeting stop between user's origin and ride host's origin
+ * Compute optimal meeting point along user corridor
  */
 function computeOptimalMeetingPoint(
   userLat: number,
   userLng: number,
-  hostLat: number,
-  hostLng: number,
-  defaultPoint?: CarpoolRide['optimalMeetingPoint']
-): CarpoolRide['optimalMeetingPoint'] {
-  const midLat = (userLat + hostLat) / 2;
-  const midLng = (userLng + hostLng) / 2;
-
-  let bestStop = OFFICIAL_STOPS[0];
+  partnerLat: number,
+  partnerLng: number,
+  defaultPoint?: {
+    name: string;
+    distanceMeters: number;
+    walkingMinutes: number;
+    landmark: string;
+    coordinates: [number, number];
+  }
+) {
+  // Find closest official stop to user
   let minStopDist = Infinity;
+  let bestStop = OFFICIAL_STOPS[0];
 
   OFFICIAL_STOPS.forEach((stop) => {
-    const dist = haversineDistanceClient(midLat, midLng, stop.lat, stop.lng);
+    const dist = haversineDistanceClient(userLat, userLng, stop.lat, stop.lng);
     if (dist < minStopDist) {
       minStopDist = dist;
       bestStop = stop;
@@ -1146,14 +1183,13 @@ function computeOptimalMeetingPoint(
   const walkFromUserM = Math.round(haversineDistanceClient(userLat, userLng, bestStop.lat, bestStop.lng));
   const walkMinutes = Math.max(1, Math.round(walkFromUserM / 65));
 
-  // If the calculated stop is reasonably close (under 1.5 km), use it; otherwise fallback to default
-  if (walkFromUserM < 1500) {
+  if (walkFromUserM < 2500) {
     return {
       name: `${bestStop.name} (${bestStop.bayNumber})`,
       distanceMeters: Math.max(30, walkFromUserM),
       walkingMinutes: walkMinutes,
       landmark: `${bestStop.hasRamp ? '♿ Step-Free Ramp' : 'Accessible Sidewalk'} • Covered shelter at ${bestStop.shortName}`,
-      coordinates: [bestStop.lat, bestStop.lng],
+      coordinates: [bestStop.lat, bestStop.lng] as [number, number],
     };
   }
 
@@ -1171,41 +1207,48 @@ function computeOptimalMeetingPoint(
     distanceMeters: Math.max(30, walkFromUserM),
     walkingMinutes: walkMinutes,
     landmark: 'Designated step-free commuter pickup point',
-    coordinates: [bestStop.lat, bestStop.lng],
+    coordinates: [bestStop.lat, bestStop.lng] as [number, number],
   };
 }
 
 /**
- * Intelligent Corridor Matching Algorithm for Carpools & Shared Rides
+ * Intelligent Multi-Account Corridor Matching Algorithm for Carpools & Shared Rides
  *
- * Strictly evaluates:
- * 1. Geographic origin proximity (within 3.5 km)
- * 2. Geographic destination proximity (within 3.5 km)
- * 3. Direction vector bearing alignment (within 55 degrees)
- * 4. Excludes current user's own broadcasted requests (shows only OTHER commuters)
+ * Reliably matches commuters based on:
+ * 1. Geographic origin proximity (within 7.5 km)
+ * 2. Geographic destination proximity (within 9.5 km)
+ * 3. Direction vector bearing alignment (within 90 degrees)
+ * 4. Excludes current user's OWN broadcasted requests (shows only other co-riders)
  */
 export function getMatchingCarpools(
   userOriginLat: number,
   userOriginLng: number,
   userDestLat: number,
   userDestLng: number,
-  departureTimeText?: string,
-  currentUserId?: string
+  _departureTimeText?: string,
+  currentUserId?: string,
+  currentUserEmail?: string
 ): CarpoolRide[] {
   const allRides = getStoredCarpoolRegistry();
-
-  // Compute user journey vector bearing
   const userBearing = calculateBearing(userOriginLat, userOriginLng, userDestLat, userDestLng);
-
   const matchedRides: CarpoolRide[] = [];
 
   for (const pool of allRides) {
-    // 1. Exclude the current user's own requests (must only show OTHER users)
-    if (pool.isCurrentUser || (currentUserId && pool.userId === currentUserId)) {
+    // 1. Exclude the current user's own broadcasted requests (must only show OTHER users)
+    const isOwnRide = Boolean(
+      (currentUserId && pool.userId && pool.userId === currentUserId) ||
+      (currentUserEmail && pool.userEmail && pool.userEmail === currentUserEmail)
+    );
+    if (isOwnRide) {
       continue;
     }
 
-    // 2. Compute origin & destination distances (in meters)
+    // 2. Only show open/pending carpool requests (or matched with current user)
+    if (pool.status && pool.status !== 'pending') {
+      continue;
+    }
+
+    // 3. Compute origin & destination distances (in meters)
     const originDist = Math.round(
       haversineDistanceClient(userOriginLat, userOriginLng, pool.originCoords[0], pool.originCoords[1])
     );
@@ -1213,12 +1256,12 @@ export function getMatchingCarpools(
       haversineDistanceClient(userDestLat, userDestLng, pool.destinationCoords[0], pool.destinationCoords[1])
     );
 
-    // Strict Corridor Boundary: Both origin and destination must be within 3.5 km
-    if (originDist > 3500 || destDist > 3500) {
+    // Generous corridor radius (up to 7.5 km origin, 9.5 km destination) so campus & city commuters match easily
+    if (originDist > 7500 || destDist > 9500) {
       continue;
     }
 
-    // 3. Direction Vector Bearing Check: Must be travelling in the same direction!
+    // 4. Direction Vector Bearing Check: Must be travelling in the same general direction (within 90°)
     const poolBearing = calculateBearing(
       pool.originCoords[0],
       pool.originCoords[1],
@@ -1226,28 +1269,18 @@ export function getMatchingCarpools(
       pool.destinationCoords[1]
     );
     const bearingDiff = angleDifference(userBearing, poolBearing);
-
-    // If travelling in divergent directions (> 55°), they do not share a corridor
-    if (bearingDiff > 55) {
+    if (bearingDiff > 90) {
       continue;
     }
 
-    // 4. Mathematical Weighted Match Score
-    // - Origin proximity score (40 pts)
-    const originScore = Math.max(0, 100 - originDist / 35) * 0.4;
-    // - Destination proximity score (40 pts)
-    const destScore = Math.max(0, 100 - destDist / 35) * 0.4;
-    // - Bearing alignment score (20 pts)
-    const bearingScore = Math.max(0, 100 - (bearingDiff / 55) * 100) * 0.2;
+    // 5. Fair Weighted Match Score
+    const originScore = Math.max(10, 100 - (originDist / 7500) * 80) * 0.45;
+    const destScore = Math.max(10, 100 - (destDist / 9500) * 80) * 0.40;
+    const bearingScore = Math.max(5, 100 - (bearingDiff / 90) * 80) * 0.15;
 
-    const totalMatchPercent = Math.min(99, Math.max(60, Math.round(originScore + destScore + bearingScore)));
+    const totalMatchPercent = Math.min(99, Math.max(50, Math.round(originScore + destScore + bearingScore)));
 
-    // Minimum quality threshold to qualify as an actual corridor match
-    if (totalMatchPercent < 65) {
-      continue;
-    }
-
-    // 5. Compute the optimal accessible meeting point between both parties
+    // 6. Compute optimal accessible meeting point
     const optimalMeetingPoint = computeOptimalMeetingPoint(
       userOriginLat,
       userOriginLng,
@@ -1273,7 +1306,7 @@ export function getMatchingCarpools(
 export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide {
   const newId = `pool-req-${Date.now()}`;
   const soloFare = Math.round(90 + Math.random() * 70);
-  const pooledFare = Math.round(soloFare * 0.3);
+  const pooledFare = Math.round(soloFare * 0.35);
 
   const isDriver = input.role === 'driver';
   const hostName = input.userName && input.userName.trim() ? input.userName.trim() : 'Commuter';
@@ -1285,7 +1318,8 @@ export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide 
   const newRide: CarpoolRide = {
     id: newId,
     userId: input.userId || `user-${Date.now()}`,
-    isCurrentUser: true,
+    userEmail: input.userEmail,
+    isCurrentUser: false, // Computed dynamically based on active session
     role: input.role || 'passenger_split',
     status: 'pending',
     hostName,
@@ -1326,49 +1360,15 @@ export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide 
   };
 
   const currentRegistry = getStoredCarpoolRegistry();
-  const updatedRegistry = [newRide, ...currentRegistry];
+  const updatedRegistry = [newRide, ...currentRegistry.filter((r) => r.id !== newId)];
   saveCarpoolRegistry(updatedRegistry);
 
-  // Auto-Match Acceptance Simulation:
-  // After 5 seconds, a verified student/driver on the corridor accepts the request and notifies the user!
-  setTimeout(() => {
-    const registry = getStoredCarpoolRegistry();
-    const targetRide = registry.find((r) => r.id === newId);
-    if (targetRide && targetRide.status === 'pending') {
-      const isOriginCampus = targetRide.originName.toLowerCase().includes('campus') || targetRide.originName.toLowerCase().includes('kp') || targetRide.originName.toLowerCase().includes('qc');
-      const partnerName = isOriginCampus
-        ? (targetRide.role === 'driver' ? 'Sneha Patel (QC-5)' : 'Aman Sharma (KP-7)')
-        : (targetRide.role === 'driver' ? 'Rajesh Mishra' : 'Ananya Senapati');
-      const partnerPhone = '+91 94370 88900';
-      const partnerVehicle = targetRide.role === 'driver' ? 'Passenger Co-Rider' : 'Tata Nexon EV (OD-02-AZ-8890)';
-
-      targetRide.status = 'matched';
-      targetRide.matchedWith = partnerName;
-      targetRide.matchedPhone = partnerPhone;
-      targetRide.matchedVehicle = partnerVehicle;
-      targetRide.matchedAt = new Date().toISOString();
-
-      saveCarpoolRegistry(registry);
-
-      // Dispatch browser event to trigger in-app notification and UI update
-      try {
-        window.dispatchEvent(
-          new CustomEvent('carpool_matched', {
-            detail: {
-              rideId: newId,
-              partnerName,
-              partnerPhone,
-              partnerVehicle,
-              routeCorridor: targetRide.routeCorridor,
-              role: targetRide.role,
-            },
-          })
-        );
-      } catch (e) {
-        console.warn('Dispatch carpool_matched error', e);
-      }
-    }
-  }, 5000);
+  // Sync to backend asynchronously
+  fetch('http://localhost:3000/api/carpools', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newRide),
+  }).catch(() => {});
 
   return newRide;
 }
@@ -1385,6 +1385,13 @@ export function acceptCarpoolRequest(requestId: string, partnerName: string, par
     ride.matchedPhone = partnerPhone;
     ride.matchedAt = new Date().toISOString();
     saveCarpoolRegistry(currentRegistry);
+
+    // Sync accept to backend
+    fetch(`http://localhost:3000/api/carpools/${requestId}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partnerName, partnerPhone }),
+    }).catch(() => {});
 
     try {
       window.dispatchEvent(
@@ -1411,27 +1418,32 @@ export function cancelCarpoolRequest(requestId: string): void {
   const currentRegistry = getStoredCarpoolRegistry();
   const updatedRegistry = currentRegistry.filter((r) => r.id !== requestId);
   saveCarpoolRegistry(updatedRegistry);
+
+  fetch(`http://localhost:3000/api/carpools/${requestId}`, {
+    method: 'DELETE',
+  }).catch(() => {});
 }
 
 /**
  * Retrieve the active user's broadcasted pool request for a specific corridor if one exists
  */
-export function getUserActiveCarpoolRequest(userId?: string): CarpoolRide | null {
+export function getUserActiveCarpoolRequest(userId?: string, userEmail?: string): CarpoolRide | null {
   const currentRegistry = getStoredCarpoolRegistry();
   const found = currentRegistry.find(
-    (r) => r.isCurrentUser || (userId && r.userId === userId)
+    (r) => (userId && r.userId === userId) || (userEmail && r.userEmail === userEmail) || (!userId && !userEmail && r.isCurrentUser)
   );
   return found || null;
 }
 
 /**
- * Retrieve ALL active non-expired applied carpool requests
+ * Retrieve ALL active non-expired applied carpool requests for the current user
  */
-export function getUserActiveCarpoolRequests(userId?: string): CarpoolRide[] {
+export function getUserActiveCarpoolRequests(userId?: string, userEmail?: string): CarpoolRide[] {
   const currentRegistry = getStoredCarpoolRegistry();
-  return currentRegistry.filter(
-    (r) => (r.isCurrentUser || (userId && r.userId === userId)) && !isCarpoolRequestExpired(r)
-  );
+  return currentRegistry.filter((r) => {
+    if (isCarpoolRequestExpired(r)) return false;
+    if (userId && r.userId === userId) return true;
+    if (userEmail && r.userEmail === userEmail) return true;
+    return !userId && !userEmail && r.isCurrentUser;
+  });
 }
-
-
