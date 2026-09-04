@@ -22,7 +22,7 @@ import {
   isServiceOperatingOnDate,
   getExactRailwayTrackAndStops,
 } from '../utils/onlineRouting';
-import { fetchLiveTrainPricing, fetchLiveFlightPricing, fetchLiveBusPricing, calculateLiveTaxiTariff, calculateMultiSourceBusFare } from '../utils/liveTransitPriceFetcher';
+import { fetchLiveTrainPricing, fetchLiveFlightPricing, fetchLiveBusPricing, calculateLiveTaxiTariff, calculateMultiSourceBusFare, selectBenchmarkTrainClass } from '../utils/liveTransitPriceFetcher';
 
 import { OFFICIAL_STOPS, OFFICIAL_ROUTES, calculateOfficialBusFare, type OfficialBusLine, type TransitStopInfo } from './liveTimetable';
 import {
@@ -869,7 +869,8 @@ export async function generateDynamicSearchResults(
       const destTrainTaxi = calculateLiveTaxiTariff(destStation.lat, destStation.lng, destination.lat, destination.lng, 'auto');
       const origTrainCabFare = origTrainTaxi.fareInr;
       const destTrainCabFare = destTrainTaxi.fareInr;
-      const trainTicketFare = trainSched.classes[0]?.fare || 685;
+      const defaultTrainCoach = selectBenchmarkTrainClass(trainSched.classes);
+      const trainTicketFare = defaultTrainCoach.fare;
       const totalTrainJourneyPrice = origTrainCabFare + trainTicketFare + destTrainCabFare;
 
       const superfastRailOption: RouteSearchResult = {
@@ -904,7 +905,7 @@ export async function generateDynamicSearchResults(
           bookingUrl: trainSched.bookingUrl,
           wheelchairAssistanceCode: 'IRCTC Divyangjan Sahayak / Platform Ramp Support',
           availableClasses: trainSched.classes,
-          selectedClassCode: trainSched.classes[0]?.code || '3A',
+          selectedClassCode: defaultTrainCoach.code,
         },
         originCoords: { lat: origin.lat, lng: origin.lng },
         destinationCoords: { lat: destination.lat, lng: destination.lng },
@@ -1151,7 +1152,8 @@ export async function generateDynamicSearchResults(
       const destRegTaxi = calculateLiveTaxiTariff(destStation.lat, destStation.lng, destination.lat, destination.lng, 'auto');
       const origRegCabFare = origRegTaxi.fareInr;
       const destRegCabFare = destRegTaxi.fareInr;
-      const trainRegTicketFare = trainSched.classes[0]?.fare || 380;
+      const defaultRegCoach = selectBenchmarkTrainClass(trainSched.classes);
+      const trainRegTicketFare = defaultRegCoach.fare;
       const totalRegionalTrainPrice = origRegCabFare + trainRegTicketFare + destRegCabFare;
 
       const intercityRailOption: RouteSearchResult = {
@@ -1186,7 +1188,7 @@ export async function generateDynamicSearchResults(
           bookingUrl: trainSched.bookingUrl,
           wheelchairAssistanceCode: 'Step-Free Station Elevator & Automatic Sliding Doors',
           availableClasses: trainSched.classes,
-          selectedClassCode: trainSched.classes[0]?.code || 'CC',
+          selectedClassCode: defaultRegCoach.code,
         },
         originCoords: { lat: origin.lat, lng: origin.lng },
         destinationCoords: { lat: destination.lat, lng: destination.lng },

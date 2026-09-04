@@ -1525,7 +1525,7 @@ export default function RouteDiscoveryPage() {
 
               const isCardTrain = route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL');
               const activeCardCoachCode = isCardTrain
-                ? (selectedCoachClassOverrides[route.route.id] || route.transitChainInfo?.selectedClassCode || route.transitChainInfo?.availableClasses?.[0]?.code)
+                ? (selectedCoachClassOverrides[route.route.id] || route.transitChainInfo?.selectedClassCode || route.transitChainInfo?.availableClasses?.find((c) => c.code === '3A' || c.code === 'CC')?.code || route.transitChainInfo?.availableClasses?.[0]?.code)
                 : undefined;
               const activeCardCoachObj = isCardTrain && activeCardCoachCode
                 ? route.transitChainInfo?.availableClasses?.find((c) => c.code === activeCardCoachCode)
@@ -1618,7 +1618,7 @@ export default function RouteDiscoveryPage() {
                         </div>
                         {Boolean(dynamicCardTicketFare && dynamicCardTicketFare !== displayTotalPrice) && (
                           <div className={`text-[10px] font-bold leading-none mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                            Ticket: ₹{dynamicCardTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
+                            {isCardTrain && activeCardCoachObj ? `Coach [${activeCardCoachObj.code}]: ` : 'Ticket: '}₹{dynamicCardTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
                           </div>
                         )}
                       </div>
@@ -1696,13 +1696,13 @@ export default function RouteDiscoveryPage() {
 
               // Account preference & dynamic coach class resolution
               const availableTrainClasses = selectedRoute.transitChainInfo?.availableClasses || [
-                { code: '2S', name: 'Second Sitting', fare: 160 },
-                { code: 'SL', name: 'Sleeper Class', fare: 275 },
-                { code: '3A', name: 'AC 3 Tier', fare: 745 },
-                { code: '2A', name: 'AC 2 Tier', fare: 1060 },
+                { code: '3A', name: 'AC 3 Tier', fare: 810 },
+                { code: '2A', name: 'AC 2 Tier', fare: 1120 },
+                { code: '1A', name: 'AC First Class', fare: 1860 },
+                { code: 'SL', name: 'Sleeper Class', fare: 325 },
               ];
 
-              const defaultClassCode = selectedRoute.transitChainInfo?.selectedClassCode || availableTrainClasses[0]?.code || 'SL';
+              const defaultClassCode = selectedRoute.transitChainInfo?.selectedClassCode || availableTrainClasses.find((c) => c.code === '3A' || c.code === 'CC')?.code || availableTrainClasses[0]?.code || '3A';
               const userPrefCoach = currentUser?.travelPreferences?.preferredTrainCoach;
               const activeCoachCode = selectedCoachClassOverrides[selectedRoute.route.id] ||
                 (userPrefCoach && availableTrainClasses.some((c) => c.code === userPrefCoach)
@@ -1766,10 +1766,10 @@ export default function RouteDiscoveryPage() {
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-neutral-700 flex items-center gap-1">
                           <span>🚆</span>
-                          <span>Coach Class Recommendation:</span>
+                          <span>IRCTC Coach Class & Official Live Fares:</span>
                         </span>
                         <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md text-[10px]">
-                          {activeCoachObj.name} (Spot Fare: ₹{dynamicTrainFare.toLocaleString()})
+                          {activeCoachObj.name} (Official Fare: ₹{dynamicTrainFare.toLocaleString()})
                         </span>
                       </div>
 

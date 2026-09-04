@@ -375,6 +375,16 @@ export async function fetchLiveFlightPricing(
 // =========================================================================
 // 2. ALL-INDIA OFFICIAL IRCTC TRAIN PRICING & TIMETABLE ENGINE
 // =========================================================================
+export function selectBenchmarkTrainClass(classes: Array<{ code: string; name: string; fare: number }>) {
+  if (!classes || classes.length === 0) return { code: '3A', name: 'AC 3 Tier', fare: 810 };
+  const preferred = ['3A', 'CC', '3E', '2A', 'SL', '1A', '2S', 'EC'];
+  for (const p of preferred) {
+    const found = classes.find((c) => c.code === p);
+    if (found) return found;
+  }
+  return classes[0];
+}
+
 export function calculateAllIndiaTrainTariff(
   originStationCode: string,
   destStationCode: string,
@@ -391,6 +401,7 @@ export function calculateAllIndiaTrainTariff(
   const orig = originStationCode.toUpperCase();
   const dest = destStationCode.toUpperCase();
   const train = resolveExactTrainSchedule(orig, dest, orig, dest, distanceKm, travelDate);
+  const benchmark = selectBenchmarkTrainClass(train.classes);
 
   return {
     trainNumber: train.trainNumber,
@@ -398,7 +409,7 @@ export function calculateAllIndiaTrainTariff(
     trainType: train.trainType,
     durationHours: train.durationHours,
     classes: train.classes,
-    baseFare: train.classes[0]?.fare || 450,
+    baseFare: benchmark.fare,
   };
 }
 
@@ -516,7 +527,8 @@ export async function fetchLiveTrainPricing(
   const realTrains = await fetchLiveTrainsForRoute(orig, dest, realDepDate, realDistanceKm, realOrigCity, realDestCity);
   if (realTrains && realTrains.length > 0) {
     const best = realTrains[0];
-    const baseFare = best.classes?.[0]?.fare || Math.round(140 + realDistanceKm * 0.4);
+    const benchmark = selectBenchmarkTrainClass(best.classes);
+    const baseFare = benchmark.fare;
     const result: LiveTrainFareResult = {
       trainNumber: best.trainNumber,
       trainName: best.trainName,

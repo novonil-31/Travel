@@ -146,66 +146,66 @@ export function calculateIrctcFares(distKm: number, trainType = 'Superfast'): Ar
   }
 
   // Standard Express / Superfast Mail Trains
-  let secondSitting = 90;
-  let chairCar = 380;
-  let sleeper = 240;
-  let thirdAcEconomy = 620;
-  let thirdAc = 680;
-  let secondAc = 980;
-  let firstAc = 1650;
+  let secondSitting = 175;
+  let chairCar = 670;
+  let sleeper = 325;
+  let thirdAcEconomy = 750;
+  let thirdAc = 810;
+  let secondAc = 1120;
+  let firstAc = 1860;
 
   if (d <= 150) {
-    secondSitting = Math.round(60 + d * 0.25);
-    chairCar = Math.round(280 + d * 0.95);
+    secondSitting = Math.round(55 + d * 0.25);
+    chairCar = Math.round(260 + d * 0.85);
     sleeper = Math.round(145 + d * 0.40);
+    thirdAcEconomy = Math.round(480 + d * 0.90);
     thirdAc = Math.round(505 + d * 1.10);
-    secondAc = Math.round(760 + d * 1.50);
-    firstAc = Math.round(1250 + d * 2.40);
-  } else if (d <= 400) {
-    // e.g. BBS - TATA (~300 km): 2S: ₹165, CC: ₹555, SL: ₹265, 3E: ₹720, 3A: ₹780, 2A: ₹1,130, 1A: ₹1,880
-    secondSitting = Math.round(75 + d * 0.30);
-    chairCar = Math.round(280 + d * 0.92);
-    sleeper = Math.round(145 + d * 0.40);
-    thirdAcEconomy = Math.round(420 + d * 1.00);
-    thirdAc = Math.round(460 + d * 1.08);
-    secondAc = Math.round(680 + d * 1.50);
-    firstAc = Math.round(1150 + d * 2.45);
-  } else if (d <= 850) {
-    // e.g. 700 km: 2S: ₹240, SL: ₹450, 3E: ₹1,120, 3A: ₹1,220, 2A: ₹1,750, 1A: ₹2,950
-    secondSitting = Math.round(110 + d * 0.22);
-    chairCar = Math.round(350 + d * 0.85);
-    sleeper = Math.round(175 + d * 0.38);
-    thirdAcEconomy = Math.round(500 + d * 0.92);
-    thirdAc = Math.round(540 + d * 0.98);
-    secondAc = Math.round(800 + d * 1.38);
-    firstAc = Math.round(1400 + d * 2.25);
+    secondAc = Math.round(710 + d * 1.50);
+    firstAc = Math.round(1175 + d * 2.40);
+  } else if (d <= 500) {
+    // e.g. BBS - TATA (~450 km): SL: ₹325, 3E: ₹750, 3A: ₹810, 2A: ₹1,120, 1A: ₹1,860
+    secondSitting = Math.round(95 + d * 0.20);
+    chairCar = Math.round(320 + d * 1.20);
+    sleeper = Math.round(175 + d * 0.34);
+    thirdAcEconomy = Math.round(450 + d * 0.72);
+    thirdAc = Math.round(480 + d * 0.78);
+    secondAc = Math.round(680 + d * 1.05);
+    firstAc = Math.round(1150 + d * 1.65);
+  } else if (d <= 1000) {
+    secondSitting = Math.round(120 + d * 0.18);
+    chairCar = Math.round(420 + d * 0.95);
+    sleeper = Math.round(220 + d * 0.32);
+    thirdAcEconomy = Math.round(550 + d * 0.70);
+    thirdAc = Math.round(600 + d * 0.76);
+    secondAc = Math.round(850 + d * 1.05);
+    firstAc = Math.round(1450 + d * 1.70);
   } else {
-    // Long distance (> 850 km, e.g. 1400 km BBS-Delhi): SL: ₹720, 3E: ₹1,780, 3A: ₹1,950, 2A: ₹2,800, 1A: ₹4,800
-    secondSitting = Math.round(150 + d * 0.18);
-    sleeper = Math.round(220 + d * 0.35);
-    thirdAcEconomy = Math.round(620 + d * 0.85);
-    thirdAc = Math.round(680 + d * 0.92);
-    secondAc = Math.round(1020 + d * 1.28);
-    firstAc = Math.round(1750 + d * 2.15);
+    // Long distance (> 1000 km, e.g. 1800 km BBS-Delhi): SL: ₹685-₹785, 3A: ₹1,810-₹2,050
+    secondSitting = Math.round(160 + d * 0.15);
+    sleeper = Math.round(250 + d * 0.28);
+    thirdAcEconomy = Math.round(680 + d * 0.60);
+    thirdAc = Math.round(750 + d * 0.65);
+    secondAc = Math.round(1100 + d * 0.92);
+    firstAc = Math.round(1950 + d * 1.55);
   }
 
   if (d <= 350) {
     return [
-      { code: '2S', name: 'Second Sitting', fare: secondSitting },
-      { code: 'CC', name: 'AC Chair Car', fare: chairCar },
-      { code: 'SL', name: 'Sleeper Class', fare: sleeper },
       { code: '3A', name: 'AC 3 Tier', fare: thirdAc },
+      { code: 'CC', name: 'AC Chair Car', fare: chairCar },
       { code: '2A', name: 'AC 2 Tier', fare: secondAc },
+      { code: 'SL', name: 'Sleeper Class', fare: sleeper },
       { code: '1A', name: 'AC First Class', fare: firstAc },
+      { code: '2S', name: 'Second Sitting', fare: secondSitting },
     ];
   }
 
   return [
-    { code: 'SL', name: 'Sleeper Class', fare: sleeper },
-    { code: '3E', name: '3 AC Economy', fare: thirdAcEconomy },
     { code: '3A', name: 'AC 3 Tier', fare: thirdAc },
+    { code: '3E', name: '3 AC Economy', fare: thirdAcEconomy },
     { code: '2A', name: 'AC 2 Tier', fare: secondAc },
     { code: '1A', name: 'AC First Class', fare: firstAc },
+    { code: 'SL', name: 'Sleeper Class', fare: sleeper },
   ];
 }
 
@@ -292,15 +292,9 @@ Return strictly valid JSON with this structure:
         }));
     }
 
-    // Determine realistic baseFare for primary display
-    const sleeperClass = classes.find((c) => c.code === 'SL');
-    const chairCarClass = classes.find((c) => c.code === 'CC');
-    const thirdAcClass = classes.find((c) => c.code === '3A');
-    const secondSitClass = classes.find((c) => c.code === '2S');
-
-    const primaryFare = (distanceKm <= 350 && chairCarClass)
-      ? chairCarClass.fare
-      : (sleeperClass?.fare || thirdAcClass?.fare || secondSitClass?.fare || classes[0]?.fare || 265);
+    // Determine realistic benchmark fare for primary display (3A / CC)
+    const benchmarkClass = classes.find((c) => c.code === '3A' || c.code === 'CC') || classes.find((c) => c.code === '3E') || classes[0];
+    const primaryFare = benchmarkClass.fare;
 
     return {
       trainNumber: String(aiRes.trainNumber || '18477'),
@@ -325,9 +319,8 @@ Return strictly valid JSON with this structure:
 
   // 2. Dynamic Timetable Fallback
   const classes = calculateIrctcFares(distanceKm);
-  const sleeperClass = classes.find((c) => c.code === 'SL');
-  const chairCarClass = classes.find((c) => c.code === 'CC');
-  const primaryFare = (distanceKm <= 350 && chairCarClass) ? chairCarClass.fare : (sleeperClass?.fare || classes[0]?.fare || 265);
+  const benchmarkClass = classes.find((c) => c.code === '3A' || c.code === 'CC') || classes.find((c) => c.code === '3E') || classes[0];
+  const primaryFare = benchmarkClass.fare;
   const durHours = Math.round((distanceKm / 72) * 10) / 10;
 
   return {

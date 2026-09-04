@@ -1542,7 +1542,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '05:45 AM',
       arrivalTime: '06:08 AM',
       durationHours: 0.4,
-      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 380 }, { code: 'EC', name: 'Exec Chair Car', fare: 705 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 480 }, { code: 'EC', name: 'Exec Chair Car', fare: 915 }],
       operatingDays: 'Mon, Tue, Wed, Thu, Fri, Sun',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1558,7 +1558,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '06:00 AM',
       arrivalTime: '06:23 AM',
       durationHours: 0.4,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 90 }, { code: 'CC', name: 'AC Chair Car', fare: 315 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 315 }, { code: '2S', name: 'Second Sitting', fare: 90 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1574,7 +1574,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '11:45 AM',
       arrivalTime: '12:12 PM',
       durationHours: 0.45,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 65 }, { code: 'CC', name: 'AC Chair Car', fare: 260 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 285 }, { code: '2S', name: 'Second Sitting', fare: 75 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1592,7 +1592,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '19:40 PM',
       arrivalTime: '20:55 PM',
       durationHours: 1.25,
-      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 420 }, { code: 'EC', name: 'Exec Chair Car', fare: 810 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 520 }, { code: 'EC', name: 'Exec Chair Car', fare: 995 }],
       operatingDays: 'Mon, Tue, Wed, Thu, Fri, Sun',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1608,35 +1608,13 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '15:20 PM',
       arrivalTime: '16:45 PM',
       durationHours: 1.4,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 60 }, { code: 'CC', name: 'AC Chair Car', fare: 245 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 285 }, { code: '2S', name: 'Second Sitting', fare: 75 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
     },
   ],
   'BBS-TATA': [
-    {
-      trainNumber: '18477',
-      trainName: 'Kalinga Utkal Express',
-      trainType: 'Express',
-      originCode: 'BBS',
-      originName: 'Bhubaneswar Central (BBS)',
-      destCode: 'TATA',
-      destName: 'Tatanagar Junction (TATA)',
-      departureTime: '22:00 PM',
-      arrivalTime: '05:40 AM (+1d)',
-      durationHours: 7.66,
-      classes: [
-        { code: '2S', name: 'Second Sitting', fare: 160 },
-        { code: 'SL', name: 'Sleeper Class', fare: 275 },
-        { code: '3A', name: 'AC 3 Tier', fare: 745 },
-        { code: '2A', name: 'AC 2 Tier', fare: 1060 },
-        { code: '1A', name: 'AC First Class', fare: 1780 },
-      ],
-      operatingDays: 'Daily',
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
-    },
     {
       trainNumber: '12801',
       trainName: 'Purushottam Superfast Express',
@@ -1649,10 +1627,33 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       arrivalTime: '06:15 AM (+1d)',
       durationHours: 7.25,
       classes: [
-        { code: 'SL', name: 'Sleeper Class', fare: 290 },
-        { code: '3A', name: 'AC 3 Tier', fare: 780 },
-        { code: '2A', name: 'AC 2 Tier', fare: 1110 },
-        { code: '1A', name: 'AC First Class', fare: 1850 },
+        { code: '3A', name: 'AC 3 Tier', fare: 810 },
+        { code: '3E', name: '3 AC Economy', fare: 750 },
+        { code: '2A', name: 'AC 2 Tier', fare: 1120 },
+        { code: '1A', name: 'AC First Class', fare: 1860 },
+        { code: 'SL', name: 'Sleeper Class', fare: 325 },
+      ],
+      operatingDays: 'Daily',
+      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
+      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+    },
+    {
+      trainNumber: '18477',
+      trainName: 'Kalinga Utkal Express',
+      trainType: 'Express',
+      originCode: 'BBS',
+      originName: 'Bhubaneswar Central (BBS)',
+      destCode: 'TATA',
+      destName: 'Tatanagar Junction (TATA)',
+      departureTime: '22:00 PM',
+      arrivalTime: '05:40 AM (+1d)',
+      durationHours: 7.66,
+      classes: [
+        { code: '3A', name: 'AC 3 Tier', fare: 785 },
+        { code: '2A', name: 'AC 2 Tier', fare: 1120 },
+        { code: '1A', name: 'AC First Class', fare: 1860 },
+        { code: 'SL', name: 'Sleeper Class', fare: 295 },
+        { code: '2S', name: 'Second Sitting', fare: 175 },
       ],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1670,10 +1671,10 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       arrivalTime: '19:35 PM',
       durationHours: 7.33,
       classes: [
-        { code: '2S', name: 'Second Sitting', fare: 165 },
-        { code: 'SL', name: 'Sleeper Class', fare: 275 },
-        { code: '3A', name: 'AC 3 Tier', fare: 745 },
-        { code: '2A', name: 'AC 2 Tier', fare: 1060 },
+        { code: '3A', name: 'AC 3 Tier', fare: 810 },
+        { code: '2A', name: 'AC 2 Tier', fare: 1120 },
+        { code: 'SL', name: 'Sleeper Class', fare: 325 },
+        { code: '2S', name: 'Second Sitting', fare: 175 },
       ],
       operatingDays: 'Tue, Fri, Sun',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1690,29 +1691,13 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '14:55 PM',
       arrivalTime: '22:50 PM',
       durationHours: 7.9,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 240 }, { code: '3A', name: '3rd AC', fare: 645 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 785 }, { code: 'SL', name: 'Sleeper Class', fare: 295 }],
       operatingDays: 'Thu',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
     },
   ],
   'BBS-RNC': [
-    {
-      trainNumber: '18452',
-      trainName: 'Tapaswini Express',
-      trainType: 'Express',
-      originCode: 'BBS',
-      originName: 'Bhubaneswar Central (BBS)',
-      destCode: 'RNC',
-      destName: 'Ranchi Junction (RNC)',
-      departureTime: '21:45 PM',
-      arrivalTime: '10:30 AM (+1d)',
-      durationHours: 12.75,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 295 }, { code: '3A', name: '3rd AC', fare: 810 }, { code: '2A', name: '2nd AC', fare: 1150 }],
-      operatingDays: 'Daily',
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
-    },
     {
       trainNumber: '20836',
       trainName: 'Ranchi - Puri Vande Bharat Express',
@@ -1729,6 +1714,22 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
     },
+    {
+      trainNumber: '18452',
+      trainName: 'Tapaswini Express',
+      trainType: 'Express',
+      originCode: 'BBS',
+      originName: 'Bhubaneswar Central (BBS)',
+      destCode: 'RNC',
+      destName: 'Ranchi Junction (RNC)',
+      departureTime: '21:45 PM',
+      arrivalTime: '10:30 AM (+1d)',
+      durationHours: 12.75,
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 875 }, { code: '2A', name: 'AC 2 Tier', fare: 1220 }, { code: 'SL', name: 'Sleeper Class', fare: 325 }],
+      operatingDays: 'Daily',
+      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
+      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+    },
   ],
   'BBS-ROU': [
     {
@@ -1742,7 +1743,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '05:45 AM',
       arrivalTime: '12:45 PM',
       durationHours: 7.0,
-      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 1050 }, { code: 'EC', name: 'Exec Chair Car', fare: 2050 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 1135 }, { code: 'EC', name: 'Exec Chair Car', fare: 2150 }],
       operatingDays: 'Mon, Tue, Wed, Fri, Sat, Sun',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1758,7 +1759,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '22:10 PM',
       arrivalTime: '07:40 AM (+1d)',
       durationHours: 9.5,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 165 }, { code: 'SL', name: 'Sleeper Class', fare: 275 }, { code: '3A', name: '3rd AC', fare: 740 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 810 }, { code: '2A', name: 'AC 2 Tier', fare: 1120 }, { code: 'SL', name: 'Sleeper Class', fare: 310 }, { code: '2S', name: 'Second Sitting', fare: 175 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1776,24 +1777,8 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '05:15 AM',
       arrivalTime: '11:00 AM',
       durationHours: 5.75,
-      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 980 }, { code: 'EC', name: 'Exec Chair Car', fare: 1910 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 1080 }, { code: 'EC', name: 'Exec Chair Car', fare: 2050 }],
       operatingDays: 'Tue, Wed, Thu, Fri, Sat, Sun',
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
-    },
-    {
-      trainNumber: '11020',
-      trainName: 'Konark Express',
-      trainType: 'Express',
-      originCode: 'BBS',
-      originName: 'Bhubaneswar Central (BBS)',
-      destCode: 'VSKP',
-      destName: 'Visakhapatnam Junction (VSKP)',
-      departureTime: '15:20 PM',
-      arrivalTime: '22:20 PM',
-      durationHours: 7.0,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 160 }, { code: 'SL', name: 'Sleeper Class', fare: 265 }, { code: '3A', name: '3rd AC', fare: 720 }, { code: '2A', name: '2nd AC', fare: 1020 }],
-      operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
     },
@@ -1808,7 +1793,23 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '21:55 PM',
       arrivalTime: '04:25 AM (+1d)',
       durationHours: 6.5,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 280 }, { code: '3A', name: '3rd AC', fare: 760 }, { code: '2A', name: '2nd AC', fare: 1080 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 810 }, { code: '2A', name: 'AC 2 Tier', fare: 1120 }, { code: 'SL', name: 'Sleeper Class', fare: 310 }],
+      operatingDays: 'Daily',
+      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
+      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+    },
+    {
+      trainNumber: '11020',
+      trainName: 'Konark Express',
+      trainType: 'Express',
+      originCode: 'BBS',
+      originName: 'Bhubaneswar Central (BBS)',
+      destCode: 'VSKP',
+      destName: 'Visakhapatnam Junction (VSKP)',
+      departureTime: '15:20 PM',
+      arrivalTime: '22:20 PM',
+      durationHours: 7.0,
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 785 }, { code: '2A', name: 'AC 2 Tier', fare: 1080 }, { code: 'SL', name: 'Sleeper Class', fare: 295 }, { code: '2S', name: 'Second Sitting', fare: 175 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1832,22 +1833,6 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
     },
     {
-      trainNumber: '12822',
-      trainName: 'Dhauli Superfast Express',
-      trainType: 'Superfast',
-      originCode: 'BBS',
-      originName: 'Bhubaneswar Central (BBS)',
-      destCode: 'HWH',
-      destName: 'Howrah Junction (HWH)',
-      departureTime: '11:45 AM',
-      arrivalTime: '19:20 PM',
-      durationHours: 7.58,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 175 }, { code: 'CC', name: 'AC Chair Car', fare: 635 }],
-      operatingDays: 'Daily',
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
-    },
-    {
       trainNumber: '12074',
       trainName: 'Bhubaneswar - Howrah Jan Shatabdi Express',
       trainType: 'Shatabdi',
@@ -1858,7 +1843,23 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '06:00 AM',
       arrivalTime: '12:40 PM',
       durationHours: 6.66,
-      classes: [{ code: '2S', name: 'Second Sitting', fare: 185 }, { code: 'CC', name: 'AC Chair Car', fare: 670 }],
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 670 }, { code: '2S', name: 'Second Sitting', fare: 185 }],
+      operatingDays: 'Daily',
+      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
+      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+    },
+    {
+      trainNumber: '12822',
+      trainName: 'Dhauli Superfast Express',
+      trainType: 'Superfast',
+      originCode: 'BBS',
+      originName: 'Bhubaneswar Central (BBS)',
+      destCode: 'HWH',
+      destName: 'Howrah Junction (HWH)',
+      departureTime: '11:45 AM',
+      arrivalTime: '19:20 PM',
+      durationHours: 7.58,
+      classes: [{ code: 'CC', name: 'AC Chair Car', fare: 635 }, { code: '2S', name: 'Second Sitting', fare: 175 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1874,7 +1875,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '02:20 AM',
       arrivalTime: '10:40 AM',
       durationHours: 8.33,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 275 }, { code: '3A', name: '3rd AC', fare: 745 }, { code: '2A', name: '2nd AC', fare: 1050 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 810 }, { code: '2A', name: 'AC 2 Tier', fare: 1120 }, { code: 'SL', name: 'Sleeper Class', fare: 310 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1892,7 +1893,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '09:30 AM',
       arrivalTime: '09:55 AM (+1d)',
       durationHours: 24.4,
-      classes: [{ code: '3A', name: '3rd AC Economy', fare: 2850 }, { code: '2A', name: '2nd AC Sleeper', fare: 3980 }, { code: '1A', name: '1st AC Coupe', fare: 4950 }],
+      classes: [{ code: '3A', name: '3rd AC Economy', fare: 3150 }, { code: '2A', name: '2nd AC Sleeper', fare: 4400 }, { code: '1A', name: '1st AC Coupe', fare: 6500 }],
       operatingDays: 'Mon, Tue, Thu, Fri',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1908,7 +1909,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '23:00 PM',
       arrivalTime: '04:00 AM (+2d)',
       durationHours: 29.0,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 685 }, { code: '3A', name: '3rd AC', fare: 1810 }, { code: '2A', name: '2nd AC', fare: 2640 }, { code: '1A', name: '1st AC', fare: 4480 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 1810 }, { code: '2A', name: 'AC 2 Tier', fare: 2640 }, { code: '1A', name: 'AC First Class', fare: 4480 }, { code: 'SL', name: 'Sleeper Class', fare: 685 }],
       operatingDays: 'Daily',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -1924,7 +1925,7 @@ export const OFFICIAL_TRAIN_DATABASE: Record<string, RealTrainSchedule[]> = {
       departureTime: '11:00 AM',
       arrivalTime: '15:30 PM (+1d)',
       durationHours: 28.5,
-      classes: [{ code: 'SL', name: 'Sleeper Class', fare: 685 }, { code: '3A', name: '3rd AC', fare: 1810 }, { code: '2A', name: '2nd AC', fare: 2640 }],
+      classes: [{ code: '3A', name: 'AC 3 Tier', fare: 1810 }, { code: '2A', name: 'AC 2 Tier', fare: 2640 }, { code: 'SL', name: 'Sleeper Class', fare: 685 }],
       operatingDays: 'Mon, Wed, Thu, Sat',
       bookingUrl: 'https://www.confirmtkt.com/rbooking/',
       confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
@@ -3197,70 +3198,72 @@ export function resolveExactTrainSchedule(
   const distKm = Math.max(15, distanceKm);
   const durHours = Math.round((distKm / 72) * 10) / 10;
 
-  let secondSitting = 90;
-  let chairCarFare = 380;
-  let sleeperFare = 240;
-  let thirdAcEconomy = 620;
-  let thirdAcFare = 680;
-  let secondAcFare = 980;
-  let firstAcFare = 1650;
-  let execChairCarFare = 850;
+  let secondSitting = 175;
+  let chairCarFare = 670;
+  let sleeperFare = 325;
+  let thirdAcEconomy = 750;
+  let thirdAcFare = 810;
+  let secondAcFare = 1120;
+  let firstAcFare = 1860;
+  let execChairCarFare = 1350;
 
   if (distKm <= 150) {
-    secondSitting = Math.round(60 + distKm * 0.25);
-    chairCarFare = Math.round(280 + distKm * 0.95);
+    secondSitting = Math.round(55 + distKm * 0.25);
+    chairCarFare = Math.round(260 + distKm * 0.85);
     sleeperFare = Math.round(145 + distKm * 0.40);
+    thirdAcEconomy = Math.round(480 + distKm * 0.90);
     thirdAcFare = Math.round(505 + distKm * 1.10);
-    secondAcFare = Math.round(760 + distKm * 1.50);
-    firstAcFare = Math.round(1250 + distKm * 2.40);
+    secondAcFare = Math.round(710 + distKm * 1.50);
+    firstAcFare = Math.round(1175 + distKm * 2.40);
+    execChairCarFare = Math.round(chairCarFare * 1.90);
+  } else if (distKm <= 500) {
+    // 151 - 500 km (e.g. ~450 km BBS to TATA): SL: ₹325, 3E: ₹750, 3A: ₹810, 2A: ₹1,120, 1A: ₹1,860
+    secondSitting = Math.round(95 + distKm * 0.20);
+    chairCarFare = Math.round(320 + distKm * 1.20);
+    sleeperFare = Math.round(175 + distKm * 0.34);
+    thirdAcEconomy = Math.round(450 + distKm * 0.72);
+    thirdAcFare = Math.round(480 + distKm * 0.78);
+    secondAcFare = Math.round(680 + distKm * 1.05);
+    firstAcFare = Math.round(1150 + distKm * 1.65);
     execChairCarFare = Math.round(chairCarFare * 1.85);
-  } else if (distKm <= 400) {
-    // e.g. ~300 km (BBS to TATA): 2S: ₹165, CC: ₹555, SL: ₹265, 3E: ₹720, 3A: ₹780, 2A: ₹1,130, 1A: ₹1,880
-    secondSitting = Math.round(75 + distKm * 0.30);
-    chairCarFare = Math.round(280 + distKm * 0.92);
-    sleeperFare = Math.round(145 + distKm * 0.40);
-    thirdAcEconomy = Math.round(420 + distKm * 1.00);
-    thirdAcFare = Math.round(460 + distKm * 1.08);
-    secondAcFare = Math.round(680 + distKm * 1.50);
-    firstAcFare = Math.round(1150 + distKm * 2.45);
-    execChairCarFare = Math.round(chairCarFare * 1.88);
-  } else if (distKm <= 850) {
-    // e.g. 700 km: 2S: ₹240, SL: ₹450, 3E: ₹1,120, 3A: ₹1,220, 2A: ₹1,750, 1A: ₹2,950
-    secondSitting = Math.round(110 + distKm * 0.22);
-    chairCarFare = Math.round(350 + distKm * 0.85);
-    sleeperFare = Math.round(175 + distKm * 0.38);
-    thirdAcEconomy = Math.round(500 + distKm * 0.92);
-    thirdAcFare = Math.round(540 + distKm * 0.98);
-    secondAcFare = Math.round(800 + distKm * 1.38);
-    firstAcFare = Math.round(1400 + distKm * 2.25);
+  } else if (distKm <= 1000) {
+    // 501 - 1000 km (e.g. ~750 km): SL: ₹480, 3E: ₹1,220, 3A: ₹1,350, 2A: ₹1,880, 1A: ₹3,150
+    secondSitting = Math.round(120 + distKm * 0.18);
+    chairCarFare = Math.round(420 + distKm * 0.95);
+    sleeperFare = Math.round(220 + distKm * 0.32);
+    thirdAcEconomy = Math.round(550 + distKm * 0.70);
+    thirdAcFare = Math.round(600 + distKm * 0.76);
+    secondAcFare = Math.round(850 + distKm * 1.05);
+    firstAcFare = Math.round(1450 + distKm * 1.70);
     execChairCarFare = Math.round(chairCarFare * 1.90);
   } else {
-    // Long distance (> 850 km, e.g. 1400 km BBS-Delhi): SL: ₹720, 3E: ₹1,780, 3A: ₹1,950, 2A: ₹2,800, 1A: ₹4,800
-    secondSitting = Math.round(150 + distKm * 0.18);
-    sleeperFare = Math.round(220 + distKm * 0.35);
-    thirdAcEconomy = Math.round(620 + distKm * 0.85);
-    thirdAcFare = Math.round(680 + distKm * 0.92);
-    secondAcFare = Math.round(1020 + distKm * 1.28);
-    firstAcFare = Math.round(1750 + distKm * 2.15);
-    chairCarFare = Math.round(420 + distKm * 0.78);
+    // Long distance (> 1000 km, e.g. 1800 km BBS-Delhi): SL: ₹685 - ₹785, 3E: ₹1,650, 3A: ₹1,810 - ₹2,050, 2A: ₹2,640 - ₹3,100, 1A: ₹4,480 - ₹5,200
+    secondSitting = Math.round(160 + distKm * 0.15);
+    sleeperFare = Math.round(250 + distKm * 0.28);
+    thirdAcEconomy = Math.round(680 + distKm * 0.60);
+    thirdAcFare = Math.round(750 + distKm * 0.65);
+    secondAcFare = Math.round(1100 + distKm * 0.92);
+    firstAcFare = Math.round(1950 + distKm * 1.55);
+    chairCarFare = Math.round(550 + distKm * 0.85);
     execChairCarFare = Math.round(chairCarFare * 1.90);
   }
 
+  // Put standard benchmark classes FIRST (3A / CC) so train cards default to real-world expected passenger fares
   const classes = distKm <= 350
     ? [
-      { code: '2S', name: 'Second Sitting', fare: secondSitting },
-      { code: 'CC', name: 'AC Chair Car', fare: chairCarFare },
-      { code: 'SL', name: 'Sleeper Class', fare: sleeperFare },
       { code: '3A', name: 'AC 3 Tier', fare: thirdAcFare },
+      { code: 'CC', name: 'AC Chair Car', fare: chairCarFare },
       { code: '2A', name: 'AC 2 Tier', fare: secondAcFare },
+      { code: 'SL', name: 'Sleeper Class', fare: sleeperFare },
       { code: '1A', name: 'AC First Class', fare: firstAcFare },
+      { code: '2S', name: 'Second Sitting', fare: secondSitting },
     ]
     : [
-      { code: 'SL', name: 'Sleeper Class', fare: sleeperFare },
-      { code: '3E', name: '3 AC Economy', fare: thirdAcEconomy },
       { code: '3A', name: 'AC 3 Tier', fare: thirdAcFare },
+      { code: '3E', name: '3 AC Economy', fare: thirdAcEconomy },
       { code: '2A', name: 'AC 2 Tier', fare: secondAcFare },
       { code: '1A', name: 'AC First Class', fare: firstAcFare },
+      { code: 'SL', name: 'Sleeper Class', fare: sleeperFare },
     ];
 
   const totalMin = Math.round(7 * 60 + 15 + durHours * 60);

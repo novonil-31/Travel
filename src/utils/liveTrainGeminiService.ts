@@ -136,7 +136,14 @@ CRITICAL RULES:
    { "trains": [] }
 3. If real operating trains exist, provide ONLY real 5-digit Indian Railways train numbers (e.g. 12801, 12875, 18477, 22436, etc.) and official train names. NEVER fabricate non-existent train numbers.
 4. Provide true operating days for each train (e.g. ["Daily"], or ["Mon", "Wed", "Fri"], etc.) and set "runsOnDate": true only if it operates on ${dayName}.
-5. Provide authentic IRCTC coach classes (SL, 3A, 2A, 1A, CC, 2S) and realistic distance-tier fares in INR for this ~${distanceKm} km journey.
+5. PRICING & FARE REALISM (CRITICAL):
+   Provide authentic, real-life IRCTC ticketing fares in INR (including base fare, reservation fee, superfast charge, and GST) as shown on official IRCTC and ConfirmTkt websites:
+   - For 400-500 km (e.g. BBS to TATA): 3rd AC (3A) is ₹780-₹850, 2nd AC (2A) is ₹1,120-₹1,250, 1st AC (1A) is ₹1,860-₹2,050, Sleeper (SL) is ₹295-₹330.
+   - For Vande Bharat Express: AC Chair Car (CC) is ₹1,100-₹1,450 (includes catering), Exec (EC) is ₹2,050-₹2,500.
+   - For Shatabdi / Jan Shatabdi: CC is ₹650-₹1,150, 2S is ₹175-₹220.
+   - For Rajdhani / Tejas Express (Dynamic Pricing): 3A is ₹3,150-₹4,200, 2A is ₹4,400-₹5,800, 1A is ₹6,500-₹7,800.
+   - For long distances (>1000 km, e.g. BBS to Delhi): 3A is ₹1,810-₹2,250, 2A is ₹2,640-₹3,300, 1A is ₹4,480-₹5,500, SL is ₹685-₹800.
+   ALWAYS place standard passenger class (3A or CC) first in the "classes" array. NEVER output artificially deflated fares.
 6. List 3 to 6 major intermediate railway stations where the train halts between origin and destination with station code, name, and approximate latitude/longitude.
 7. Provide up to 4 real trains if multiple operate on this route on ${dayName}.
 
@@ -145,18 +152,18 @@ Return strictly valid JSON with this format:
   "trains": [
     {
       "trainNumber": "12801",
-      "trainName": "Purushottam Express",
+      "trainName": "Purushottam Superfast Express",
       "trainType": "Superfast",
       "departureTime": "23:00",
-      "arrivalTime": "04:00",
-      "durationHours": 29.0,
+      "arrivalTime": "06:15",
+      "durationHours": 7.25,
       "operatingDays": ["Daily"],
       "runsOnDate": true,
       "classes": [
-        { "code": "SL", "name": "Sleeper", "fare": 680 },
-        { "code": "3A", "name": "AC 3 Tier", "fare": 1810 },
-        { "code": "2A", "name": "AC 2 Tier", "fare": 2650 },
-        { "code": "1A", "name": "AC First Class", "fare": 4510 }
+        { "code": "3A", "name": "AC 3 Tier", "fare": 810 },
+        { "code": "2A", "name": "AC 2 Tier", "fare": 1120 },
+        { "code": "1A", "name": "AC First Class", "fare": 1860 },
+        { "code": "SL", "name": "Sleeper Class", "fare": 325 }
       ],
       "intermediateStops": [
         { "code": "CTC", "name": "Cuttack", "lat": 20.4630, "lng": 85.8930 },
@@ -222,9 +229,10 @@ Return strictly valid JSON with this format:
                 operatingDays: Array.isArray(t.operatingDays) ? t.operatingDays : ['Daily'],
                 runsOnDay: true,
                 classes: Array.isArray(t.classes) && t.classes.length > 0 ? t.classes : [
-                  { code: 'SL', name: 'Sleeper Class', fare: Math.round(140 + distanceKm * 0.4) },
-                  { code: '3A', name: 'AC 3 Tier', fare: Math.round(450 + distanceKm * 1.1) },
-                  { code: '2A', name: 'AC 2 Tier', fare: Math.round(750 + distanceKm * 1.5) }
+                  { code: '3A', name: 'AC 3 Tier', fare: Math.round(480 + distanceKm * 0.78) },
+                  { code: '2A', name: 'AC 2 Tier', fare: Math.round(680 + distanceKm * 1.05) },
+                  { code: '1A', name: 'AC First Class', fare: Math.round(1150 + distanceKm * 1.65) },
+                  { code: 'SL', name: 'Sleeper Class', fare: Math.round(175 + distanceKm * 0.34) }
                 ],
                 intermediateStops: Array.isArray(t.intermediateStops)
                   ? t.intermediateStops.map((st: any) => ({
