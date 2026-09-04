@@ -11,8 +11,8 @@
  * 4. Taxis & Rideshare: Regulated Auto, Bike Taxi, City Sedan, Premier, and Outstation
  */
 
-import { haversineDistanceClient, resolveExactTrainSchedule } from './onlineRouting';
-import { searchRealTrainsWithGemini } from './liveTrainGeminiService';
+import { haversineDistanceClient, resolveExactTrainSchedule, OFFICIAL_TRAIN_DATABASE, isServiceOperatingOnDate } from './onlineRouting';
+import { searchRealTrainsWithGemini, type LiveAiTrainRecord } from './liveTrainGeminiService';
 
 export interface LiveTrainFareResult {
   trainNumber: string;
@@ -402,6 +402,76 @@ export function calculateAllIndiaTrainTariff(
   };
 }
 
+export async function fetchLiveTrainsForRoute(
+  originStationCode: string,
+  destStationCode: string,
+  departureTimeObj: Date | string = new Date(),
+  distanceKm = 450,
+  originCity = 'Origin',
+  destCity = 'Destination',
+): Promise<LiveAiTrainRecord[]> {
+  const orig = originStationCode.toUpperCase();
+  const dest = destStationCode.toUpperCase();
+
+  // Defensively normalize arguments in case caller passed (orig, dest, origCity, destCity, distanceKm, depDate)
+  let realDepDate = new Date();
+  let realDistanceKm = typeof distanceKm === 'number' ? distanceKm : 400;
+  let realOrigCity = originCity;
+  let realDestCity = destCity;
+
+  if (typeof departureTimeObj === 'string' && isNaN(new Date(departureTimeObj).getTime()) && typeof distanceKm === 'string') {
+    realOrigCity = String(departureTimeObj);
+    realDestCity = String(distanceKm);
+    realDistanceKm = typeof originCity === 'number' ? originCity : 400;
+    if ((destCity as any) instanceof Date || (typeof destCity === 'string' && !isNaN(new Date(destCity).getTime()))) {
+      realDepDate = new Date(destCity);
+    }
+  } else if (departureTimeObj instanceof Date && !isNaN(departureTimeObj.getTime())) {
+    realDepDate = departureTimeObj;
+  } else if (typeof departureTimeObj === 'string') {
+    const parsed = new Date(departureTimeObj);
+    if (!isNaN(parsed.getTime())) realDepDate = parsed;
+  }
+
+  // 1. Query Gemini Live Railway Search Engine
+  try {
+    const aiTrains = await searchRealTrainsWithGemini(orig, dest, realOrigCity, realDestCity, realDepDate, realDistanceKm);
+    if (aiTrains && aiTrains.length > 0) {
+      return aiTrains;
+    }
+  } catch (err) {
+    console.warn('Gemini train search fallback:', err);
+  }
+
+  // 2. Check local database for verified operational train on that date
+  const directKey = `${orig}-${dest}`;
+  const reverseKey = `${dest}-${orig}`;
+  const localDb = (OFFICIAL_TRAIN_DATABASE as any)[directKey] || (OFFICIAL_TRAIN_DATABASE as any)[reverseKey];
+  if (localDb && Array.isArray(localDb) && localDb.length > 0) {
+    const operating = localDb.filter((t: any) => isServiceOperatingOnDate(t.operatingDays, realDepDate));
+    if (operating.length > 0) {
+      return operating.map((t: any) => ({
+        trainNumber: t.trainNumber,
+        trainName: t.trainName,
+        trainType: t.trainType,
+        originCode: orig,
+        destCode: dest,
+        departureTime: t.departureTime,
+        arrivalTime: t.arrivalTime,
+        durationHours: t.durationHours,
+        operatingDays: [t.operatingDays],
+        runsOnDay: true,
+        classes: t.classes,
+        bookingUrl: t.bookingUrl || 'https://www.confirmtkt.com/rbooking/',
+        confirmTktUrl: t.confirmTktUrl || 'https://www.confirmtkt.com/rbooking/',
+        source: 'verified-irctc',
+      }));
+    }
+  }
+
+  return [];
+}
+
 export async function fetchLiveTrainPricing(
   originStationCode: string,
   destStationCode: string,
@@ -413,19 +483,29 @@ export async function fetchLiveTrainPricing(
   const orig = originStationCode.toUpperCase();
   const dest = destStationCode.toUpperCase();
 
-  const now = new Date();
-  let depDate = now;
-  if (departureTimeObj instanceof Date && !isNaN(departureTimeObj.getTime())) {
-    depDate = departureTimeObj;
+  // Defensively normalize arguments in case caller passed (orig, dest, origCity, destCity, distanceKm, depDate)
+  let realDepDate = new Date();
+  let realDistanceKm = typeof distanceKm === 'number' ? distanceKm : 400;
+  let realOrigCity = originCity;
+  let realDestCity = destCity;
+
+  if (typeof departureTimeObj === 'string' && isNaN(new Date(departureTimeObj).getTime()) && typeof distanceKm === 'string') {
+    realOrigCity = String(departureTimeObj);
+    realDestCity = String(distanceKm);
+    realDistanceKm = typeof originCity === 'number' ? originCity : 400;
+    if ((destCity as any) instanceof Date || (typeof destCity === 'string' && !isNaN(new Date(destCity).getTime()))) {
+      realDepDate = new Date(destCity);
+    }
+  } else if (departureTimeObj instanceof Date && !isNaN(departureTimeObj.getTime())) {
+    realDepDate = departureTimeObj;
   } else if (typeof departureTimeObj === 'string') {
     const parsed = new Date(departureTimeObj);
-    if (!isNaN(parsed.getTime())) depDate = parsed;
+    if (!isNaN(parsed.getTime())) realDepDate = parsed;
   }
 
-  const isToday = now.toDateString() === depDate.toDateString();
-  const dateStr = depDate.toISOString().split('T')[0];
+  const dateStr = realDepDate.toISOString().split('T')[0];
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const searchDayName = dayNames[depDate.getDay()];
+  const searchDayName = dayNames[realDepDate.getDay()];
 
   const cacheKey = `${orig}-${dest}-${dateStr}`;
   const cached = trainPriceCache.get(cacheKey);
@@ -433,86 +513,36 @@ export async function fetchLiveTrainPricing(
     return cached.data;
   }
 
-  // 1. Try Gemini AI Live Train Search for authentic operating trains and exact IRCTC fares
-  try {
-    const aiTrains = await searchRealTrainsWithGemini(orig, dest, originCity, destCity, depDate, distanceKm);
-    if (aiTrains && aiTrains.length > 0) {
-      const best = aiTrains[0];
-      const baseFare = best.classes?.[0]?.fare || Math.round(140 + distanceKm * 0.4);
-      const result: LiveTrainFareResult = {
-        trainNumber: best.trainNumber,
-        trainName: best.trainName,
-        trainType: best.trainType,
-        originCode: orig,
-        destCode: dest,
-        departureTime: best.departureTime,
-        arrivalTime: best.arrivalTime,
-        durationHours: best.durationHours,
-        classes: best.classes,
-        baseFare,
-        source: 'gemini-ai-live',
-        bookingUrl: best.bookingUrl || `https://www.confirmtkt.com/rbooking/`,
-        departureDateStr: dateStr,
-        isNextDay: false,
-        runsOnDay: true,
-        operatingDay: searchDayName,
-        popularity: detectCorridorPopularity(orig, dest, depDate),
-        intermediateStops: best.intermediateStops,
-      };
-      trainPriceCache.set(cacheKey, { data: result, timestamp: Date.now() });
-      return result;
-    }
-  } catch (err) {
-    console.warn('Gemini train search fallback:', err);
+  const realTrains = await fetchLiveTrainsForRoute(orig, dest, realDepDate, realDistanceKm, realOrigCity, realDestCity);
+  if (realTrains && realTrains.length > 0) {
+    const best = realTrains[0];
+    const baseFare = best.classes?.[0]?.fare || Math.round(140 + realDistanceKm * 0.4);
+    const result: LiveTrainFareResult = {
+      trainNumber: best.trainNumber,
+      trainName: best.trainName,
+      trainType: best.trainType,
+      originCode: orig,
+      destCode: dest,
+      departureTime: best.departureTime,
+      arrivalTime: best.arrivalTime,
+      durationHours: best.durationHours,
+      classes: best.classes,
+      baseFare,
+      source: best.source === 'verified-irctc' ? 'verified-irctc-tariff' : 'gemini-ai-live',
+      bookingUrl: best.bookingUrl || `https://www.confirmtkt.com/rbooking/`,
+      departureDateStr: dateStr,
+      isNextDay: false,
+      runsOnDay: true,
+      operatingDay: searchDayName,
+      popularity: detectCorridorPopularity(orig, dest, realDepDate),
+      intermediateStops: best.intermediateStops,
+    };
+    trainPriceCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
   }
 
-  // 2. Query backend live internet proxy endpoint
-  try {
-    const backendUrl = `http://localhost:3000/api/fares/live-transit?type=train&origin=${orig}&destination=${dest}&date=${dateStr}&originCity=${encodeURIComponent(originCity)}&destCity=${encodeURIComponent(destCity)}&distanceKm=${distanceKm}`;
-    const bController = new AbortController();
-    const bTimeout = setTimeout(() => bController.abort(), 3500);
-
-    const bRes = await fetch(backendUrl, { signal: bController.signal });
-    clearTimeout(bTimeout);
-
-    if (bRes.ok) {
-      const bJson = await bRes.json();
-      const liveData = bJson?.data || bJson;
-      if (liveData && liveData.trainNumber && liveData.baseFare) {
-        trainPriceCache.set(cacheKey, { data: liveData, timestamp: Date.now() });
-        return liveData;
-      }
-    }
-  } catch {
-    // continue to national timetable schedule resolution
-  }
-
-  // 3. Direct Live Schedule & Running Days Resolution
-  const tariff = calculateAllIndiaTrainTariff(orig, dest, distanceKm, depDate);
-  const popularity = detectCorridorPopularity(orig, dest, depDate);
-
-  const result: LiveTrainFareResult = {
-    trainNumber: tariff.trainNumber,
-    trainName: tariff.trainName,
-    trainType: tariff.trainType,
-    originCode: orig,
-    destCode: dest,
-    departureTime: '07:15 AM',
-    arrivalTime: calculateArrTimeStr(7, 15, tariff.durationHours),
-    durationHours: tariff.durationHours,
-    classes: tariff.classes,
-    baseFare: tariff.baseFare,
-    source: 'live-internet',
-    bookingUrl: `https://www.irctc.co.in/nget/train-search?origin=${orig}&destination=${dest}`,
-    departureDateStr: dateStr,
-    isNextDay: false,
-    runsOnDay: true,
-    operatingDay: searchDayName,
-    popularity,
-  };
-
-  trainPriceCache.set(cacheKey, { data: result, timestamp: Date.now() });
-  return result;
+  // If no genuine operating train was found for that date, return null rather than fabricating fake trains
+  return null;
 }
 
 // =========================================================================

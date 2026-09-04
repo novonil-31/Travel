@@ -126,16 +126,19 @@ export async function searchRealTrainsWithGemini(
   const apiKey = getGeminiApiKey();
   if (apiKey) {
     try {
-      const prompt = `You are an Indian Railways (IRCTC) live timetable and ticketing system.
+      const prompt = `You are an official Indian Railways (IRCTC) live timetable and ticketing system.
 Find REAL, ACTUAL operating trains running between ${originCity} (${orig}) and ${destCity} (${dest}) in India on ${dayName} (${dateStr}).
-Approximate distance: ${distanceKm} km.
+Approximate track distance: ${distanceKm} km.
 
 CRITICAL RULES:
-1. Provide ONLY REAL operating trains with their true 5-digit train numbers (e.g. 12801, 12815, 22811, 20836, 12822, etc.). Do not fabricate or invent fake train numbers.
-2. Provide official train names (e.g. "Purushottam Express", "Bhubaneswar Rajdhani Express", "Dhauli Express", "Vande Bharat Express", etc.).
-3. Provide realistic IRCTC fares for the available travel classes (SL, 3A, 2A, 1A, CC, 2S) based on official distance-tier tariffs.
-4. List 3 to 6 major intermediate railway stations where the train halts between origin and destination with station code, name, and approximate latitude/longitude.
-5. Provide 2 to 4 real trains if multiple operate on this route.
+1. Verify if direct trains actually exist and run on ${dayName}.
+2. If NO direct trains run between these stations on ${dayName}, return:
+   { "trains": [] }
+3. If real operating trains exist, provide ONLY real 5-digit Indian Railways train numbers (e.g. 12801, 12875, 18477, 22436, etc.) and official train names. NEVER fabricate non-existent train numbers.
+4. Provide true operating days for each train (e.g. ["Daily"], or ["Mon", "Wed", "Fri"], etc.) and set "runsOnDate": true only if it operates on ${dayName}.
+5. Provide authentic IRCTC coach classes (SL, 3A, 2A, 1A, CC, 2S) and realistic distance-tier fares in INR for this ~${distanceKm} km journey.
+6. List 3 to 6 major intermediate railway stations where the train halts between origin and destination with station code, name, and approximate latitude/longitude.
+7. Provide up to 4 real trains if multiple operate on this route on ${dayName}.
 
 Return strictly valid JSON with this format:
 {
@@ -148,6 +151,7 @@ Return strictly valid JSON with this format:
       "arrivalTime": "04:00",
       "durationHours": 29.0,
       "operatingDays": ["Daily"],
+      "runsOnDate": true,
       "classes": [
         { "code": "SL", "name": "Sleeper", "fare": 680 },
         { "code": "3A", "name": "AC 3 Tier", "fare": 1810 },
@@ -158,17 +162,14 @@ Return strictly valid JSON with this format:
         { "code": "CTC", "name": "Cuttack", "lat": 20.4630, "lng": 85.8930 },
         { "code": "BHC", "name": "Bhadrak", "lat": 21.0543, "lng": 86.4955 },
         { "code": "BLS", "name": "Balasore", "lat": 21.4934, "lng": 86.9324 },
-        { "code": "KGP", "name": "Kharagpur", "lat": 22.3149, "lng": 87.3105 },
-        { "code": "TATA", "name": "Tatanagar", "lat": 22.7712, "lng": 86.1882 },
-        { "code": "PRYJ", "name": "Prayagraj", "lat": 25.4358, "lng": 81.8463 },
-        { "code": "CNB", "name": "Kanpur Central", "lat": 26.4547, "lng": 80.3507 }
+        { "code": "KGP", "name": "Kharagpur", "lat": 22.3149, "lng": 87.3105 }
       ]
     }
   ]
 }`;
 
       const aiController = new AbortController();
-      const aiTimeout = setTimeout(() => aiController.abort(), 8000);
+      const aiTimeout = setTimeout(() => aiController.abort(), 9000);
 
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -192,36 +193,60 @@ Return strictly valid JSON with this format:
         const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) {
           const parsed = JSON.parse(text) as { trains?: any[] };
-          if (parsed?.trains && Array.isArray(parsed.trains) && parsed.trains.length > 0) {
-            const results: LiveAiTrainRecord[] = parsed.trains.map((t) => ({
-              trainNumber: String(t.trainNumber),
-              trainName: String(t.trainName),
-              trainType: t.trainType || 'Superfast',
-              originCode: orig,
-              destCode: dest,
-              departureTime: t.departureTime || '08:00 AM',
-              arrivalTime: t.arrivalTime || '06:00 PM',
-              durationHours: Number(t.durationHours) || Math.round((distanceKm / 70) * 10) / 10,
-              operatingDays: Array.isArray(t.operatingDays) ? t.operatingDays : ['Daily'],
-              runsOnDay: true,
-              classes: Array.isArray(t.classes) && t.classes.length > 0 ? t.classes : [
-                { code: 'SL', name: 'Sleeper Class', fare: Math.round(140 + distanceKm * 0.4) },
-                { code: '3A', name: 'AC 3 Tier', fare: Math.round(450 + distanceKm * 1.1) },
-                { code: '2A', name: 'AC 2 Tier', fare: Math.round(750 + distanceKm * 1.5) }
-              ],
-              intermediateStops: Array.isArray(t.intermediateStops) ? t.intermediateStops : undefined,
-              bookingUrl: `https://www.confirmtkt.com/rbooking/`,
-              confirmTktUrl: `https://www.confirmtkt.com/rbooking/`,
-              source: 'gemini-ai-live',
-            }));
+          if (parsed?.trains && Array.isArray(parsed.trains)) {
+            // Helper to check if train operates on this specific day of the week
+            const shortDay = dayName.slice(0, 3).toLowerCase();
+            const fullDay = dayName.toLowerCase();
 
-            MEMORY_TRAIN_CACHE.set(cacheKey, { data: results, timestamp: Date.now() });
-            try {
-              localStorage.setItem(`train_ai_cache_${cacheKey}`, JSON.stringify(results));
-            } catch {
-              // ignore
+            const validTrains = parsed.trains.filter((t) => {
+              if (t.runsOnDate === false) return false;
+              if (Array.isArray(t.operatingDays) && t.operatingDays.length > 0) {
+                const daysLower = t.operatingDays.map((d: any) => String(d).toLowerCase());
+                const isDaily = daysLower.some((d: string) => d.includes('daily'));
+                const matchesDay = daysLower.some((d: string) => d.includes(shortDay) || d.includes(fullDay));
+                if (!isDaily && !matchesDay) return false;
+              }
+              return true;
+            });
+
+            if (validTrains.length > 0) {
+              const results: LiveAiTrainRecord[] = validTrains.map((t) => ({
+                trainNumber: String(t.trainNumber),
+                trainName: String(t.trainName),
+                trainType: t.trainType || 'Superfast',
+                originCode: orig,
+                destCode: dest,
+                departureTime: t.departureTime || '08:00 AM',
+                arrivalTime: t.arrivalTime || '06:00 PM',
+                durationHours: Number(t.durationHours) || Math.round((distanceKm / 70) * 10) / 10,
+                operatingDays: Array.isArray(t.operatingDays) ? t.operatingDays : ['Daily'],
+                runsOnDay: true,
+                classes: Array.isArray(t.classes) && t.classes.length > 0 ? t.classes : [
+                  { code: 'SL', name: 'Sleeper Class', fare: Math.round(140 + distanceKm * 0.4) },
+                  { code: '3A', name: 'AC 3 Tier', fare: Math.round(450 + distanceKm * 1.1) },
+                  { code: '2A', name: 'AC 2 Tier', fare: Math.round(750 + distanceKm * 1.5) }
+                ],
+                intermediateStops: Array.isArray(t.intermediateStops)
+                  ? t.intermediateStops.map((st: any) => ({
+                      code: String(st.code || ''),
+                      name: String(st.name || st.code || ''),
+                      lat: Number(st.lat || st.latitude || 0),
+                      lng: Number(st.lng || st.longitude || 0),
+                    })).filter((st: any) => st.lat !== 0 && st.lng !== 0)
+                  : undefined,
+                bookingUrl: `https://www.confirmtkt.com/rbooking/`,
+                confirmTktUrl: `https://www.confirmtkt.com/rbooking/`,
+                source: 'gemini-ai-live',
+              }));
+
+              MEMORY_TRAIN_CACHE.set(cacheKey, { data: results, timestamp: Date.now() });
+              try {
+                localStorage.setItem(`train_ai_cache_${cacheKey}`, JSON.stringify(results));
+              } catch {
+                // ignore
+              }
+              return results;
             }
-            return results;
           }
         }
       }

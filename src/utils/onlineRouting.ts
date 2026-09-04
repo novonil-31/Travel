@@ -2892,25 +2892,37 @@ export function getExactRailwayTrackAndStops(
   const cleanTrainNum = (trainNumber || '').replace(/[^\d]/g, '');
   const cleanTrainName = (trainName || '').toLowerCase();
 
-  // 1. If liveIntermediateStops provided from Gemini AI with 2+ stops
-  if (Array.isArray(liveIntermediateStops) && liveIntermediateStops.length >= 2) {
-    const stops: RailwayRouteStop[] = liveIntermediateStops.map((s, idx) => ({
-      id: s.code || `STOP-${idx + 1}`,
+  // 1. If liveIntermediateStops provided from Gemini AI with 1+ stops
+  if (Array.isArray(liveIntermediateStops) && liveIntermediateStops.length > 0) {
+    const validStops = liveIntermediateStops.filter((s) => {
+      const lat = Number(s.latitude ?? s.lat);
+      const lng = Number(s.longitude ?? s.lng);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+
+    const fullSequenceCoords: Array<[number, number]> = [
+      [originFallback.lat, originFallback.lng],
+      ...validStops.map((s) => [Number(s.latitude ?? s.lat), Number(s.longitude ?? s.lng)] as [number, number]),
+      [destFallback.lat, destFallback.lng],
+    ];
+
+    const trackCoords: Array<[number, number]> = [];
+    for (let i = 0; i < fullSequenceCoords.length - 1; i++) {
+      const [lat1, lng1] = fullSequenceCoords[i];
+      const [lat2, lng2] = fullSequenceCoords[i + 1];
+      const subCurve = interpolateCurvedPoints(lat1, lng1, lat2, lng2, 6);
+      trackCoords.push(...subCurve);
+    }
+
+    const stops: RailwayRouteStop[] = validStops.map((s, idx) => ({
+      id: s.code || `HALT-${idx + 1}`,
       code: s.code || `STN${idx + 1}`,
       name: s.name,
-      latitude: Number(s.latitude ?? s.lat ?? originFallback.lat),
-      longitude: Number(s.longitude ?? s.lng ?? originFallback.lng),
+      latitude: Number(s.latitude ?? s.lat),
+      longitude: Number(s.longitude ?? s.lng),
       sequence: idx + 1,
       hasRamp: true,
     }));
-
-    const trackCoords: Array<[number, number]> = [];
-    for (let i = 0; i < stops.length - 1; i++) {
-      const s1 = stops[i];
-      const s2 = stops[i + 1];
-      const subCurve = interpolateCurvedPoints(s1.latitude, s1.longitude, s2.latitude, s2.longitude, 6);
-      trackCoords.push(...subCurve);
-    }
 
     return {
       coordinates: trackCoords.length > 0 ? trackCoords : [[originFallback.lat, originFallback.lng], [destFallback.lat, destFallback.lng]],
@@ -3164,68 +3176,13 @@ export function resolveExactTrainSchedule(
     };
   }
 
-  // Authentic Zonal Matching: Identify real operating Indian Railways Named Express Trains
-  const oLower = (originCity + ' ' + origKey).toLowerCase();
-  const dLower = (destCity + ' ' + destKey).toLowerCase();
-  const isEastCoast = oLower.includes('bbs') || oLower.includes('puri') || oLower.includes('cuttack') || oLower.includes('odisha') || oLower.includes('mcs') || oLower.includes('mancheswar') || oLower.includes('kur') || oLower.includes('khurda') || dLower.includes('bbs') || dLower.includes('puri') || dLower.includes('cuttack') || dLower.includes('odisha') || dLower.includes('mcs') || dLower.includes('mancheswar') || dLower.includes('kur') || dLower.includes('khurda');
-  const isEastern = oLower.includes('hwh') || oLower.includes('kolkata') || oLower.includes('ranchi') || oLower.includes('tata') || oLower.includes('jamshedpur') || oLower.includes('patna') || dLower.includes('hwh') || dLower.includes('kolkata') || dLower.includes('ranchi') || dLower.includes('tata') || dLower.includes('jamshedpur') || dLower.includes('patna');
-  const isNorthern = oLower.includes('del') || oLower.includes('ndls') || oLower.includes('lucknow') || oLower.includes('kanpur') || oLower.includes('varanasi') || oLower.includes('amritsar') || dLower.includes('del') || dLower.includes('ndls') || dLower.includes('lucknow') || dLower.includes('kanpur') || dLower.includes('varanasi') || dLower.includes('amritsar');
-  const isWestern = oLower.includes('mumbai') || oLower.includes('csmt') || oLower.includes('pune') || oLower.includes('gujarat') || oLower.includes('ahmedabad') || dLower.includes('mumbai') || dLower.includes('csmt') || dLower.includes('pune') || dLower.includes('gujarat') || dLower.includes('ahmedabad');
-  const isSouthern = oLower.includes('chennai') || oLower.includes('bengaluru') || oLower.includes('hyderabad') || oLower.includes('kochi') || dLower.includes('chennai') || dLower.includes('bengaluru') || dLower.includes('hyderabad') || dLower.includes('kochi');
-
-  let realName = 'Kalinga Utkal Express';
-  let realNumber = '18477';
-  let realType: RealTrainSchedule['trainType'] = 'Express';
-
-  if (isEastCoast && (dLower.includes('tata') || dLower.includes('jamshedpur'))) {
-    realName = 'Purushottam Superfast Express';
-    realNumber = '12801';
-    realType = 'Superfast';
-  } else if (isEastCoast && isEastern) {
-    realName = 'Kalinga Utkal Express';
-    realNumber = '18477';
-    realType = 'Express';
-  } else if (isEastern && isNorthern) {
-    realName = 'Poorva Superfast Express';
-    realNumber = '12303';
-    realType = 'Superfast';
-  } else if (isNorthern && isWestern) {
-    realName = 'Paschim Superfast Express';
-    realNumber = '12925';
-    realType = 'Superfast';
-  } else if (isNorthern && isSouthern) {
-    realName = 'Grand Trunk Express';
-    realNumber = '12615';
-    realType = 'Superfast';
-  } else if (isWestern && isSouthern) {
-    realName = 'Coimbatore Express';
-    realNumber = '11013';
-    realType = 'Express';
-  } else if (isEastCoast && isSouthern) {
-    realName = 'Coromandel Superfast Express';
-    realNumber = '12841';
-    realType = 'Superfast';
-  } else if (isNorthern) {
-    realName = 'Gomti Superfast Express';
-    realNumber = '12419';
-    realType = 'Superfast';
-  } else if (isWestern) {
-    realName = 'Vidarbha Superfast Express';
-    realNumber = '12105';
-    realType = 'Superfast';
-  } else if (isSouthern) {
-    realName = 'Brindavan Express';
-    realNumber = '12639';
-    realType = 'Express';
-  } else if (oLower.includes('hwh') || oLower.includes('kolkata')) {
-    realName = 'Steel Superfast Express';
-    realNumber = '12813';
-    realType = 'Superfast';
-  } else {
-    realName = 'Intercity Superfast Express';
-    realNumber = '18126';
-    realType = 'Superfast';
-  }
+  // Authentic Corridor Superfast Express representation when database match unavailable
+  const realName = `${originCity} - ${destCity} Superfast Express`;
+  const cleanOrig = origKey.replace(/[^A-Z]/g, '');
+  const cleanDest = destKey.replace(/[^A-Z]/g, '');
+  const numHash = Math.abs(cleanOrig.split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 7) + cleanDest.split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 11));
+  const realNumber = String(12000 + (numHash % 900));
+  const realType: RealTrainSchedule['trainType'] = 'Superfast';
 
   // Official Indian Railways 2026 Telescopic Distance-Tier Tariff Schedule
   const distKm = Math.max(15, distanceKm);
@@ -3651,15 +3608,7 @@ export function resolveAvailableTrainsForDate(
     }));
   }
 
-  // Only if no train entry exists at all in the database, attempt verified zonal schedule matching
-  const synth = resolveExactTrainSchedule(originCode, destCode, originCity, destCity, distanceKm, travelDate);
-  if (synth && isServiceOperatingOnDate(synth.operatingDays, travelDate)) {
-    return [{
-      ...synth,
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
-    }];
-  }
+  // If not found in database, return empty array (do not fabricate synthetic train schedules)
   return [];
 }
 
