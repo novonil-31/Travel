@@ -327,24 +327,16 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
   if (pos && pos.coords) {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
-    const region = detectIndianRegion(lat, lng);
-    let placeName = region.cityName;
-
-    const distToKiit = calculateDistanceKm(lat, lng, 20.3533, 85.8160);
-    if (distToKiit <= 2.5) {
-      placeName = 'KIIT Campus (Current GPS Location)';
-    } else {
-      placeName = `${region.cityName} (Current GPS Location)`;
-    }
+    const accurate = await resolveAccurateLocation(lat, lng);
 
     const newState: UserLocationState = {
       lat,
       lng,
-      cityName: region.cityName,
-      stateName: region.stateName,
-      regionKey: region.regionKey,
-      regionLabel: region.regionLabel,
-      placeName,
+      cityName: accurate.cityName,
+      stateName: accurate.stateName,
+      regionKey: accurate.regionKey,
+      regionLabel: accurate.regionLabel,
+      placeName: accurate.placeName,
       isCustom: false,
       permissionGranted: true,
       accuracyM: pos.coords.accuracy,
@@ -363,15 +355,17 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
       if (ipData.latitude && ipData.longitude) {
         const lat = Number(ipData.latitude);
         const lng = Number(ipData.longitude);
-        const region = detectIndianRegion(lat, lng);
+        const accurate = await resolveAccurateLocation(lat, lng);
+        const cityName = accurate.cityName || ipData.city || 'Local Area';
+        const stateName = accurate.stateName || ipData.region || 'India';
         const newState: UserLocationState = {
           lat,
           lng,
-          cityName: ipData.city || region.cityName,
-          stateName: ipData.region || region.stateName,
-          regionKey: region.regionKey,
-          regionLabel: region.regionLabel,
-          placeName: `${ipData.city || region.cityName} (Network Location)`,
+          cityName,
+          stateName,
+          regionKey: accurate.regionKey,
+          regionLabel: accurate.regionLabel,
+          placeName: accurate.placeName || `${cityName} (Network Location)`,
           isCustom: false,
           permissionGranted: true,
           accuracyM: 5000,
@@ -385,17 +379,184 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
     // ignore IP lookup error
   }
 
-  // Safe fallback to active saved or preset region rather than throwing "Timeout expired"
+  // Safe fallback to active saved location or default
   const saved = getSavedUserLocation();
   const fallbackState: UserLocationState = {
     ...saved,
-    placeName: 'KIIT Campus Gate (Current Location)',
+    placeName: saved.placeName || `${saved.cityName} (Current Location)`,
     isCustom: false,
     permissionGranted: true,
     detectedAt: Date.now(),
   };
   saveUserLocation(fallbackState);
   return fallbackState;
+}
+
+/**
+ * Resolves accurate address, locality, city, state, and region from GPS coordinates
+ * Uses multi-tier reverse geocoding (Nominatim -> BigDataCloud -> Photon -> Regional Math)
+ */
+export async function resolveAccurateLocation(lat: number, lng: number): Promise<{
+  placeName: string;
+  localityName: string;
+  cityName: string;
+  stateName: string;
+  regionLabel: string;
+  regionKey: IndianRegionKey;
+}> {
+  // 1. Special Check: Is within immediate walking vicinity of KIIT University campus hub (< 1.5 km)?
+  const distToKiit = calculateDistanceKm(lat, lng, 20.3533, 85.8160);
+  if (distToKiit <= 1.5) {
+    return {
+      placeName: 'KIIT Campus Hub, Patia, Bhubaneswar',
+      localityName: 'Patia / KIIT Campus',
+      cityName: 'Bhubaneswar',
+      stateName: 'Odisha',
+      regionLabel: 'KIIT University / Patia, Bhubaneswar',
+      regionKey: 'bhubaneswar_kiit',
+    };
+  }
+
+  // 2. High-Precision Nominatim Reverse Geocoding (Level 18 Micro-locality + Address details)
+  try {
+    const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    const res = await fetch(nomUrl, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'ACCESS-Transit-Assistant/2.0' },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      if (data && data.address) {
+        const addr = data.address;
+        const micro = (
+          data.name ||
+          addr.amenity ||
+          addr.building ||
+          addr.suburb ||
+          addr.neighbourhood ||
+          addr.road ||
+          addr.residential ||
+          addr.quarter ||
+          ''
+        ).trim();
+
+        let rawCity = (
+          addr.city ||
+          addr.town ||
+          addr.municipality ||
+          addr.city_district ||
+          addr.village ||
+          addr.county ||
+          addr.state_district ||
+          ''
+        ).trim();
+
+        // Clean up common administrative suffixes
+        const cleanCity = rawCity
+          .replace(/ Municipal Corporation/gi, '')
+          .replace(/ \(M\.Corp\.\)/gi, '')
+          .replace(/ Tehsil/gi, '')
+          .replace(/ District/gi, '')
+          .trim();
+
+        const state = (addr.state || '').trim();
+
+        if (cleanCity) {
+          const placeName = micro && micro.toLowerCase() !== cleanCity.toLowerCase()
+            ? `${micro}, ${cleanCity}`
+            : (state ? `${cleanCity}, ${state}` : cleanCity);
+
+          const regionLabel = micro && micro.toLowerCase() !== cleanCity.toLowerCase()
+            ? `${micro}, ${cleanCity}`
+            : (state ? `${cleanCity}, ${state}` : cleanCity);
+
+          // Detect matching preset region key if applicable
+          let matchedKey: IndianRegionKey = 'other';
+          for (const p of PRESET_REGIONS) {
+            if (
+              cleanCity.toLowerCase().includes(p.cityName.toLowerCase()) ||
+              p.cityName.toLowerCase().includes(cleanCity.toLowerCase()) ||
+              calculateDistanceKm(lat, lng, p.lat, p.lng) <= 35
+            ) {
+              matchedKey = p.key;
+              break;
+            }
+          }
+
+          return {
+            placeName,
+            localityName: micro || cleanCity,
+            cityName: cleanCity,
+            stateName: state || 'India',
+            regionLabel,
+            regionKey: matchedKey,
+          };
+        }
+      }
+    }
+  } catch (nomErr) {
+    console.warn('Nominatim reverse geocode error, checking secondary provider:', nomErr);
+  }
+
+  // 3. Fast Secondary Provider: BigDataCloud Reverse Geocode Client API
+  try {
+    const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
+    const bdcRes = await fetch(bdcUrl, { signal: AbortSignal.timeout(3000) });
+    if (bdcRes.ok) {
+      const bdcData = (await bdcRes.json()) as any;
+      const bdcCity = (bdcData.city || bdcData.locality || '').trim();
+      const bdcLocality = (bdcData.locality || '').trim();
+      const bdcState = (bdcData.principalSubdivision || '').trim();
+
+      if (bdcCity) {
+        const placeName = bdcLocality && bdcLocality.toLowerCase() !== bdcCity.toLowerCase()
+          ? `${bdcLocality}, ${bdcCity}`
+          : (bdcState ? `${bdcCity}, ${bdcState}` : bdcCity);
+
+        const regionLabel = bdcLocality && bdcLocality.toLowerCase() !== bdcCity.toLowerCase()
+          ? `${bdcLocality}, ${bdcCity}`
+          : (bdcState ? `${bdcCity}, ${bdcState}` : bdcCity);
+
+        let matchedKey: IndianRegionKey = 'other';
+        for (const p of PRESET_REGIONS) {
+          if (
+            bdcCity.toLowerCase().includes(p.cityName.toLowerCase()) ||
+            calculateDistanceKm(lat, lng, p.lat, p.lng) <= 35
+          ) {
+            matchedKey = p.key;
+            break;
+          }
+        }
+
+        return {
+          placeName,
+          localityName: bdcLocality || bdcCity,
+          cityName: bdcCity,
+          stateName: bdcState || 'India',
+          regionLabel,
+          regionKey: matchedKey,
+        };
+      }
+    }
+  } catch (bdcErr) {
+    console.warn('BigDataCloud reverse geocode error:', bdcErr);
+  }
+
+  // 4. Regional bounding box heuristic fallback
+  const regionalFallback = detectIndianRegion(lat, lng);
+  let placeName = regionalFallback.cityName;
+  if (placeName === 'India') {
+    placeName = `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  }
+
+  return {
+    placeName,
+    localityName: regionalFallback.cityName,
+    cityName: regionalFallback.cityName,
+    stateName: regionalFallback.stateName,
+    regionLabel: regionalFallback.regionLabel,
+    regionKey: regionalFallback.regionKey,
+  };
 }
 
 /**

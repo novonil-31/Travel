@@ -242,29 +242,25 @@ if (typeof window !== 'undefined') {
 export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): GeocodedPlace[] {
   const activeLoc = userLoc || getSavedUserLocation();
   const regKey = activeLoc.regionKey || detectIndianRegion(activeLoc.lat, activeLoc.lng).regionKey;
+  const rawCandidates: GeocodedPlace[] = [];
 
   switch (regKey) {
     case 'bhubaneswar_kiit': {
       // 1. KIIT Campuses, Hostels (KP/QC), and Local Landmarks
       const topKiit = searchKIITDatabase('');
-      const kiitStops = topKiit.slice(0, 7).map((km: any) => {
-        const dKm = calculateDistanceKm(activeLoc.lat, activeLoc.lng, km.lat, km.lng);
-        return {
-          displayName: km.displayName,
-          name: km.name,
-          lat: km.lat,
-          lng: km.lng,
-          type: km.category,
-          isStop: true,
-          stopId: km.id,
-          distanceKm: dKm,
-          distanceLabel: `${dKm.toFixed(1)} km away`,
-          accessibility: {
-            wheelchairBoarding: 1,
-            hasRamp: km.hasRamp,
-          },
-        };
-      });
+      const kiitStops = topKiit.slice(0, 7).map((km: any) => ({
+        displayName: km.displayName,
+        name: km.name,
+        lat: km.lat,
+        lng: km.lng,
+        type: km.category,
+        isStop: true,
+        stopId: km.id,
+        accessibility: {
+          wheelchairBoarding: 1,
+          hasRamp: km.hasRamp,
+        },
+      }));
 
       // Local hubs in Odisha
       const odishaHubs: GeocodedPlace[] = [
@@ -276,8 +272,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'railway',
           isStop: true,
           stopId: 'rail_bbs',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 20.2667, 85.8436),
-          distanceLabel: 'Master Canteen Hub',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -288,18 +282,17 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'temple',
           isStop: true,
           stopId: 'mon_jagannath_puri',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 19.8049, 85.8179),
-          distanceLabel: 'Puri Dham',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
       ];
 
-      return [...kiitStops, ...odishaHubs];
+      rawCandidates.push(...kiitStops, ...odishaHubs);
+      break;
     }
 
     case 'punjab': {
       // 2. Punjab Regional Hotspots (Ludhiana, Amritsar, Jalandhar, Chandigarh)
-      return [
+      rawCandidates.push(
         {
           displayName: '🛕 Golden Temple (Harmandir Sahib) • Amritsar, Punjab',
           name: 'Golden Temple Amritsar',
@@ -308,8 +301,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'temple',
           isStop: true,
           stopId: 'mon_golden_temple',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 31.6200, 74.8765),
-          distanceLabel: 'Amritsar',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -320,8 +311,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'railway',
           isStop: true,
           stopId: 'rail_ldh',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.9100, 75.8500),
-          distanceLabel: 'Ludhiana Central',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -332,8 +321,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'landmark',
           isStop: true,
           stopId: 'punjab_ldh_clock_tower',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.9085, 75.8580),
-          distanceLabel: 'Chaura Bazar',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -344,8 +331,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'city',
           isStop: true,
           stopId: 'punjab_ldh_model_town',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.8870, 75.8340),
-          distanceLabel: 'Model Town',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -356,8 +341,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'campus',
           isStop: true,
           stopId: 'punjab_pau_ludhiana',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.9020, 75.8080),
-          distanceLabel: 'Ferozepur Rd',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -368,8 +351,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'railway',
           isStop: true,
           stopId: 'rail_juc',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 31.3260, 75.5800),
-          distanceLabel: 'Jalandhar',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -380,8 +361,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'nature',
           isStop: true,
           stopId: 'punjab_sukhna_lake',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.7421, 76.8188),
-          distanceLabel: 'Chandigarh',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -392,16 +371,15 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'monument',
           isStop: true,
           stopId: 'punjab_bathinda_fort',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 30.2100, 74.9450),
-          distanceLabel: 'Bathinda',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
-        },
-      ];
+        }
+      );
+      break;
     }
 
     case 'delhi_ncr': {
       // 3. Delhi NCR Hotspots
-      return [
+      rawCandidates.push(
         {
           displayName: '🏛️ Connaught Place (Rajiv Chowk Central) • New Delhi',
           name: 'Connaught Place New Delhi',
@@ -410,8 +388,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'metro',
           isStop: true,
           stopId: 'delhi_cp',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.6315, 77.2167),
-          distanceLabel: 'Central Delhi',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -422,8 +398,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'monument',
           isStop: true,
           stopId: 'mon_india_gate',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.6129, 77.2295),
-          distanceLabel: 'Rajpath',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -434,8 +408,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'monument',
           isStop: true,
           stopId: 'mon_red_fort',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.6562, 77.2410),
-          distanceLabel: 'Old Delhi',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -446,8 +418,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'airport',
           isStop: true,
           stopId: 'ap_del',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.5562, 77.1000),
-          distanceLabel: 'Aerocity T3',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -458,8 +428,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'city',
           isStop: true,
           stopId: 'delhi_saket',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.5245, 77.2066),
-          distanceLabel: 'South Delhi',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -470,16 +438,15 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'city',
           isStop: true,
           stopId: 'ncr_gurugram_cyberhub',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 28.4950, 77.0890),
-          distanceLabel: 'Gurugram',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
-        },
-      ];
+        }
+      );
+      break;
     }
 
     case 'mumbai': {
       // 4. Mumbai Hotspots
-      return [
+      rawCandidates.push(
         {
           displayName: '🚆 Chhatrapati Shivaji Maharaj Terminus (CSMT) • Fort, Mumbai',
           name: 'CSMT Mumbai Terminus',
@@ -488,8 +455,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'railway',
           isStop: true,
           stopId: 'rail_csmt',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 18.9401, 72.8354),
-          distanceLabel: 'South Mumbai',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -500,8 +465,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'monument',
           isStop: true,
           stopId: 'mon_gateway_of_india',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 18.9220, 72.8347),
-          distanceLabel: 'Colaba',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -512,8 +475,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'coastal',
           isStop: true,
           stopId: 'mum_marine_drive',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 18.9430, 72.8230),
-          distanceLabel: 'Churchgate',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -524,16 +485,15 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'coastal',
           isStop: true,
           stopId: 'mum_juhu_beach',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 19.0988, 72.8264),
-          distanceLabel: 'Juhu West',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
-        },
-      ];
+        }
+      );
+      break;
     }
 
     case 'bengaluru': {
       // 5. Bengaluru Hotspots
-      return [
+      rawCandidates.push(
         {
           displayName: '🚆 KSR Bengaluru City Junction (SBC / Majestic Hub)',
           name: 'KSR Bengaluru (SBC)',
@@ -542,8 +502,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'railway',
           isStop: true,
           stopId: 'rail_sbc',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 12.9781, 77.5696),
-          distanceLabel: 'Majestic Hub',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -554,8 +512,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'airport',
           isStop: true,
           stopId: 'ap_blr',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 13.1986, 77.7066),
-          distanceLabel: 'Devanahalli',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -566,8 +522,6 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'city',
           isStop: true,
           stopId: 'blr_indiranagar',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 12.9780, 77.6400),
-          distanceLabel: 'Indiranagar',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
         },
         {
@@ -578,36 +532,67 @@ export function getRegionalDefaultRecommendations(userLoc?: UserLocationState): 
           type: 'city',
           isStop: true,
           stopId: 'blr_whitefield',
-          distanceKm: calculateDistanceKm(activeLoc.lat, activeLoc.lng, 12.9860, 77.7380),
-          distanceLabel: 'Whitefield',
           accessibility: { wheelchairBoarding: 1, hasRamp: true },
-        },
-      ];
+        }
+      );
+      break;
     }
 
     default: {
-      // 6. Generic / National Top Landmarks with dynamic proximity
-      const topLandmarks = searchIndiaGazetteer('', 8);
-      return topLandmarks.map((ig) => {
-        const dKm = calculateDistanceKm(activeLoc.lat, activeLoc.lng, ig.lat, ig.lng);
-        return {
-          displayName: ig.displayName,
-          name: ig.name,
-          lat: ig.lat,
-          lng: ig.lng,
-          type: ig.category,
-          isStop: true,
-          stopId: ig.id,
-          distanceKm: dKm,
-          distanceLabel: `${dKm >= 100 ? `${Math.round(dKm)} km` : `${dKm.toFixed(1)} km`} away`,
-          accessibility: {
-            wheelchairBoarding: 1,
-            hasRamp: ig.hasRamp !== false,
-          },
-        };
-      });
+      // 6. Generic / National / City-specific landmarks with dynamic proximity
+      const cityMatches = activeLoc.cityName && activeLoc.cityName !== 'India'
+        ? searchIndiaGazetteer(activeLoc.cityName, 20)
+        : [];
+      const nationalMonuments = searchIndiaGazetteer('', 30);
+      const combined = [...cityMatches, ...nationalMonuments];
+      const seenIds = new Set<string>();
+
+      for (const ig of combined) {
+        if (!seenIds.has(ig.id)) {
+          seenIds.add(ig.id);
+          rawCandidates.push({
+            displayName: ig.displayName,
+            name: ig.name,
+            lat: ig.lat,
+            lng: ig.lng,
+            type: ig.category,
+            isStop: true,
+            stopId: ig.id,
+            accessibility: {
+              wheelchairBoarding: 1,
+              hasRamp: ig.hasRamp !== false,
+            },
+          });
+        }
+      }
+      break;
     }
   }
+
+  // Calculate precise distance from active user GPS, format near-vs-far badges, and strictly sort closest first
+  const sorted = rawCandidates.map((item) => {
+    const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeLoc.lat, activeLoc.lng, item.lat, item.lng);
+    let distanceLabel = `${d.toFixed(1)} km away`;
+    if (d < 0.5) {
+      distanceLabel = `${Math.round(d * 1000)}m away (Very Near)`;
+    } else if (d < 2) {
+      distanceLabel = `${d.toFixed(1)} km away (Near)`;
+    } else if (d < 15) {
+      distanceLabel = `${d.toFixed(1)} km away (Nearby)`;
+    } else if (d < 50) {
+      distanceLabel = `${d.toFixed(1)} km away`;
+    } else {
+      distanceLabel = `${Math.round(d)} km away (Far)`;
+    }
+    return {
+      ...item,
+      distanceKm: d,
+      distanceLabel,
+    };
+  });
+
+  sorted.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  return sorted.slice(0, 10);
 }
 
 /**
@@ -1079,15 +1064,19 @@ export async function searchPlacesLive(
         }
       }
 
-      // Formulate clear distance badge
+      // Formulate clear, accurate distance badge showing near vs far
       let distanceLabel = item.distanceLabel;
-      if (!distanceLabel) {
-        if (d < 1) {
-          distanceLabel = `${Math.round(d * 1000)}m away`;
-        } else if (d < 100) {
+      if (!distanceLabel || distanceLabel.includes('away')) {
+        if (d < 0.5) {
+          distanceLabel = `${Math.round(d * 1000)}m away (Very Near)`;
+        } else if (d < 2) {
+          distanceLabel = `${d.toFixed(1)} km away (Near)`;
+        } else if (d < 15) {
+          distanceLabel = `${d.toFixed(1)} km away (Nearby)`;
+        } else if (d < 50) {
           distanceLabel = `${d.toFixed(1)} km away`;
         } else {
-          distanceLabel = `${Math.round(d)} km away`;
+          distanceLabel = `${Math.round(d)} km away (Far)`;
         }
       }
 
@@ -1100,10 +1089,30 @@ export async function searchPlacesLive(
     }
   }
 
-  // Sort by highest relevance score first (closest establishment ranks #1)
-  combined.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  // 9. Proximity-First Re-Ordering & Selection
+  const isGenericOrCategoryQuery =
+    Object.keys(CATEGORY_SYNONYMS).includes(q) ||
+    ['shop', 'shops', 'cinema', 'cinemas', 'theatre', 'theater', 'movie', 'movies', 'cafe', 'cafes', 'coffee', 'tea', 'chai', 'food', 'restaurant', 'restaurants', 'dhaba', 'hotel', 'pharmacy', 'medicine', 'medicines', 'hospital', 'doctor', 'clinic', 'atm', 'bank', 'banks', 'gym', 'gyms', 'bakery', 'mall', 'malls', 'bus', 'station', 'supermarket', 'market', 'bazaar'].includes(q);
 
-  const result = combined.slice(0, 15).map(({ relevanceScore, ...rest }) => rest);
+  if (isGenericOrCategoryQuery && !isExplicitRemoteSearch) {
+    // For generic/category queries (e.g. "shop", "cinema", "cafe"), sort strictly from near to far
+    combined.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  } else {
+    // For named queries, sort by relevance score first; break ties by proximity
+    combined.sort((a, b) => {
+      const scoreDiff = b.relevanceScore - a.relevanceScore;
+      if (Math.abs(scoreDiff) > 150) {
+        return scoreDiff;
+      }
+      return (a.distanceKm || 0) - (b.distanceKm || 0);
+    });
+  }
+
+  // If local results within 60km exist, filter out remote cross-state results unless explicitly searched
+  const localResults = combined.filter((item) => (item.distanceKm || 0) <= 60);
+  const finalPool = localResults.length >= 2 && !isExplicitRemoteSearch ? localResults : combined;
+
+  const result = finalPool.slice(0, 15).map(({ relevanceScore, ...rest }) => rest);
   searchCache.set(cacheKey, result);
   return result;
 }

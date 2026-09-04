@@ -161,23 +161,25 @@ export default function TripPlannerPage() {
 
     try {
       const loc = await requestLocation();
-      if (loc && loc.lat && loc.lng) {
-        setOriginInput(loc.placeName || `${loc.cityName} (Current Location)`);
+      const finalLoc = loc || userLocation;
+      if (finalLoc && finalLoc.lat && finalLoc.lng) {
+        const placeTitle = finalLoc.placeName || `${finalLoc.cityName} (Current Location)`;
+        setOriginInput(placeTitle);
         setOriginLocation({
-          name: loc.placeName || `${loc.cityName} (Current Location)`,
-          lat: loc.lat,
-          lng: loc.lng,
+          name: placeTitle,
+          lat: finalLoc.lat,
+          lng: finalLoc.lng,
         });
         setActiveDropdown(null);
       } else {
-        const fallbackName = 'Campus Gate (Current GPS)';
+        const fallbackName = userLocation.placeName || `${userLocation.cityName} (Current Location)`;
         setOriginInput(fallbackName);
-        setOriginLocation({ name: fallbackName, lat: 20.3555, lng: 85.8145 });
+        setOriginLocation({ name: fallbackName, lat: userLocation.lat, lng: userLocation.lng });
       }
     } catch {
-      const fallbackName = 'Campus Gate (Current GPS)';
+      const fallbackName = userLocation.placeName || `${userLocation.cityName} (Current Location)`;
       setOriginInput(fallbackName);
-      setOriginLocation({ name: fallbackName, lat: 20.3555, lng: 85.8145 });
+      setOriginLocation({ name: fallbackName, lat: userLocation.lat, lng: userLocation.lng });
     } finally {
       setIsLocating(false);
     }
@@ -382,8 +384,12 @@ export default function TripPlannerPage() {
             {activeDropdown === 'origin' && originSuggestions.length > 0 && (
               <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
                 <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
-                  <span>Priority in {userLocation.cityName}</span>
-                  <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                  <span className="truncate max-w-[220px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
+                  {userLocation.permissionGranted ? (
+                    <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.5 rounded text-[9px]">📍 GPS Active</span>
+                  ) : (
+                    <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                  )}
                 </div>
                 {originSuggestions.map((place, idx) => (
                   <button
@@ -424,8 +430,19 @@ export default function TripPlannerPage() {
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
                         )}
                         {place.distanceLabel && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
-                            {place.distanceLabel}
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto shrink-0 flex items-center gap-1 ${
+                              (place.distanceKm !== undefined && place.distanceKm < 1) || place.distanceLabel.includes('Very Near')
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : (place.distanceKm !== undefined && place.distanceKm < 5) || place.distanceLabel.includes('Near')
+                                ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                                : (place.distanceKm !== undefined && place.distanceKm < 25) || place.distanceLabel.includes('Nearby')
+                                ? 'bg-neutral-100 text-neutral-700 border border-neutral-200'
+                                : 'bg-neutral-50 text-neutral-500 border border-neutral-200'
+                            }`}
+                          >
+                            <span>📍</span>
+                            <span>{place.distanceLabel}</span>
                           </span>
                         )}
                       </div>
@@ -527,8 +544,12 @@ export default function TripPlannerPage() {
 
                 {/* Regional Priority Header */}
                 <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
-                  <span>Priority in {userLocation.cityName}</span>
-                  <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                  <span className="truncate max-w-[220px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
+                  {userLocation.permissionGranted ? (
+                    <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.5 rounded text-[9px]">📍 GPS Active</span>
+                  ) : (
+                    <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                  )}
                 </div>
 
                 {destinationSuggestions.map((place, idx) => (
@@ -570,8 +591,19 @@ export default function TripPlannerPage() {
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
                         )}
                         {place.distanceLabel && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-neutral-100 text-neutral-600 font-normal ml-auto shrink-0">
-                            {place.distanceLabel}
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto shrink-0 flex items-center gap-1 ${
+                              (place.distanceKm !== undefined && place.distanceKm < 1) || place.distanceLabel.includes('Very Near')
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : (place.distanceKm !== undefined && place.distanceKm < 5) || place.distanceLabel.includes('Near')
+                                ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                                : (place.distanceKm !== undefined && place.distanceKm < 25) || place.distanceLabel.includes('Nearby')
+                                ? 'bg-neutral-100 text-neutral-700 border border-neutral-200'
+                                : 'bg-neutral-50 text-neutral-500 border border-neutral-200'
+                            }`}
+                          >
+                            <span>📍</span>
+                            <span>{place.distanceLabel}</span>
                           </span>
                         )}
                       </div>

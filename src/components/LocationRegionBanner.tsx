@@ -56,7 +56,7 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
             onClick={() => setIsOpenMenu(!isOpenMenu)}
             className="flex items-center gap-1 hover:text-black focus:outline-none"
           >
-            <span className="truncate max-w-[140px] sm:max-w-[180px]">{userLocation.cityName}</span>
+            <span className="truncate max-w-[160px] sm:max-w-[220px]">{userLocation.placeName || userLocation.cityName}</span>
             <ChevronDown className="w-3 h-3 text-neutral-500" />
           </button>
 
@@ -133,7 +133,7 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
               )}
             </div>
             <div className="text-sm font-black text-white flex items-center gap-1.5 truncate">
-              <span>{userLocation.regionLabel}</span>
+              <span>{userLocation.placeName || userLocation.regionLabel}</span>
               {userLocation.permissionGranted && (
                 <span className="bg-neutral-800 text-neutral-300 border border-neutral-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
                   GPS Active
