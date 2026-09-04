@@ -11,7 +11,8 @@ import {
   ChevronRight, ExternalLink, ShieldCheck, CheckCircle2,
   Car, Bus, Train, Plane, RefreshCw, AlertCircle, Users,
   Plus, Check, X, Phone, UserCheck, Trash2, Sparkles, Share2,
-  CreditCard, Ticket, Crosshair, Layers, Info, Search, ArrowLeftRight
+  CreditCard, Ticket, Crosshair, Layers, Info, Search, ArrowLeftRight,
+  Footprints, Bike, Zap, TramFront
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import { journeysApi, stopsApi } from '../../api';
@@ -1054,15 +1055,119 @@ export default function RouteDiscoveryPage() {
     return m > 0 ? `${h}h ${m}m` : `${h} hrs`;
   };
 
-  const getModeIcon = (route: RouteSearchResult) => {
-    const vType = route.route?.vehicleType;
-    if (vType === 'flight' || route.travelScope === 'international') return <Plane className="w-4 h-4 text-sky-600" />;
-    if (vType === 'train') return <Train className="w-4 h-4 text-blue-600" />;
-    if (vType === 'bus') return <Bus className="w-4 h-4 text-emerald-600" />;
-    if (route.route?.id?.includes('CARPOOL') || route.route?.name?.toLowerCase().includes('carpool') || route.route?.name?.toLowerCase().includes('sharing')) {
-      return <Users className="w-4 h-4 text-purple-600" />;
+  const getModeIcon = (route: RouteSearchResult, isSelected = false) => {
+    const vType = String(route.route?.vehicleType || '');
+    const rId = (route.route?.id || '').toUpperCase();
+    const rName = (route.route?.name || '').toLowerCase();
+    const shortName = (route.route?.shortName || '').toLowerCase();
+
+    // 1. Walk / Pedestrian / Step-Free Campus Walkway
+    if (
+      vType === 'walk' ||
+      vType === 'foot' ||
+      rId.includes('WALK') ||
+      rId.includes('STEP_FREE') ||
+      rName.includes('walk') ||
+      rName.includes('footpath') ||
+      shortName.includes('walk')
+    ) {
+      return <Footprints className={`w-5 h-5 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />;
     }
-    return <Car className="w-4 h-4 text-amber-600" />;
+
+    // 2. Cycle / Bicycle / Smart Cycle Track
+    if (
+      vType === 'bicycle' ||
+      rId.includes('CYCLE') ||
+      rId.includes('BICYCLE') ||
+      rName.includes('cycle') ||
+      rName.includes('bicycle') ||
+      shortName.includes('cycle')
+    ) {
+      return <Bike className={`w-5 h-5 ${isSelected ? 'text-cyan-300' : 'text-cyan-600'}`} />;
+    }
+
+    // 3. Campus EV / Electric Shuttle
+    if (
+      rId.includes('EV') ||
+      rName.includes('campus ev') ||
+      rName.includes('electric') ||
+      rName.includes('shuttle') ||
+      vType === 'campus-vehicle'
+    ) {
+      return <Zap className={`w-5 h-5 ${isSelected ? 'text-amber-300' : 'text-amber-500'}`} />;
+    }
+
+    // 4. Auto / E-Rickshaw / Three-Wheeler
+    if (
+      rId.includes('AUTO') ||
+      rId.includes('RICKSHAW') ||
+      rName.includes('auto') ||
+      rName.includes('rickshaw') ||
+      shortName.includes('auto')
+    ) {
+      return (
+        <span className="text-xl leading-none select-none" role="img" aria-label="Auto Rickshaw">
+          🛺
+        </span>
+      );
+    }
+
+    // 5. Bike Taxi / Rapido / Solo Bike
+    if (
+      rId.includes('BIKE_TAXI') ||
+      rId.includes('SOLO_BIKE') ||
+      rName.includes('solo bike') ||
+      rName.includes('bike taxi') ||
+      rName.includes('rapido')
+    ) {
+      return <Bike className={`w-5 h-5 ${isSelected ? 'text-amber-300' : 'text-amber-600'}`} />;
+    }
+
+    // 6. Student Carpool / Shared Ride
+    if (
+      rId.includes('CARPOOL') ||
+      rName.includes('carpool') ||
+      rName.includes('sharing') ||
+      rName.includes('share') ||
+      shortName.includes('carpool')
+    ) {
+      return <Users className={`w-5 h-5 ${isSelected ? 'text-purple-300' : 'text-purple-600'}`} />;
+    }
+
+    // 7. Commercial Flight / Air Travel
+    if (
+      vType === 'flight' ||
+      route.travelScope === 'international' ||
+      rId.includes('FLIGHT') ||
+      rName.includes('flight') ||
+      rName.includes('air')
+    ) {
+      return <Plane className={`w-5 h-5 ${isSelected ? 'text-sky-300' : 'text-sky-600'}`} />;
+    }
+
+    // 8. Metro / Subway / Tram
+    if (rId.includes('METRO') || rName.includes('metro') || rName.includes('subway') || rName.includes('tram')) {
+      return <TramFront className={`w-5 h-5 ${isSelected ? 'text-indigo-300' : 'text-indigo-600'}`} />;
+    }
+
+    // 9. Train / Indian Railways / Express
+    if (
+      vType === 'train' ||
+      rId.includes('TRAIN') ||
+      rId.includes('RAIL') ||
+      rName.includes('train') ||
+      rName.includes('express')
+    ) {
+      return <Train className={`w-5 h-5 ${isSelected ? 'text-blue-300' : 'text-blue-600'}`} />;
+    }
+
+    // 10. Bus / Mo Bus / Public Transit
+    if (vType === 'bus' || rId.includes('BUS') || rName.includes('bus') || shortName.includes('bus')) {
+      return <Bus className={`w-5 h-5 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />;
+    }
+
+    // 11. Cab / Taxi / Private Car
+    return <Car className={`w-5 h-5 ${isSelected ? 'text-amber-300' : 'text-amber-600'}`} />;
   };
 
   return (
@@ -1458,7 +1563,7 @@ export default function RouteDiscoveryPage() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-800'
                         }`}>
-                        {getModeIcon(route)}
+                        {getModeIcon(route, isSelected)}
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-sm leading-tight truncate flex items-center gap-1.5">
@@ -1472,19 +1577,27 @@ export default function RouteDiscoveryPage() {
                         <div className={`text-xs mt-0.5 font-medium ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
                           {route.route?.id?.includes('WALK') || route.route?.id?.includes('STEP_FREE') || route.route?.name?.toLowerCase().includes('walk')
                             ? '🚶 Step-Free Paved Walkway'
-                            : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
-                              ? `🔄 Multi-Bus Connecting Line (1 Transfer)`
-                              : route.route?.vehicleType === 'bus'
-                                ? '🚌 Direct Public Mo Bus'
-                                : route.route?.vehicleType === 'campus-vehicle' || route.route?.id?.includes('EV')
-                                  ? '⚡ Free Campus Shuttle'
-                                  : route.route?.id?.includes('CARPOOL')
-                                    ? '🤝 Student Ride Sharing'
-                                    : route.route?.id?.includes('BIKE')
+                            : route.route?.id?.includes('CYCLE') || route.route?.id?.includes('BICYCLE') || route.route?.name?.toLowerCase().includes('cycle')
+                              ? '🚲 Dedicated Campus Cycle Track'
+                              : route.route?.id?.includes('EV') || route.route?.name?.toLowerCase().includes('ev')
+                                ? '⚡ Free Campus EV Shuttle'
+                                : route.route?.id?.includes('CARPOOL') || route.route?.name?.toLowerCase().includes('carpool') || route.route?.name?.toLowerCase().includes('sharing')
+                                  ? '🤝 Student Ride Sharing'
+                                  : route.route?.id?.includes('AUTO') || route.route?.name?.toLowerCase().includes('auto') || route.route?.name?.toLowerCase().includes('rickshaw')
+                                    ? '🛺 Direct Stand Auto / E-Rickshaw'
+                                    : route.route?.id?.includes('BIKE') || route.route?.name?.toLowerCase().includes('bike')
                                       ? '🛵 Fast Solo Bike'
-                                      : route.route?.id?.includes('AUTO')
-                                        ? '🚖 Direct Stand Auto'
-                                        : '🚌 Public Transit'}
+                                      : route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.name?.toLowerCase().includes('express')
+                                        ? '🚆 Indian Railways Service'
+                                        : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
+                                          ? '✈️ Commercial Flight'
+                                          : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
+                                            ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
+                                            : route.route?.vehicleType === 'bus' || route.route?.name?.toLowerCase().includes('bus')
+                                              ? '🚌 Direct Public Mo Bus'
+                                              : route.route?.name?.toLowerCase().includes('cab') || route.route?.name?.toLowerCase().includes('taxi')
+                                                ? '🚖 Direct Cab / Taxi'
+                                                : '🚌 Public Transit'}
                         </div>
                       </div>
                     </div>
@@ -1539,12 +1652,14 @@ export default function RouteDiscoveryPage() {
                           >
                             {seg.vehicleType === 'flight' || seg.routeId?.includes('FLIGHT') ? '✈️ Flight' :
                               seg.vehicleType === 'train' || seg.routeId?.includes('RAIL') ? '🚆 Train' :
-                                seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🚗 Carpool` :
-                                  seg.type === 'walk' ? `🚶 ${seg.duration}m` :
-                                    seg.type === 'transfer' ? `🔄 Transfer (${seg.duration}m)` :
-                                      seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus'
-                                        ? (seg.routeId?.includes('EV') ? '⚡ Campus EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`)
-                                        : (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport' ? `🚖 Auto/Cab` : `🚶 ${seg.duration}m`)}
+                                seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🤝 Carpool` :
+                                  seg.routeId?.includes('CYCLE') || seg.routeName?.toLowerCase().includes('cycle') ? `🚲 Smart Cycle` :
+                                    seg.routeId?.includes('AUTO') || seg.routeName?.toLowerCase().includes('auto') || seg.routeName?.toLowerCase().includes('rickshaw') ? `🛺 Auto` :
+                                      seg.type === 'walk' ? `🚶 ${seg.duration}m` :
+                                        seg.type === 'transfer' ? `🔄 Transfer (${seg.duration}m)` :
+                                          seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus'
+                                            ? (seg.routeId?.includes('EV') ? '⚡ Campus EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`)
+                                            : (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport' ? `🛺 Auto` : `🚶 ${seg.duration}m`)}
                           </span>
                           {sIdx < arr.length - 1 && (
                             <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
