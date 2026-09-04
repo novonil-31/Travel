@@ -1626,14 +1626,10 @@ export default function RouteDiscoveryPage() {
               className="w-full h-full"
               zoomControl={false}
               scrollWheelZoom={false}
+              attributionControl={false}
             >
               <TileLayer
                 key={mapType}
-                attribution={
-                  mapType === 'satellite'
-                    ? 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-                    : 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
-                }
                 url={
                   mapType === 'satellite'
                     ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'

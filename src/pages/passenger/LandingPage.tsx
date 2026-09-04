@@ -427,12 +427,12 @@ export default function LandingPage() {
               center={[20.3530, 85.8160]}
               zoom={14}
               scrollWheelZoom={false}
+              attributionControl={false}
               className="w-full h-full"
               style={{ zIndex: 1 }}
             >
               <TileLayer
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-                attribution='Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
               />
               <Polyline positions={polylineCoords} color="#2563eb" weight={5} opacity={0.9} />
 

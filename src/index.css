@@ -56,6 +56,11 @@
     z-index: 10;
   }
 
+  /* Completely hide Leaflet attribution widget so it doesn't clutter or cover mobile screens */
+  .leaflet-control-attribution {
+    display: none !important;
+  }
+
   .leaflet-popup-content-wrapper {
     @apply bg-white text-neutral-900 rounded-2xl shadow-uber-elevated border border-neutral-200;
     padding: 2px;

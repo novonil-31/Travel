@@ -870,12 +870,12 @@ export default function ActiveJourneyPage() {
           center={livePos}
           zoom={15}
           scrollWheelZoom={true}
+          attributionControl={false}
           className="w-full h-full"
           style={{ zIndex: 1 }}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
           <NavBoundsController coordinates={continuousRoute} currentPos={livePos} />
 
