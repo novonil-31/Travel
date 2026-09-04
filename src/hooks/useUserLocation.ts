@@ -42,6 +42,13 @@ export function useUserLocation() {
     }
   }, []);
 
+  // Automatically detect user GPS location on initial load before any search is performed
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      requestLocation().catch(() => {});
+    }
+  }, [requestLocation]);
+
   const setManualCity = useCallback((key: IndianRegionKey) => {
     const loc = setUserManualRegion(key);
     setUserLocation(loc);

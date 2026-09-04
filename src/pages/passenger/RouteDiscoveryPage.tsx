@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import { journeysApi, stopsApi } from '../../api';
+import { useUserLocation } from '../../hooks/useUserLocation';
 import {
   getMatchingCarpools,
   registerCarpoolRequest,
@@ -421,6 +422,7 @@ export default function RouteDiscoveryPage() {
   const { state, startJourney, setSearchResults } = useAppStore();
   const { addToast } = useToast();
   const { searchResults, currentUser } = state;
+  const { userLocation, isLocating: isGpsLocating, requestLocation } = useUserLocation();
 
   const urlOrigin = searchParams.get('origin');
   const urlDest = searchParams.get('destination');
@@ -559,14 +561,15 @@ export default function RouteDiscoveryPage() {
   useEffect(() => {
     if (urlOrigin) setOriginInput(urlOrigin);
     else if (selectedRoute?.originName) setOriginInput(selectedRoute.originName);
-  }, [urlOrigin, selectedRoute?.originName]);
+    else if (userLocation?.placeName && !originInput) setOriginInput(userLocation.placeName);
+  }, [urlOrigin, selectedRoute?.originName, userLocation?.placeName]);
 
   useEffect(() => {
     if (urlDest) setDestInput(urlDest);
     else if (selectedRoute?.destinationName) setDestInput(selectedRoute.destinationName);
   }, [urlDest, selectedRoute?.destinationName]);
 
-  // Autocomplete debounced listeners
+  // Autocomplete debounced listeners (with user GPS proximity bias)
   useEffect(() => {
     if (!originInput || activeDropdown !== 'origin') {
       setOriginSuggestions([]);
@@ -574,14 +577,14 @@ export default function RouteDiscoveryPage() {
     }
     const t = setTimeout(async () => {
       try {
-        const places = await stopsApi.searchPlaces(originInput);
+        const places = await stopsApi.searchPlaces(originInput, userLocation);
         setOriginSuggestions(places);
       } catch (err) {
         console.error('Origin search error:', err);
       }
-    }, 150);
+    }, 120);
     return () => clearTimeout(t);
-  }, [originInput, activeDropdown]);
+  }, [originInput, activeDropdown, userLocation]);
 
   useEffect(() => {
     if (!destInput || activeDropdown !== 'dest') {
@@ -590,14 +593,14 @@ export default function RouteDiscoveryPage() {
     }
     const t = setTimeout(async () => {
       try {
-        const places = await stopsApi.searchPlaces(destInput);
+        const places = await stopsApi.searchPlaces(destInput, userLocation);
         setDestSuggestions(places);
       } catch (err) {
         console.error('Dest search error:', err);
       }
-    }, 150);
+    }, 120);
     return () => clearTimeout(t);
-  }, [destInput, activeDropdown]);
+  }, [destInput, activeDropdown, userLocation]);
 
   // Execute Dynamic Route Search
   const handleExecuteSearch = async (
@@ -619,17 +622,21 @@ export default function RouteDiscoveryPage() {
     try {
       let origCoord = explicitOrigin;
       if (!origCoord) {
-        const matches = await stopsApi.searchPlaces(f);
-        if (matches && matches.length > 0) {
-          origCoord = { lat: matches[0].lat, lng: matches[0].lng };
+        if (f.toLowerCase().includes('current') || f.toLowerCase().includes('gps')) {
+          origCoord = { lat: userLocation.lat, lng: userLocation.lng };
         } else {
-          origCoord = { lat: 20.3523, lng: 85.8193 };
+          const matches = await stopsApi.searchPlaces(f, userLocation);
+          if (matches && matches.length > 0) {
+            origCoord = { lat: matches[0].lat, lng: matches[0].lng };
+          } else {
+            origCoord = { lat: userLocation.lat, lng: userLocation.lng };
+          }
         }
       }
 
       let destCoord = explicitDest;
       if (!destCoord) {
-        const matches = await stopsApi.searchPlaces(t);
+        const matches = await stopsApi.searchPlaces(t, userLocation);
         if (matches && matches.length > 0) {
           destCoord = { lat: matches[0].lat, lng: matches[0].lng };
         } else {
@@ -694,14 +701,14 @@ export default function RouteDiscoveryPage() {
           };
 
           if (!urlOriginLat || !urlOriginLng) {
-            const matches = await stopsApi.searchPlaces(urlOrigin);
+            const matches = await stopsApi.searchPlaces(urlOrigin, userLocation);
             if (matches && matches.length > 0) {
               origCoord = { lat: matches[0].lat, lng: matches[0].lng };
             }
           }
 
           if (!urlDestLat || !urlDestLng) {
-            const matches = await stopsApi.searchPlaces(urlDest);
+            const matches = await stopsApi.searchPlaces(urlDest, userLocation);
             if (matches && matches.length > 0) {
               destCoord = { lat: matches[0].lat, lng: matches[0].lng };
             }
@@ -1053,8 +1060,36 @@ export default function RouteDiscoveryPage() {
             </div>
 
             {/* Origin Autocomplete Suggestions */}
-            {activeDropdown === 'origin' && originSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-56 overflow-y-auto divide-y divide-neutral-100">
+            {activeDropdown === 'origin' && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-64 overflow-y-auto divide-y divide-neutral-100">
+                {/* 1-Tap Real-Time GPS Location Quick Action */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const locName = userLocation?.placeName || 'KIIT Campus (Current GPS Location)';
+                    setOriginInput(locName);
+                    setActiveDropdown(null);
+                    if (destInput.trim()) {
+                      handleExecuteSearch(locName, destInput, { lat: userLocation.lat, lng: userLocation.lng });
+                    }
+                  }}
+                  className="w-full text-left px-3.5 py-2.5 bg-emerald-50/70 hover:bg-emerald-100 border-b border-emerald-200 flex items-center justify-between gap-2 transition-colors group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Crosshair className="w-4 h-4 text-emerald-600 shrink-0 animate-pulse" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-emerald-950 flex items-center gap-1.5 truncate">
+                        <span>Use My Current Location</span>
+                        <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">GPS Detected</span>
+                      </div>
+                      <div className="text-[10px] text-emerald-700 truncate">{userLocation?.placeName || `${userLocation.cityName} Region`}</div>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-bold text-emerald-700 bg-white/80 border border-emerald-200 px-2 py-0.5 rounded-md">
+                    0m away
+                  </span>
+                </button>
+
                 {originSuggestions.map((place, idx) => (
                   <button
                     key={`${place.name}-${idx}`}
@@ -1066,15 +1101,37 @@ export default function RouteDiscoveryPage() {
                         handleExecuteSearch(place.name, destInput, { lat: place.lat, lng: place.lng });
                       }
                     }}
-                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center gap-2.5 transition-colors group"
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center justify-between gap-2.5 transition-colors group"
                   >
-                    <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-emerald-600 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
-                      {place.description && (
-                        <div className="text-[10px] text-neutral-500 truncate">{place.description}</div>
-                      )}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-sm shrink-0">
+                        {place.displayName?.startsWith('🎬') ? '🎬' :
+                         place.displayName?.startsWith('🛒') ? '🛒' :
+                         place.displayName?.startsWith('🛍️') ? '🛍️' :
+                         place.displayName?.startsWith('☕') ? '☕' :
+                         place.displayName?.startsWith('🍔') ? '🍔' :
+                         place.displayName?.startsWith('🍕') ? '🍕' :
+                         place.displayName?.startsWith('💊') ? '💊' :
+                         place.displayName?.startsWith('🏥') ? '🏥' :
+                         place.displayName?.startsWith('🏦') ? '🏦' :
+                         place.displayName?.startsWith('🏋️') ? '🏋️' :
+                         place.displayName?.startsWith('🚏') ? '🚏' :
+                         place.displayName?.startsWith('🚆') ? '🚆' :
+                         place.displayName?.startsWith('✈️') ? '✈️' :
+                         place.displayName?.startsWith('👑') ? '👑' :
+                         place.displayName?.startsWith('👸') ? '👸' :
+                         <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-emerald-600 shrink-0" />}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
+                        <div className="text-[10px] text-neutral-500 truncate">{place.displayName || place.type}</div>
+                      </div>
                     </div>
+                    {place.distanceLabel && (
+                      <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200">
+                        {place.distanceLabel}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1103,7 +1160,7 @@ export default function RouteDiscoveryPage() {
                   setActiveDropdown('dest');
                 }}
                 onFocus={() => setActiveDropdown('dest')}
-                placeholder="Where to? (Campus, Station, City...)"
+                placeholder="Where to? (Shop, Cinema, Campus, Station...)"
                 className="w-full bg-transparent text-xs sm:text-sm font-semibold text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
               />
               {destInput && (
@@ -1122,7 +1179,7 @@ export default function RouteDiscoveryPage() {
 
             {/* Destination Autocomplete Suggestions */}
             {activeDropdown === 'dest' && destSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-56 overflow-y-auto divide-y divide-neutral-100">
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-xl shadow-xl z-[1200] max-h-64 overflow-y-auto divide-y divide-neutral-100">
                 {destSuggestions.map((place, idx) => (
                   <button
                     key={`${place.name}-${idx}`}
@@ -1134,15 +1191,37 @@ export default function RouteDiscoveryPage() {
                         handleExecuteSearch(originInput, place.name, undefined, { lat: place.lat, lng: place.lng });
                       }
                     }}
-                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center gap-2.5 transition-colors group"
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-50 flex items-center justify-between gap-2.5 transition-colors group"
                   >
-                    <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-red-600 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
-                      {place.description && (
-                        <div className="text-[10px] text-neutral-500 truncate">{place.description}</div>
-                      )}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-sm shrink-0">
+                        {place.displayName?.startsWith('🎬') ? '🎬' :
+                         place.displayName?.startsWith('🛒') ? '🛒' :
+                         place.displayName?.startsWith('🛍️') ? '🛍️' :
+                         place.displayName?.startsWith('☕') ? '☕' :
+                         place.displayName?.startsWith('🍔') ? '🍔' :
+                         place.displayName?.startsWith('🍕') ? '🍕' :
+                         place.displayName?.startsWith('💊') ? '💊' :
+                         place.displayName?.startsWith('🏥') ? '🏥' :
+                         place.displayName?.startsWith('🏦') ? '🏦' :
+                         place.displayName?.startsWith('🏋️') ? '🏋️' :
+                         place.displayName?.startsWith('🚏') ? '🚏' :
+                         place.displayName?.startsWith('🚆') ? '🚆' :
+                         place.displayName?.startsWith('✈️') ? '✈️' :
+                         place.displayName?.startsWith('👑') ? '👑' :
+                         place.displayName?.startsWith('👸') ? '👸' :
+                         <MapPin className="w-3.5 h-3.5 text-neutral-400 group-hover:text-red-600 shrink-0" />}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-neutral-900 truncate">{place.name}</div>
+                        <div className="text-[10px] text-neutral-500 truncate">{place.displayName || place.type}</div>
+                      </div>
                     </div>
+                    {place.distanceLabel && (
+                      <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200">
+                        {place.distanceLabel}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

@@ -164,6 +164,55 @@ export const REGIONAL_LANDMARKS: Array<{
     { name: 'Saheed Nagar Market District', category: 'Commercial Hub', icon: '🏙️', lat: 20.2850, lng: 85.8450, keywords: ['saheed nagar', 'market', 'bhubaneswar', 'shops'], hasRamp: true },
     { name: 'Khandagiri & Udayagiri Caves', category: 'Heritage Site', icon: '🏛️', lat: 20.2600, lng: 85.7850, keywords: ['khandagiri', 'udayagiri', 'caves', 'heritage', 'monument'], hasRamp: false },
     { name: 'Lingaraj Temple Complex (Old Town)', category: 'Temple / Heritage', icon: '🛕', lat: 20.2380, lng: 85.8330, keywords: ['lingaraj', 'temple', 'old town', 'bindusagar', 'heritage'], hasRamp: false },
+
+    // 🎬 Cinemas & Multiplexes (Real-Life Entertainment)
+    { name: 'INOX Cinema (DN Regalia Mall)', category: 'Cinema Multiplex', icon: '🎬', lat: 20.2450, lng: 85.7680, keywords: ['inox', 'cinema', 'movie', 'theatre', 'film', 'dn regalia', 'patrapada', 'multiplex'], hasRamp: true },
+    { name: 'Cinepolis Multiplex (Esplanade One Mall)', category: 'Cinema Multiplex', icon: '🎬', lat: 20.2980, lng: 85.8650, keywords: ['cinepolis', 'cinema', 'movie', 'theatre', 'esplanade', 'rasulgarh', 'film', 'multiplex'], hasRamp: true },
+    { name: 'Maharaja Picture Palace', category: 'Cinema Hall', icon: '🎬', lat: 20.3010, lng: 85.8280, keywords: ['maharaja', 'cinema', 'theatre', 'movie', 'hall', 'acharya vihar', 'film'], hasRamp: true },
+    { name: 'Keshari Talkies (Master Canteen)', category: 'Cinema Hall', icon: '🎬', lat: 20.2675, lng: 85.8420, keywords: ['keshari', 'talkies', 'cinema', 'movie', 'theatre', 'master canteen', 'station'], hasRamp: true },
+    { name: 'Ravi Talkies Cinema', category: 'Cinema Hall', icon: '🎬', lat: 20.2450, lng: 85.8450, keywords: ['ravi talkies', 'cinema', 'theatre', 'movie', 'old town'], hasRamp: true },
+    { name: 'PVR Cinemas (Utkal Galleria Mall)', category: 'Cinema Multiplex', icon: '🎬', lat: 20.2560, lng: 85.8380, keywords: ['pvr', 'cinemas', 'movie', 'theatre', 'utkal galleria', 'kalpana', 'multiplex'], hasRamp: true },
+    { name: 'Swati & Stutee Cinema Complex', category: 'Cinema Hall', icon: '🎬', lat: 20.2690, lng: 85.8390, keywords: ['swati', 'stutee', 'cinema', 'theatre', 'movie', 'bapuji nagar'], hasRamp: true },
+
+    // 🛍️ Supermarkets, Malls & Retail Stores
+    { name: 'Reliance Fresh Supermarket (KIIT Square)', category: 'Supermarket / Grocery', icon: '🛒', lat: 20.3540, lng: 85.8155, keywords: ['reliance', 'fresh', 'supermarket', 'grocery', 'store', 'shop', 'vegetables', 'kiit square', 'patia'], hasRamp: true },
+    { name: 'Reliance Digital Electronics (Infocity Road)', category: 'Electronics Store', icon: '📱', lat: 20.3575, lng: 85.8130, keywords: ['reliance', 'digital', 'electronics', 'mobile', 'laptop', 'tv', 'infocity', 'shop'], hasRamp: true },
+    { name: 'Smart Bazaar (Big Bazaar Patia)', category: 'Hypermarket / Department Store', icon: '🏬', lat: 20.3480, lng: 85.8175, keywords: ['smart bazaar', 'big bazaar', 'supermarket', 'mall', 'grocery', 'clothes', 'patia', 'shop'], hasRamp: true },
+    { name: 'More Supermarket (Patia)', category: 'Supermarket', icon: '🛒', lat: 20.3515, lng: 85.8165, keywords: ['more', 'supermarket', 'grocery', 'shop', 'patia', 'store'], hasRamp: true },
+    { name: 'Zudio Fashion Store (KIIT Square Patia)', category: 'Clothing / Fashion Store', icon: '👕', lat: 20.3535, lng: 85.8150, keywords: ['zudio', 'fashion', 'clothes', 'apparel', 'shoes', 'kiit square', 'patia', 'shop', 'shopping'], hasRamp: true },
+    { name: 'Trends Fashion (Patia KIIT Road)', category: 'Clothing Store', icon: '👗', lat: 20.3525, lng: 85.8165, keywords: ['trends', 'reliance trends', 'clothes', 'fashion', 'patia', 'shop'], hasRamp: true },
+    { name: 'Croma Electronics Store (Patia)', category: 'Electronics Store', icon: '💻', lat: 20.3490, lng: 85.8170, keywords: ['croma', 'electronics', 'gadgets', 'laptop', 'mobile', 'patia', 'tata', 'shop'], hasRamp: true },
+    { name: 'Decathlon Sports Megastore (Phulnakhara)', category: 'Sports Store', icon: '⚽', lat: 20.4050, lng: 85.8950, keywords: ['decathlon', 'sports', 'fitness', 'cycle', 'shoes', 'gym wear', 'shop'], hasRamp: true },
+    { name: 'Pantaloons (Patia & Chandrasekharpur)', category: 'Fashion Department Store', icon: '🛍️', lat: 20.3380, lng: 85.8195, keywords: ['pantaloons', 'fashion', 'clothing', 'aditya birla', 'patia', 'shopping', 'shop'], hasRamp: true },
+    { name: 'Spencers Hypermarket (Janpath)', category: 'Supermarket', icon: '🛒', lat: 20.2740, lng: 85.8420, keywords: ['spencers', 'hypermarket', 'grocery', 'janpath', 'supermarket', 'shop'], hasRamp: true },
+    { name: 'Lenskart Eyewear (KIIT Road Patia)', category: 'Optical Shop', icon: '👓', lat: 20.3542, lng: 85.8152, keywords: ['lenskart', 'glasses', 'spectacles', 'optical', 'eyewear', 'patia', 'shop'], hasRamp: true },
+
+    // 🍕 Cafes, Restaurants, Bakeries & Food Courts
+    { name: "Domino's Pizza (KIIT Square Patia)", category: 'Pizza Restaurant / Fast Food', icon: '🍕', lat: 20.3538, lng: 85.8158, keywords: ['dominos', 'domino', 'pizza', 'fast food', 'restaurant', 'food', 'kiit square', 'patia'], hasRamp: true },
+    { name: "Domino's Pizza (Infocity Road)", category: 'Pizza Restaurant / Fast Food', icon: '🍕', lat: 20.3590, lng: 85.8115, keywords: ['dominos', 'pizza', 'infocity', 'restaurant', 'food'], hasRamp: true },
+    { name: "Domino's Pizza (Janpath Saheed Nagar)", category: 'Pizza Restaurant', icon: '🍕', lat: 20.2860, lng: 85.8440, keywords: ['dominos', 'pizza', 'janpath', 'saheed nagar', 'restaurant'], hasRamp: true },
+    { name: 'KFC (KIIT Road Patia)', category: 'Fast Food Restaurant', icon: '🍗', lat: 20.3532, lng: 85.8162, keywords: ['kfc', 'chicken', 'burger', 'fast food', 'restaurant', 'kiit road', 'patia'], hasRamp: true },
+    { name: 'Pizza Hut (KIIT Square)', category: 'Pizza Restaurant', icon: '🍕', lat: 20.3528, lng: 85.8164, keywords: ['pizza hut', 'pizza', 'pasta', 'restaurant', 'kiit square'], hasRamp: true },
+    { name: "McDonald's (Patia / Infocity Link)", category: 'Fast Food Restaurant', icon: '🍔', lat: 20.3560, lng: 85.8135, keywords: ['mcdonalds', 'mcdonald', 'burger', 'fries', 'fast food', 'restaurant', 'patia'], hasRamp: true },
+    { name: 'Starbucks Coffee (KIIT Road Patia)', category: 'Coffee Shop / Cafe', icon: '☕', lat: 20.3545, lng: 85.8150, keywords: ['starbucks', 'coffee', 'cafe', 'tea', 'latte', 'kiit road', 'patia'], hasRamp: true },
+    { name: 'Cafe Coffee Day (Campus 6 / OAT)', category: 'Cafe', icon: '☕', lat: 20.3528, lng: 85.8162, keywords: ['cafe coffee day', 'ccd', 'coffee', 'cafe', 'campus 6', 'oat', 'kiit'], hasRamp: true },
+    { name: 'Chai Break Cafe (Patia)', category: 'Cafe & Snacks', icon: '🍵', lat: 20.3520, lng: 85.8168, keywords: ['chai break', 'tea', 'chai', 'cafe', 'snacks', 'hookah', 'patia'], hasRamp: true },
+    { name: 'Subway (Infocity Road Patia)', category: 'Sandwich & Fast Food', icon: '🥪', lat: 20.3580, lng: 85.8125, keywords: ['subway', 'sandwich', 'salad', 'healthy food', 'infocity', 'patia'], hasRamp: true },
+    { name: 'Biggies Burger (KIIT Road)', category: 'Burger Joint', icon: '🍔', lat: 20.3536, lng: 85.8155, keywords: ['biggies burger', 'burger', 'shakes', 'fries', 'kiit road', 'patia'], hasRamp: true },
+    { name: 'Mio Amore Confectionery & Bakery (KIIT Square)', category: 'Bakery & Cake Shop', icon: '🎂', lat: 20.3541, lng: 85.8156, keywords: ['mio amore', 'bakery', 'cake', 'pastry', 'patties', 'patia', 'kiit square', 'shop'], hasRamp: true },
+    { name: 'Baskin Robbins Ice Cream (Patia)', category: 'Ice Cream Parlour', icon: '🍨', lat: 20.3522, lng: 85.8166, keywords: ['baskin robbins', 'ice cream', 'dessert', 'patia', 'shop'], hasRamp: true },
+
+    // 💊 Pharmacies, Medical Stores & Clinics
+    { name: 'Apollo Pharmacy (KIIT Square Patia)', category: 'Pharmacy / Medical Store', icon: '💊', lat: 20.3539, lng: 85.8157, keywords: ['apollo pharmacy', 'pharmacy', 'chemist', 'medicine', 'medical store', 'doctor', 'patia', 'kiit square', 'shop'], hasRamp: true },
+    { name: 'MedPlus Pharmacy (Patia Road)', category: 'Pharmacy / Chemist', icon: '💊', lat: 20.3512, lng: 85.8168, keywords: ['medplus', 'pharmacy', 'medicine', 'chemist', 'medical store', 'patia', 'shop'], hasRamp: true },
+    { name: 'Frank Ross Pharmacy (Patia)', category: 'Pharmacy', icon: '💊', lat: 20.3475, lng: 85.8178, keywords: ['frank ross', 'pharmacy', 'medicine', 'medical', 'patia'], hasRamp: true },
+
+    // 🏋️ Gyms, Salons & Banks
+    { name: "Gold's Gym (Patia)", category: 'Fitness Gym', icon: '🏋️', lat: 20.3505, lng: 85.8170, keywords: ['golds gym', 'gym', 'workout', 'fitness', 'exercise', 'patia'], hasRamp: true },
+    { name: 'Cult.fit Gym & Fitness (Patia)', category: 'Fitness Center', icon: '🏋️', lat: 20.3485, lng: 85.8172, keywords: ['cult fit', 'cult', 'gym', 'fitness', 'workout', 'patia'], hasRamp: true },
+    { name: 'State Bank of India (SBI KIIT Campus Branch & ATM)', category: 'Bank & ATM', icon: '🏦', lat: 20.3530, lng: 85.8158, keywords: ['sbi', 'state bank of india', 'bank', 'atm', 'cash', 'kiit campus', 'patia'], hasRamp: true },
+    { name: 'HDFC Bank & ATM (Patia)', category: 'Bank & ATM', icon: '🏦', lat: 20.3518, lng: 85.8165, keywords: ['hdfc', 'bank', 'atm', 'cash', 'patia'], hasRamp: true },
+    { name: 'ICICI Bank & ATM (KIIT Square)', category: 'Bank & ATM', icon: '🏦', lat: 20.3535, lng: 85.8155, keywords: ['icici', 'bank', 'atm', 'cash', 'kiit square'], hasRamp: true },
   ];
 
 /**
@@ -663,14 +712,70 @@ export async function searchPlacesLive(
     }
   }
 
-  // 4. Match from Regional Landmarks
+  // 4. Match from Regional Landmarks (with comprehensive category & semantic keyword expansion)
+  const CATEGORY_SYNONYMS: Record<string, string[]> = {
+    cinema: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'inox', 'cinepolis', 'pvr', 'film', 'talkies', 'picture', 'hall'],
+    cinemas: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'inox', 'cinepolis', 'pvr', 'film', 'talkies', 'picture', 'hall'],
+    movie: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'inox', 'cinepolis', 'pvr', 'film', 'hall'],
+    movies: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'inox', 'cinepolis', 'pvr', 'film', 'hall'],
+    theatre: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'hall'],
+    theater: ['cinema', 'movie', 'theatre', 'theater', 'multiplex', 'hall'],
+    shop: ['shop', 'store', 'market', 'bazaar', 'supermarket', 'mall', 'retail', 'mart'],
+    shops: ['shop', 'store', 'market', 'bazaar', 'supermarket', 'mall', 'retail', 'mart'],
+    store: ['shop', 'store', 'market', 'supermarket', 'mart', 'retail'],
+    stores: ['shop', 'store', 'market', 'supermarket', 'mart', 'retail'],
+    supermarket: ['supermarket', 'grocery', 'fresh', 'bazaar', 'mart', 'reliance fresh', 'smart bazaar', 'spencers', 'more', 'shop'],
+    supermarkets: ['supermarket', 'grocery', 'fresh', 'bazaar', 'mart', 'reliance fresh', 'smart bazaar', 'spencers', 'more', 'shop'],
+    grocery: ['grocery', 'supermarket', 'fresh', 'provisions', 'kirana', 'reliance', 'shop'],
+    groceries: ['grocery', 'supermarket', 'fresh', 'provisions', 'kirana', 'reliance', 'shop'],
+    cafe: ['cafe', 'coffee', 'starbucks', 'ccd', 'tea', 'chai', 'snacks'],
+    cafes: ['cafe', 'coffee', 'starbucks', 'ccd', 'tea', 'chai', 'snacks'],
+    coffee: ['cafe', 'coffee', 'starbucks', 'ccd', 'espresso', 'latte', 'tea'],
+    tea: ['chai', 'tea', 'cafe', 'snacks'],
+    chai: ['chai', 'tea', 'cafe', 'snacks'],
+    pizza: ['pizza', 'domino', "domino's", 'hut', 'ovenstory', 'fast food'],
+    burger: ['burger', 'mcdonald', 'kfc', 'biggies', 'subway', 'fast food'],
+    food: ['restaurant', 'cafe', 'food', 'dine', 'hotel', 'dhaba', 'kitchen', 'biryani', 'pizza', 'burger', 'fast food'],
+    restaurant: ['restaurant', 'food', 'dine', 'hotel', 'dhaba', 'kitchen', 'eatery'],
+    restaurants: ['restaurant', 'food', 'dine', 'hotel', 'dhaba', 'kitchen', 'eatery'],
+    pharmacy: ['pharmacy', 'medicine', 'chemist', 'medplus', 'apollo pharmacy', 'drugstore', 'medical store', 'drugs', 'clinic'],
+    pharmacies: ['pharmacy', 'medicine', 'chemist', 'medplus', 'apollo pharmacy', 'drugstore', 'medical store', 'drugs'],
+    medicine: ['pharmacy', 'medicine', 'chemist', 'medplus', 'apollo pharmacy', 'medical store'],
+    medicines: ['pharmacy', 'medicine', 'chemist', 'medplus', 'apollo pharmacy', 'medical store'],
+    chemist: ['pharmacy', 'medicine', 'chemist', 'medplus', 'apollo pharmacy', 'medical store'],
+    hospital: ['hospital', 'clinic', 'kims', 'aiims', 'apollo hospital', 'sum', 'healthcare', 'emergency', 'doctor'],
+    hospitals: ['hospital', 'clinic', 'kims', 'aiims', 'apollo hospital', 'sum', 'healthcare', 'emergency', 'doctor'],
+    clinic: ['clinic', 'hospital', 'doctor', 'healthcare', 'medical'],
+    clinics: ['clinic', 'hospital', 'doctor', 'healthcare', 'medical'],
+    doctor: ['hospital', 'clinic', 'doctor', 'healthcare', 'medical'],
+    gym: ['gym', 'fitness', 'workout', 'cult.fit', 'crossfit', 'exercise'],
+    gyms: ['gym', 'fitness', 'workout', 'cult.fit', 'crossfit', 'exercise'],
+    fitness: ['gym', 'fitness', 'workout', 'cult.fit', 'crossfit', 'exercise'],
+    bank: ['bank', 'atm', 'sbi', 'hdfc', 'icici', 'axis'],
+    banks: ['bank', 'atm', 'sbi', 'hdfc', 'icici', 'axis'],
+    atm: ['atm', 'bank', 'cash', 'money'],
+    atms: ['atm', 'bank', 'cash', 'money'],
+    bakery: ['bakery', 'cake', 'pastry', 'mio amore', 'monginis', 'bake', 'confectionery'],
+    bakeries: ['bakery', 'cake', 'pastry', 'mio amore', 'monginis', 'bake', 'confectionery'],
+    clothes: ['clothes', 'clothing', 'fashion', 'zudio', 'trends', 'pantaloons', 'apparel', 'wear', 'shopping', 'shop'],
+    clothing: ['clothes', 'clothing', 'fashion', 'zudio', 'trends', 'pantaloons', 'apparel', 'wear', 'shopping', 'shop'],
+    fashion: ['fashion', 'clothes', 'clothing', 'zudio', 'trends', 'pantaloons', 'apparel', 'shop'],
+    mall: ['mall', 'shopping', 'esplanade', 'dn regalia', 'forum', 'galleria', 'bazaar'],
+    malls: ['mall', 'shopping', 'esplanade', 'dn regalia', 'forum', 'galleria', 'bazaar'],
+  };
+
+  const expandedKeywords = qTokens.flatMap((tok) => CATEGORY_SYNONYMS[tok] || [tok]);
+
   for (const lm of REGIONAL_LANDMARKS) {
     const nameLower = lm.name.toLowerCase();
     const categoryLower = lm.category.toLowerCase();
     const isExactMatch = nameLower.includes(q) || categoryLower.includes(q);
     const tokenMatch = qTokens.every((tok) => nameLower.includes(tok) || lm.keywords.some((k) => k.includes(tok)));
+    const categoryMatch = expandedKeywords.some(
+      (kw) => nameLower.includes(kw) || categoryLower.includes(kw) || lm.keywords.some((k) => k.includes(kw))
+    );
 
-    if (isExactMatch || tokenMatch) {
+    if (isExactMatch || tokenMatch || categoryMatch) {
       const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, lm.lat, lm.lng);
       instantMatches.push({
         displayName: `${lm.icon} ${lm.name} (${lm.category})`,
@@ -728,19 +833,30 @@ export async function searchPlacesLive(
     q === 'kiss';
 
   if (isDedicatedCampusSearch && instantMatches.length > 0 && activeUserLoc.regionKey === 'bhubaneswar_kiit') {
-    const res = instantMatches.slice(0, 10);
+    // Sort campus matches by proximity to user
+    instantMatches.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+    const res = instantMatches.slice(0, 10).map((item) => {
+      const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, item.lat, item.lng);
+      const distanceLabel = d < 1 ? `${Math.round(d * 1000)}m away` : `${d.toFixed(1)} km away`;
+      return { ...item, distanceLabel };
+    });
     searchCache.set(cacheKey, res);
     return res;
   }
 
-  // 7. Parallel Live Online Geocoding via Backend API + Nominatim (India) + Photon with User Location Bias
+  // 7. Parallel Live Online Geocoding via Backend API + Nominatim (with Viewbox) + Photon (Biased to User GPS)
   const onlineResults: GeocodedPlace[] = [];
   try {
     const encodedQ = encodeURIComponent(query);
     const backendSearchUrl = `http://localhost:3000/api/stops/places/search?q=${encodedQ}&lat=${activeUserLoc.lat}&lng=${activeUserLoc.lng}`;
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&countrycodes=in&limit=8&addressdetails=1&accept-language=en`;
-    // Pass user lat/lon to Photon so OpenStreetMap biases results to the user's city
-    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=8`;
+    // Use viewbox around active user GPS location to prioritize immediate region while keeping unbounded search flexibility
+    const vBoxMinLng = activeUserLoc.lng - 0.45;
+    const vBoxMaxLat = activeUserLoc.lat + 0.40;
+    const vBoxMaxLng = activeUserLoc.lng + 0.45;
+    const vBoxMinLat = activeUserLoc.lat - 0.40;
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&countrycodes=in&viewbox=${vBoxMinLng},${vBoxMaxLat},${vBoxMaxLng},${vBoxMinLat}&bounded=0&limit=16&addressdetails=1&accept-language=en`;
+    // Pass user lat/lon to Photon so OpenStreetMap ranks closest establishments first
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=25`;
 
     const [backendRes, nomRes, photonRes] = await Promise.allSettled([
       fetch(backendSearchUrl, { signal: AbortSignal.timeout(3000) }),
@@ -789,8 +905,20 @@ export async function searchPlacesLive(
         const primary = item.name || item.display_name.split(',')[0] || query;
         const parts = item.display_name.split(',').slice(1, 3).map((p) => p.trim()).filter(Boolean);
         const sub = parts.join(', ');
+
+        let icon = '📍';
+        const typeL = (item.type || '').toLowerCase();
+        if (typeL.includes('cinema') || typeL.includes('theatre')) icon = '🎬';
+        else if (typeL.includes('supermarket') || typeL.includes('grocery')) icon = '🛒';
+        else if (typeL.includes('cafe') || typeL.includes('coffee')) icon = '☕';
+        else if (typeL.includes('restaurant') || typeL.includes('fast_food')) icon = '🍔';
+        else if (typeL.includes('pharmacy') || typeL.includes('chemist')) icon = '💊';
+        else if (typeL.includes('hospital') || typeL.includes('clinic')) icon = '🏥';
+        else if (typeL.includes('bank') || typeL.includes('atm')) icon = '🏦';
+        else if (typeL.includes('gym')) icon = '🏋️';
+
         onlineResults.push({
-          displayName: sub ? `📍 ${primary}, ${sub}` : `📍 ${primary}`,
+          displayName: sub ? `${icon} ${primary}, ${sub}` : `${icon} ${primary}`,
           name: primary,
           lat: itemLat,
           lng: itemLng,
@@ -804,7 +932,7 @@ export async function searchPlacesLive(
       const pData = (await photonRes.value.json()) as {
         features: Array<{
           geometry: { coordinates: [number, number] };
-          properties: { name?: string; street?: string; city?: string; state?: string; country?: string; osm_value?: string };
+          properties: { name?: string; street?: string; city?: string; state?: string; country?: string; osm_value?: string; osm_key?: string };
         }>;
       };
 
@@ -813,9 +941,25 @@ export async function searchPlacesLive(
         const itemLng = f.geometry.coordinates[0];
         const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
         const name = f.properties.name || f.properties.street || query;
-        const locParts = [f.properties.city, f.properties.state, f.properties.country].filter(Boolean).join(', ');
+        const locParts = [f.properties.street, f.properties.city, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
+
+        const osmVal = (f.properties.osm_value || '').toLowerCase();
+        let icon = '📍';
+        if (['cinema', 'theatre'].includes(osmVal)) icon = '🎬';
+        else if (['supermarket', 'grocery'].includes(osmVal)) icon = '🛒';
+        else if (['convenience', 'department_store', 'general', 'mall', 'clothes'].includes(osmVal)) icon = '🛍️';
+        else if (['cafe', 'coffee_shop'].includes(osmVal)) icon = '☕';
+        else if (['fast_food', 'restaurant', 'food_court'].includes(osmVal)) icon = '🍔';
+        else if (['pharmacy', 'chemist'].includes(osmVal)) icon = '💊';
+        else if (['hospital', 'clinic', 'doctors'].includes(osmVal)) icon = '🏥';
+        else if (['bank', 'atm'].includes(osmVal)) icon = '🏦';
+        else if (['fitness_centre', 'sports_centre', 'gym'].includes(osmVal)) icon = '🏋️';
+        else if (['bakery'].includes(osmVal)) icon = '🥐';
+        else if (['bus_stop', 'platform'].includes(osmVal)) icon = '🚏';
+        else if (['station', 'halt'].includes(osmVal)) icon = '🚆';
+
         onlineResults.push({
-          displayName: locParts ? `📍 ${name}, ${locParts}` : `📍 ${name}`,
+          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
           name,
           lat: itemLat,
           lng: itemLng,
@@ -828,7 +972,12 @@ export async function searchPlacesLive(
     console.warn('Live geocoding fallback warning:', err);
   }
 
-  // 8. Deduplicate and Apply Dynamic Proximity-Weighted Multi-Factor Ranking
+  // 8. Deduplicate and Apply Continuous Proximity-First Priority Ranking
+  // Checks if user explicitly typed a remote city name (e.g. "Domino's Delhi" or "Mumbai Airport")
+  const MAJOR_REMOTE_CITIES = ['delhi', 'mumbai', 'kolkata', 'calcutta', 'bengaluru', 'bangalore', 'chennai', 'madras', 'hyderabad', 'pune', 'ahmedabad', 'jaipur', 'chandigarh', 'lucknow', 'patna', 'kochi', 'goa', 'shimla', 'manali'];
+  const userCityLower = (activeUserLoc.cityName || '').toLowerCase();
+  const isExplicitRemoteSearch = MAJOR_REMOTE_CITIES.some((city) => q.includes(city) && !userCityLower.includes(city));
+
   const seen = new Set<string>();
   const combined: Array<GeocodedPlace & { relevanceScore: number }> = [];
 
@@ -839,31 +988,62 @@ export async function searchPlacesLive(
 
       const nameLower = item.name.toLowerCase();
       const displayLower = item.displayName.toLowerCase();
+      const typeLower = (item.type || '').toLowerCase();
 
-      // Base Text Score
+      // Base Text Relevance Score
       let score = 0;
-      if (nameLower === q) score += 1000;
-      else if (nameLower.startsWith(q)) score += 600;
-      else if (displayLower.startsWith(q)) score += 400;
-      else if (nameLower.includes(q)) score += 300;
-      else if (qTokens.every((tok) => displayLower.includes(tok))) score += 200;
+      if (nameLower === q) score += 2000;
+      else if (nameLower.startsWith(q)) score += 1200;
+      else if (displayLower.startsWith(q)) score += 800;
+      else if (nameLower.includes(q)) score += 600;
+      else if (typeLower.includes(q)) score += 500;
+      else if (qTokens.every((tok) => displayLower.includes(tok) || nameLower.includes(tok))) score += 400;
+      else score += 100;
 
-      // Proximity Score Boost based on user's current city/campus
-      const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, item.lat, item.lng);
-      if (d <= 3) {
-        score += 700; // Right inside current campus/neighborhood
-      } else if (d <= 15) {
-        score += 450; // Inside current city
-      } else if (d <= 50) {
-        score += 250; // Inside current district/metro area
-      } else if (d <= 200) {
-        score += 100; // Nearby state
+      // Check category synonym bonus
+      if (expandedKeywords.some((kw) => nameLower.includes(kw) || typeLower.includes(kw))) {
+        score += 400;
       }
 
-      // Add distance badge if nearby
+      // Proximity Dominant Ranking: Nearby places unconditionally beat distant ones unless explicit remote search
+      const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, item.lat, item.lng);
+
+      if (!isExplicitRemoteSearch) {
+        if (d <= 0.35) {
+          score += 25000; // Immediate walking radius (<350m)
+        } else if (d <= 0.8) {
+          score += 20000; // <800m
+        } else if (d <= 1.5) {
+          score += 16000; // <1.5 km
+        } else if (d <= 3.0) {
+          score += 12000; // <3 km (same campus / local neighborhood)
+        } else if (d <= 6.0) {
+          score += 9000;  // <6 km (same sector / sub-district)
+        } else if (d <= 12.0) {
+          score += 6500;  // <12 km (same city)
+        } else if (d <= 25.0) {
+          score += 4000;  // <25 km (metro area)
+        } else if (d <= 50.0) {
+          score += 2000;  // <50 km (outskirts)
+        } else if (d <= 100.0) {
+          score += 500;
+        } else if (d > 150.0) {
+          score -= 8000;  // Heavy distant penalty
+        } else if (d > 500.0) {
+          score -= 20000; // Remote cross-country penalty
+        }
+      }
+
+      // Formulate clear distance badge
       let distanceLabel = item.distanceLabel;
-      if (!distanceLabel && d < 100) {
-        distanceLabel = d < 1 ? `${(d * 1000).toFixed(0)}m away` : `${d.toFixed(1)} km away`;
+      if (!distanceLabel) {
+        if (d < 1) {
+          distanceLabel = `${Math.round(d * 1000)}m away`;
+        } else if (d < 100) {
+          distanceLabel = `${d.toFixed(1)} km away`;
+        } else {
+          distanceLabel = `${Math.round(d)} km away`;
+        }
       }
 
       combined.push({
@@ -875,10 +1055,10 @@ export async function searchPlacesLive(
     }
   }
 
-  // Sort by highest relevance score first
+  // Sort by highest relevance score first (closest establishment ranks #1)
   combined.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-  const result = combined.slice(0, 12).map(({ relevanceScore, ...rest }) => rest);
+  const result = combined.slice(0, 15).map(({ relevanceScore, ...rest }) => rest);
   searchCache.set(cacheKey, result);
   return result;
 }

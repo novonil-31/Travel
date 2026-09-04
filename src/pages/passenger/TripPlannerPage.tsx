@@ -230,14 +230,14 @@ export default function TripPlannerPage() {
       let finalDest = overrideDest ? { ...overrideDest } : { ...destinationLocation };
 
       if (!overrideOrigin && origText && origText !== originLocation.name) {
-        const matches = await stopsApi.searchPlaces(origText);
+        const matches = await stopsApi.searchPlaces(origText, userLocation);
         if (matches && matches.length > 0) {
           finalOrigin = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
       }
 
       if (!overrideDest && destText && destText !== destinationLocation.name) {
-        const matches = await stopsApi.searchPlaces(destText);
+        const matches = await stopsApi.searchPlaces(destText, userLocation);
         if (matches && matches.length > 0) {
           finalDest = { name: matches[0].name, lat: matches[0].lat, lng: matches[0].lng };
         }
@@ -394,7 +394,18 @@ export default function TripPlannerPage() {
                     className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                   >
                     <div className="text-base shrink-0 mt-0.5">
-                      {place.displayName.startsWith('👑') ? '👑' :
+                      {place.displayName.startsWith('🎬') ? '🎬' :
+                       place.displayName.startsWith('🛒') ? '🛒' :
+                       place.displayName.startsWith('🛍️') ? '🛍️' :
+                       place.displayName.startsWith('☕') ? '☕' :
+                       place.displayName.startsWith('🍔') ? '🍔' :
+                       place.displayName.startsWith('🍕') ? '🍕' :
+                       place.displayName.startsWith('💊') ? '💊' :
+                       place.displayName.startsWith('🏥') ? '🏥' :
+                       place.displayName.startsWith('🏦') ? '🏦' :
+                       place.displayName.startsWith('🏋️') ? '🏋️' :
+                       place.displayName.startsWith('🚏') ? '🚏' :
+                       place.displayName.startsWith('👑') ? '👑' :
                        place.displayName.startsWith('👸') ? '👸' :
                        place.displayName.startsWith('🎓') ? '🎓' :
                        place.displayName.startsWith('📚') ? '📚' :
@@ -529,7 +540,18 @@ export default function TripPlannerPage() {
                     className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
                   >
                     <div className="text-base shrink-0 mt-0.5">
-                      {place.displayName.startsWith('👑') ? '👑' :
+                      {place.displayName.startsWith('🎬') ? '🎬' :
+                       place.displayName.startsWith('🛒') ? '🛒' :
+                       place.displayName.startsWith('🛍️') ? '🛍️' :
+                       place.displayName.startsWith('☕') ? '☕' :
+                       place.displayName.startsWith('🍔') ? '🍔' :
+                       place.displayName.startsWith('🍕') ? '🍕' :
+                       place.displayName.startsWith('💊') ? '💊' :
+                       place.displayName.startsWith('🏥') ? '🏥' :
+                       place.displayName.startsWith('🏦') ? '🏦' :
+                       place.displayName.startsWith('🏋️') ? '🏋️' :
+                       place.displayName.startsWith('🚏') ? '🚏' :
+                       place.displayName.startsWith('👑') ? '👑' :
                        place.displayName.startsWith('👸') ? '👸' :
                        place.displayName.startsWith('🎓') ? '🎓' :
                        place.displayName.startsWith('📚') ? '📚' :

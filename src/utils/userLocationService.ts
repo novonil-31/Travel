@@ -31,6 +31,7 @@ export interface UserLocationState {
   permissionGranted: boolean;
   accuracyM?: number;
   detectedAt?: number;
+  placeName?: string;
 }
 
 export interface RegionalPresetCity {
@@ -304,6 +305,14 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const region = detectIndianRegion(lat, lng);
+        let placeName = region.cityName;
+
+        const distToKiit = calculateDistanceKm(lat, lng, 20.3533, 85.8160);
+        if (distToKiit <= 2.5) {
+          placeName = 'KIIT Campus (Current GPS Location)';
+        } else {
+          placeName = `${region.cityName} (Current GPS Location)`;
+        }
 
         const newState: UserLocationState = {
           lat,
@@ -312,6 +321,7 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
           stateName: region.stateName,
           regionKey: region.regionKey,
           regionLabel: region.regionLabel,
+          placeName,
           isCustom: false,
           permissionGranted: true,
           accuracyM: pos.coords.accuracy,
