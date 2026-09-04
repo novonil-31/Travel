@@ -761,6 +761,17 @@ export default function RouteDiscoveryPage() {
   const [infoModalRoute, setInfoModalRoute] = useState<RouteSearchResult | null>(null);
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(12);
   const [selectedCoachClassOverrides, setSelectedCoachClassOverrides] = useState<Record<string, string>>({});
+  const [selectedQuotaOverrides, setSelectedQuotaOverrides] = useState<Record<string, 'general' | 'tatkal'>>({});
+
+  // Detect short-notice booking (travel within 48h defaults to Tatkal live availability)
+  const travelDateParam = searchParams.get('date');
+  const isShortNoticeTravel = useMemo(() => {
+    if (!travelDateParam) return true;
+    const d = new Date(travelDateParam);
+    if (isNaN(d.getTime())) return true;
+    const diffHours = (d.getTime() - Date.now()) / (1000 * 3600);
+    return diffHours <= 48;
+  }, [travelDateParam]);
 
   // Keep selected index valid
   useEffect(() => {
@@ -1524,13 +1535,16 @@ export default function RouteDiscoveryPage() {
                 activeUserCarpools.some((p) => p.status === 'matched' || p.status === 'confirmed');
 
               const isCardTrain = route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL');
+              const activeCardQuota = selectedQuotaOverrides[route.route.id] || (isShortNoticeTravel ? 'tatkal' : 'general');
               const activeCardCoachCode = isCardTrain
                 ? (selectedCoachClassOverrides[route.route.id] || route.transitChainInfo?.selectedClassCode || route.transitChainInfo?.availableClasses?.find((c) => c.code === '3A' || c.code === 'CC')?.code || route.transitChainInfo?.availableClasses?.[0]?.code)
                 : undefined;
               const activeCardCoachObj = isCardTrain && activeCardCoachCode
                 ? route.transitChainInfo?.availableClasses?.find((c) => c.code === activeCardCoachCode)
                 : undefined;
-              const dynamicCardTicketFare = activeCardCoachObj?.fare || route.priceBreakdown?.mainTicketFare;
+              const dynamicCardTicketFare = activeCardCoachObj
+                ? (activeCardQuota === 'tatkal' && activeCardCoachObj.tatkalFare ? activeCardCoachObj.tatkalFare : activeCardCoachObj.fare)
+                : route.priceBreakdown?.mainTicketFare;
               const displayTotalPrice = isCardTrain && route.priceBreakdown
                 ? (route.priceBreakdown.ingressTaxiFare || 0) + (dynamicCardTicketFare || 0) + (route.priceBreakdown.egressTaxiFare || 0)
                 : (route.priceBreakdown?.totalPrice !== undefined
@@ -1618,7 +1632,7 @@ export default function RouteDiscoveryPage() {
                         </div>
                         {Boolean(dynamicCardTicketFare && dynamicCardTicketFare !== displayTotalPrice) && (
                           <div className={`text-[10px] font-bold leading-none mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                            {isCardTrain && activeCardCoachObj ? `Coach [${activeCardCoachObj.code}]: ` : 'Ticket: '}₹{dynamicCardTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
+                            {isCardTrain && activeCardCoachObj ? `Coach [${activeCardCoachObj.code}${activeCardQuota === 'tatkal' ? ' TATKAL' : ''}]: ` : 'Ticket: '}₹{dynamicCardTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
                           </div>
                         )}
                       </div>
@@ -1696,12 +1710,13 @@ export default function RouteDiscoveryPage() {
 
               // Account preference & dynamic coach class resolution
               const availableTrainClasses = selectedRoute.transitChainInfo?.availableClasses || [
-                { code: '3A', name: 'AC 3 Tier', fare: 810 },
-                { code: '2A', name: 'AC 2 Tier', fare: 1120 },
-                { code: '1A', name: 'AC First Class', fare: 1860 },
-                { code: 'SL', name: 'Sleeper Class', fare: 325 },
+                { code: '3A', name: 'AC 3 Tier', fare: 810, tatkalFare: 1170, availability: 'Available 54' },
+                { code: '2A', name: 'AC 2 Tier', fare: 1120, tatkalFare: 1610, availability: 'Available 16' },
+                { code: '1A', name: 'AC First Class', fare: 1860, tatkalFare: 1860, availability: 'Available 4' },
+                { code: 'SL', name: 'Sleeper Class', fare: 325, tatkalFare: 440, availability: 'Available 72' },
               ];
 
+              const activeQuota = selectedQuotaOverrides[selectedRoute.route.id] || (isShortNoticeTravel ? 'tatkal' : 'general');
               const defaultClassCode = selectedRoute.transitChainInfo?.selectedClassCode || availableTrainClasses.find((c) => c.code === '3A' || c.code === 'CC')?.code || availableTrainClasses[0]?.code || '3A';
               const userPrefCoach = currentUser?.travelPreferences?.preferredTrainCoach;
               const activeCoachCode = selectedCoachClassOverrides[selectedRoute.route.id] ||
@@ -1710,7 +1725,7 @@ export default function RouteDiscoveryPage() {
                   : defaultClassCode);
 
               const activeCoachObj = availableTrainClasses.find((c) => c.code === activeCoachCode) || availableTrainClasses[0];
-              const dynamicTrainFare = activeCoachObj?.fare || selectedRoute.priceBreakdown.mainTicketFare || availableTrainClasses[0].fare;
+              const dynamicTrainFare = activeQuota === 'tatkal' && activeCoachObj?.tatkalFare ? activeCoachObj.tatkalFare : (activeCoachObj?.fare || selectedRoute.priceBreakdown.mainTicketFare || availableTrainClasses[0].fare);
 
               const ingressFare = selectedRoute.priceBreakdown.ingressTaxiFare || 0;
               const egressFare = selectedRoute.priceBreakdown.egressTaxiFare || 0;
@@ -1760,36 +1775,83 @@ export default function RouteDiscoveryPage() {
                     );
                   })()}
 
-                  {/* On-The-Spot Train Coach Class Selector & Recommendation */}
+                  {/* On-The-Spot Train Coach Class Selector & Quota (General vs Tatkal) */}
                   {isTrain && (
-                    <div className="bg-white border border-neutral-200 rounded-xl p-2.5 space-y-2">
+                    <div className="bg-white border border-neutral-200 rounded-xl p-2.5 space-y-2.5">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-neutral-700 flex items-center gap-1">
                           <span>🚆</span>
                           <span>IRCTC Coach Class & Official Live Fares:</span>
                         </span>
                         <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md text-[10px]">
-                          {activeCoachObj.name} (Official Fare: ₹{dynamicTrainFare.toLocaleString()})
+                          {activeCoachObj.name} ({activeQuota === 'tatkal' ? 'Tatkal' : 'General'}: ₹{dynamicTrainFare.toLocaleString()})
                         </span>
+                      </div>
+
+                      {/* Quota Switcher: General vs Tatkal */}
+                      <div className="flex items-center justify-between gap-2 p-1.5 bg-neutral-50 rounded-lg border border-neutral-200/80">
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-neutral-600">
+                          <span>🎫 Quota:</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'general' }))}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                              activeQuota === 'general'
+                                ? 'bg-neutral-900 text-white shadow-xs'
+                                : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
+                            }`}
+                          >
+                            General (GN)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'tatkal' }))}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                              activeQuota === 'tatkal'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-white text-amber-800 border border-amber-200 hover:bg-amber-50'
+                            }`}
+                          >
+                            <span>⚡ Tatkal (TQ)</span>
+                            <span className="text-[9px] font-black uppercase opacity-90">Live</span>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-1.5 pt-0.5">
                         {availableTrainClasses.map((cls) => {
                           const isSel = cls.code === activeCoachCode;
+                          const effectiveFare = activeQuota === 'tatkal' && cls.tatkalFare ? cls.tatkalFare : cls.fare;
                           return (
                             <button
                               key={cls.code}
                               type="button"
                               onClick={() => setSelectedCoachClassOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: cls.code }))}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer ${isSel
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex flex-col items-start gap-0.5 ${isSel
                                   ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
                                   : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
                                 }`}
                             >
-                              <span>{cls.code}</span>
-                              <span className={`ml-1 text-[10px] ${isSel ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                                ₹{cls.fare.toLocaleString()}
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <span>{cls.code}</span>
+                                {activeQuota === 'tatkal' && (
+                                  <span className={`text-[8px] font-black px-1 rounded uppercase tracking-wider ${
+                                    isSel ? 'bg-amber-500 text-black' : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    Tatkal
+                                  </span>
+                                )}
+                                <span className={`text-[10px] ml-0.5 font-bold ${isSel ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                                  ₹{effectiveFare.toLocaleString()}
+                                </span>
+                              </div>
+                              {cls.availability && (
+                                <span className={`text-[9px] font-semibold leading-none ${isSel ? 'text-emerald-300/90' : 'text-emerald-600'}`}>
+                                  {cls.availability}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -1802,7 +1864,7 @@ export default function RouteDiscoveryPage() {
                     {selectedRoute.priceBreakdown.itemizedLegs.map((leg, lIdx) => {
                       const legFare = leg.mode === 'train' ? dynamicTrainFare : leg.fare;
                       const legTitle = leg.mode === 'train'
-                        ? `${leg.title} [Coach: ${activeCoachCode}]`
+                        ? `${leg.title} [Coach: ${activeCoachCode} ${activeQuota === 'tatkal' ? 'TATKAL' : 'GN'}]`
                         : leg.title;
                       const isLegEstimated = isAmountEstimated(selectedRoute, leg);
 

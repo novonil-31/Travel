@@ -116,8 +116,16 @@ export interface TransitChainInfo {
   bookingService: string;
   bookingUrl: string;
   wheelchairAssistanceCode: string;
-  availableClasses?: Array<{ code: string; name: string; fare: number }>;
+  availableClasses?: Array<{
+    code: string;
+    name: string;
+    fare: number;
+    tatkalFare?: number;
+    availability?: string;
+    status?: 'available' | 'rac' | 'wl';
+  }>;
   selectedClassCode?: string;
+  selectedQuota?: 'general' | 'tatkal' | 'premium_tatkal';
 }
 
 // --- Route Scoring ---

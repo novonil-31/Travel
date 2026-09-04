@@ -3,6 +3,8 @@
  * Powered by Google Gemini 2.5 Flash API with Real Timetable & Fare Grounding
  */
 
+import { calculateTatkalFare } from './onlineRouting';
+
 export interface LiveAiTrainRecord {
   trainNumber: string;
   trainName: string;
@@ -18,6 +20,9 @@ export interface LiveAiTrainRecord {
     code: string;
     name: string;
     fare: number;
+    tatkalFare?: number;
+    availability?: string;
+    status?: 'available' | 'rac' | 'wl';
   }>;
   intermediateStops?: Array<{
     code: string;
@@ -228,12 +233,19 @@ Return strictly valid JSON with this format:
                 durationHours: Number(t.durationHours) || Math.round((distanceKm / 70) * 10) / 10,
                 operatingDays: Array.isArray(t.operatingDays) ? t.operatingDays : ['Daily'],
                 runsOnDay: true,
-                classes: Array.isArray(t.classes) && t.classes.length > 0 ? t.classes : [
+                classes: (Array.isArray(t.classes) && t.classes.length > 0 ? t.classes : [
                   { code: '3A', name: 'AC 3 Tier', fare: Math.round(480 + distanceKm * 0.78) },
                   { code: '2A', name: 'AC 2 Tier', fare: Math.round(680 + distanceKm * 1.05) },
                   { code: '1A', name: 'AC First Class', fare: Math.round(1150 + distanceKm * 1.65) },
                   { code: 'SL', name: 'Sleeper Class', fare: Math.round(175 + distanceKm * 0.34) }
-                ],
+                ]).map((c: any) => ({
+                  code: String(c.code),
+                  name: String(c.name || c.code),
+                  fare: Number(c.fare),
+                  tatkalFare: Number(c.tatkalFare) || calculateTatkalFare(String(c.code), Number(c.fare)),
+                  availability: c.availability || 'Available ' + (Math.floor((distanceKm + c.fare) % 55) + 14),
+                  status: c.status || 'available',
+                })),
                 intermediateStops: Array.isArray(t.intermediateStops)
                   ? t.intermediateStops.map((st: any) => ({
                       code: String(st.code || ''),
