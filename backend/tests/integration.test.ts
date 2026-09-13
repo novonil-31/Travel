@@ -281,6 +281,37 @@ describe('7. Fares & Shared Transport', () => {
     expect(res.body.data).toHaveProperty('confidence');
   });
 
+  it('GET /fares/compare-cabs calculates live prices across Uber, Ola, Rapido, and Namma Yatri with deep links', async () => {
+    const res = await request(app)
+      .get('/fares/compare-cabs')
+      .query({
+        pickup_lat: 28.6139,
+        pickup_lng: 77.2090,
+        pickup_name: 'Connaught Place, New Delhi',
+        drop_lat: 28.5355,
+        drop_lng: 77.3910,
+        drop_name: 'Noida Sector 62',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('distanceKm');
+    expect(res.body.data).toHaveProperty('cheapestOption');
+    expect(res.body.data).toHaveProperty('fastestOption');
+    expect(Array.isArray(res.body.data.options)).toBe(true);
+    expect(res.body.data.options.length).toBeGreaterThan(3);
+
+    const uberOption = res.body.data.options.find((o: any) => o.provider === 'uber');
+    expect(uberOption).toBeDefined();
+    expect(uberOption.deepLink).toContain('m.uber.com/ul');
+    expect(uberOption.deepLink).toContain('Connaught%20Place');
+
+    const cheapest = res.body.data.cheapestOption;
+    expect(cheapest).toBeDefined();
+    expect(cheapest.fare).toBeGreaterThan(0);
+    expect(cheapest.isCheapest).toBe(true);
+  });
+
   it('GET /transport/stands/nearby returns auto stands with live availability disclosure', async () => {
     const res = await request(app)
       .get('/transport/stands/nearby')

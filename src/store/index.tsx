@@ -5,6 +5,7 @@ import type {
   CrowdingLevel, AccessibilityStatus, VehicleStatusType,
   AccessibilitySettings, SafetyStatus, JourneyStatus,
 } from '../types';
+import { isGuestAccount, getOrCreateCommuterPass } from '../utils/authUtils';
 
 // ---- State Shape ----
 export interface AppState {
@@ -102,20 +103,63 @@ type Action =
   | { type: 'ADD_JOURNEY_TO_HISTORY'; journey: Journey }
   | { type: 'SET_OPERATOR_ALERTS'; alerts: Notification[] }
   | { type: 'ADD_OPERATOR_ALERT'; alert: Notification }
+  | { type: 'SET_SAVED_PLACE'; placeType: 'home' | 'work'; place: { name: string; address: string; lat: number; lng: number } }
+  | { type: 'CLAIM_COMMUTER_REWARD'; amount: number }
   | { type: 'RECOMPUTE_ROUTES' };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_USER': {
+      let user = action.user;
+      if (user && !isGuestAccount(user)) {
+        if (!user.commuterPass) {
+          user = {
+            ...user,
+            commuterPass: getOrCreateCommuterPass(user),
+          };
+        }
+      }
       try {
-        if (action.user) {
-          localStorage.setItem('access_user', JSON.stringify(action.user));
+        if (user) {
+          localStorage.setItem('access_user', JSON.stringify(user));
         } else {
           localStorage.removeItem('access_user');
           localStorage.removeItem('access_token');
         }
       } catch {}
-      return { ...state, currentUser: action.user };
+      return { ...state, currentUser: user };
+    }
+
+    case 'SET_SAVED_PLACE': {
+      if (!state.currentUser) return state;
+      const updatedUser: User = {
+        ...state.currentUser,
+        savedPlaces: {
+          ...state.currentUser.savedPlaces,
+          [action.placeType]: action.place,
+        },
+      };
+      try {
+        localStorage.setItem('access_user', JSON.stringify(updatedUser));
+      } catch {}
+      return { ...state, currentUser: updatedUser };
+    }
+
+    case 'CLAIM_COMMUTER_REWARD': {
+      if (!state.currentUser || isGuestAccount(state.currentUser)) return state;
+      const currentPass = getOrCreateCommuterPass(state.currentUser);
+      const updatedPass = {
+        ...currentPass,
+        balanceRupees: currentPass.balanceRupees + action.amount,
+      };
+      const updatedUser: User = {
+        ...state.currentUser,
+        commuterPass: updatedPass,
+      };
+      try {
+        localStorage.setItem('access_user', JSON.stringify(updatedUser));
+      } catch {}
+      return { ...state, currentUser: updatedUser };
     }
 
     case 'SET_EMERGENCY_CONTACT': {
@@ -368,6 +412,8 @@ interface AppContextValue {
   setEmergencyContact: (contact: { name: string; phone: string; relationship?: string }) => void;
   setJourneyHistory: (history: Journey[]) => void;
   setAccessibilitySettings: (settings: Partial<AccessibilitySettings>) => void;
+  setSavedPlace: (placeType: 'home' | 'work', place: { name: string; address: string; lat: number; lng: number }) => void;
+  claimCommuterReward: (amount: number) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -518,6 +564,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ACTIVE_JOURNEY', journey });
   }, [state.currentUser]);
 
+  const setSavedPlace = useCallback((placeType: 'home' | 'work', place: { name: string; address: string; lat: number; lng: number }) => {
+    dispatch({ type: 'SET_SAVED_PLACE', placeType, place });
+  }, []);
+
+  const claimCommuterReward = useCallback((amount: number) => {
+    dispatch({ type: 'CLAIM_COMMUTER_REWARD', amount });
+  }, []);
+
   const value: AppContextValue = {
     state,
     dispatch,
@@ -540,6 +594,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEmergencyContact,
     setJourneyHistory,
     setAccessibilitySettings,
+    setSavedPlace,
+    claimCommuterReward,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

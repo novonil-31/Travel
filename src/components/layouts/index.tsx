@@ -6,18 +6,21 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { StatusDot } from '../ui';
-import { isGuestAccount } from '../../utils/authUtils';
+import { isGuestAccount, getOrCreateCommuterPass } from '../../utils/authUtils';
+import { LocationRegionBanner } from '../LocationRegionBanner';
 
 export function PassengerLayout() {
   const { state, setAccessibilitySettings } = useAppStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isGuest = isGuestAccount(state.currentUser);
+  const commuterPass = getOrCreateCommuterPass(state.currentUser);
   const unreadCount = state.notifications.filter(n => !n.read).length;
 
   const navItems = [
-    { path: '/app', icon: Home, label: 'Trip' },
-    { path: '/plan', icon: Navigation, label: 'Plan Route' },
+    { path: '/app', icon: Home, label: 'Home' },
+    { path: '/plan', icon: Navigation, label: 'Plan Trip' },
     { path: '/routes', icon: MapPin, label: 'Routes' },
     { path: '/notifications', icon: Bell, label: 'Alerts', badge: unreadCount },
     { path: '/profile', icon: User, label: 'Account' },
@@ -29,9 +32,10 @@ export function PassengerLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900 font-sans">
-      {/* Uber Desktop Top Nav */}
-      <header className="hidden md:flex items-center justify-between bg-black text-white px-8 h-16 sticky top-0 z-[1100] shadow-md">
+    <div className="min-h-screen bg-neutral-100 flex flex-col font-sans">
+
+      {/* Desktop Header (Uber-style) */}
+      <header className="hidden md:flex items-center justify-between bg-black text-white px-6 h-16 sticky top-0 z-40 shadow-sm">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2.5 group" aria-label="Maarg Darshan Home">
             <img
@@ -39,7 +43,7 @@ export function PassengerLayout() {
               alt="Maarg Darshan Logo"
               className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain shadow-sm group-hover:scale-105 transition-transform"
             />
-            <span className="font-black text-white text-xl tracking-tight">Maarg Darshan</span>
+            <span className="font-black text-white text-xl tracking-tight">मार्ग Darshan</span>
           </Link>
 
           <nav className="flex items-center gap-1" aria-label="Main navigation">
@@ -68,24 +72,34 @@ export function PassengerLayout() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Automatic Live GPS Finder */}
+          <LocationRegionBanner compact dark />
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-800 text-xs font-semibold text-neutral-300">
             <StatusDot status={state.isOffline ? 'offline' : 'online'} />
             <span>{state.isOffline ? 'Offline' : 'Live Network'}</span>
           </div>
 
-          {!isGuestAccount(state.currentUser) && state.currentUser ? (
-            <Link to="/profile" className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-full text-xs font-bold transition-all">
-              <User className="w-3.5 h-3.5" />
-              <span>{state.currentUser.name}</span>
+          {!isGuest && state.currentUser ? (
+            <Link
+              to="/profile"
+              className="flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 text-white px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border border-neutral-700 shadow-xs"
+            >
+              <div className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[10px] font-black">
+                ✓
+              </div>
+              <div className="text-left">
+                <span className="block text-white leading-tight font-black">{state.currentUser.name}</span>
+                <span className="block text-[10px] text-emerald-400 font-medium">₹{commuterPass.balanceRupees.toFixed(0)} Pass Credit</span>
+              </div>
             </Link>
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all">
-                <User className="w-3.5 h-3.5" />
-                <span>Guest Mode</span>
-              </Link>
-              <Link to="/login" className="bg-white text-black hover:bg-neutral-200 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all">
+              <Link
+                to="/login"
+                className="bg-white hover:bg-neutral-200 text-black px-4 py-1.5 rounded-full text-xs font-extrabold transition-all shadow-sm"
+              >
                 Sign In
               </Link>
             </div>
@@ -94,23 +108,24 @@ export function PassengerLayout() {
       </header>
 
       {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between bg-black text-white px-4 h-14 sticky top-0 z-[1100] shadow-md">
-        <Link to="/" className="flex items-center gap-2">
+      <header className="md:hidden flex items-center justify-between bg-black text-white px-3 h-14 sticky top-0 z-[1100] shadow-md">
+        <Link to="/" className="flex items-center gap-2 min-w-0">
           <img
             src="/logo.png"
             alt="Maarg Darshan Logo"
-            className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain"
+            className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain shrink-0"
           />
-          <span className="font-black text-white text-lg tracking-tight">Maarg Darshan</span>
+          <span className="font-black text-white text-base tracking-tight truncate">मार्ग Darshan</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <Link to="/notifications" className="relative p-2 text-neutral-300" aria-label="Notifications">
-            <Bell className="w-5 h-5" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          <LocationRegionBanner compact dark className="text-[11px] py-1 px-2" />
+          <Link to="/notifications" className="relative p-1.5 text-neutral-300" aria-label="Notifications">
+            <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-600 rounded-full" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full" />
             )}
           </Link>
-          <button onClick={() => setMobileMenuOpen(true)} className="p-2 text-neutral-300" aria-label="Open menu">
+          <button onClick={() => setMobileMenuOpen(true)} className="p-1.5 text-neutral-300" aria-label="Open menu">
             <Menu className="w-5 h-5" />
           </button>
         </div>
@@ -122,14 +137,14 @@ export function PassengerLayout() {
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
           <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-6 flex flex-col justify-between shadow-2xl">
             <div>
-              <div className="flex justify-between items-center mb-6 pb-4 border-b border-neutral-200">
+              <div className="flex justify-between items-center mb-5 pb-3 border-b border-neutral-200">
                 <div className="flex items-center gap-2">
                   <img
                     src="/logo.png"
                     alt="Maarg Darshan Logo"
                     className="w-7 h-7 rounded-lg bg-neutral-100 p-0.5 object-contain"
                   />
-                  <span className="font-black text-lg tracking-tight text-neutral-900">Maarg Darshan</span>
+                  <span className="font-black text-lg tracking-tight text-neutral-900">मार्ग Darshan</span>
                 </div>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-1 rounded-lg text-neutral-600">
                   <X className="w-5 h-5" />
@@ -153,7 +168,7 @@ export function PassengerLayout() {
                 ))}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-neutral-200 space-y-1">
+              <div className="mt-4 pt-3 border-t border-neutral-200 space-y-1">
                 <Link to="/journeys" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                   <History className="w-5 h-5 text-neutral-600" /> Past Trips
                 </Link>
@@ -161,17 +176,30 @@ export function PassengerLayout() {
             </div>
 
             <div className="pt-4 border-t border-neutral-200">
-              {!isGuestAccount(state.currentUser) && state.currentUser ? (
-                <div className="text-xs text-neutral-500">
-                  Logged in as <strong className="text-neutral-900">{state.currentUser.name}</strong>
+              {!isGuest && state.currentUser ? (
+                <div className="p-3.5 rounded-2xl bg-neutral-900 text-white border border-neutral-800">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[10px] font-black">✓</div>
+                      <div className="font-bold text-xs text-white leading-tight">{state.currentUser.name}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                      Verified
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px]">
+                    <span className="text-neutral-400">Pass Balance:</span>
+                    <span className="text-emerald-400 font-bold">₹{commuterPass.balanceRupees.toFixed(2)}</span>
+                  </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="py-2.5 bg-neutral-100 text-center rounded-xl font-bold text-xs">
+                <div className="pt-1">
+                  <Link
+                    to="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block w-full py-2.5 bg-neutral-900 text-white text-center rounded-xl font-bold text-xs hover:bg-black transition-colors"
+                  >
                     Sign In
-                  </Link>
-                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="py-2.5 bg-black text-white text-center rounded-xl font-bold text-xs">
-                    Sign up
                   </Link>
                 </div>
               )}

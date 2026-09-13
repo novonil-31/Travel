@@ -841,40 +841,28 @@ export async function searchPlacesLive(
   }
 
   // 7. Multi-Channel Dynamic Real-Life POI & Establishment Search (Like Google Maps)
-  // Queries live OpenStreetMap Photon + Bounded Nominatim to find ANY real-life shop, mall, salon, clinic, bakery, etc.
+  // Queries live OpenStreetMap Photon + Nationwide Nominatim + Backend Proxy across all of India
   const onlineResults: GeocodedPlace[] = [];
   try {
-    const userCity = activeUserLoc.cityName || '';
-    const encodedQ = encodeURIComponent(query);
-    const encodedCityQ = encodeURIComponent(`${query} ${userCity}`.trim());
+    const encodedQ = encodeURIComponent(query.trim());
+    const apiBase = (typeof window !== 'undefined' && window.location.hostname === 'localhost') ? 'http://localhost:3000/api' : '/api';
 
-    const vBoxMinLng = activeUserLoc.lng - 0.35;
-    const vBoxMaxLat = activeUserLoc.lat + 0.30;
-    const vBoxMaxLng = activeUserLoc.lng + 0.35;
-    const vBoxMinLat = activeUserLoc.lat - 0.30;
+    // Stream A: Nationwide OpenStreetMap Nominatim Search (Unconstrained across all Indian states & cities)
+    const nomNationalUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&countrycodes=in&limit=20&addressdetails=1`;
+    // Stream B: Nationwide Photon Search (Comprehensive POIs, shops, colleges, hospitals, landmarks)
+    const photonNationalUrl = `https://photon.komoot.io/api/?q=${encodedQ}&limit=25`;
+    // Stream C: Spatial Photon Search with soft GPS bias for local tie-breaks
+    const photonSpatialUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=15`;
+    // Stream D: Backend API Proxy Search
+    const backendSearchUrl = `${apiBase}/stops/places/search?q=${encodedQ}&lat=${activeUserLoc.lat}&lng=${activeUserLoc.lng}`;
 
-    // Stream A: Local City POI Search via Photon (Finds every establishment in the city)
-    const photonCityUrl = `https://photon.komoot.io/api/?q=${encodedCityQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=20`;
-    // Stream B: Direct Spatial Photon Search biased to user GPS coordinates
-    const photonDirectUrl = `https://photon.komoot.io/api/?q=${encodedQ}&lat=${activeUserLoc.lat}&lon=${activeUserLoc.lng}&limit=25`;
-    // Stream C: Nominatim City Structured Search
-    const nomCityUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedCityQ}&countrycodes=in&limit=15&addressdetails=1`;
-    // Stream D: Nominatim Strictly Bounded Viewbox Search (Surrounding 10-20km perimeter)
-    const nomBoundedUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQ}&viewbox=${vBoxMinLng},${vBoxMaxLat},${vBoxMaxLng},${vBoxMinLat}&bounded=1&limit=15&addressdetails=1`;
-    // Stream E: Backend API Proxy Search
-    const backendSearchUrl = `http://localhost:3000/api/stops/places/search?q=${encodedQ}&lat=${activeUserLoc.lat}&lng=${activeUserLoc.lng}`;
-
-    const [pCityRes, pDirectRes, nCityRes, nBoundRes, backendRes] = await Promise.allSettled([
-      fetch(photonCityUrl, { signal: AbortSignal.timeout(3500) }),
-      fetch(photonDirectUrl, { signal: AbortSignal.timeout(3500) }),
-      fetch(nomCityUrl, {
+    const [nomRes, pNatRes, pSpatRes, backendRes] = await Promise.allSettled([
+      fetch(nomNationalUrl, {
         headers: { 'Accept-Language': 'en', 'User-Agent': 'ACCESS-Transit-Assistant/2.0' },
         signal: AbortSignal.timeout(3500),
       }),
-      fetch(nomBoundedUrl, {
-        headers: { 'Accept-Language': 'en', 'User-Agent': 'ACCESS-Transit-Assistant/2.0' },
-        signal: AbortSignal.timeout(3500),
-      }),
+      fetch(photonNationalUrl, { signal: AbortSignal.timeout(3500) }),
+      fetch(photonSpatialUrl, { signal: AbortSignal.timeout(3500) }),
       fetch(backendSearchUrl, { signal: AbortSignal.timeout(2500) }),
     ]);
 
@@ -904,76 +892,53 @@ export async function searchPlacesLive(
       return '🏬';
     };
 
-    // Process Photon City Features
-    if (pCityRes.status === 'fulfilled' && pCityRes.value.ok) {
-      const data = (await pCityRes.value.json()) as any;
-      data.features?.forEach((f: any) => {
-        const itemLat = f.geometry.coordinates[1];
-        const itemLng = f.geometry.coordinates[0];
-        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
-        const name = f.properties.name || f.properties.street || query;
-        const locParts = [f.properties.street, f.properties.city || userCity, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
-        const osmVal = f.properties.osm_value || f.properties.osm_key || 'shop';
-        const icon = resolvePoiIcon(osmVal, name);
+    // Process Photon Features (Nationwide & Spatial)
+    for (const pRes of [pNatRes, pSpatRes]) {
+      if (pRes.status === 'fulfilled' && pRes.value.ok) {
+        const data = (await pRes.value.json()) as any;
+        data.features?.forEach((f: any) => {
+          const itemLat = f.geometry.coordinates[1];
+          const itemLng = f.geometry.coordinates[0];
+          const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
+          const name = f.properties.name || f.properties.street || query;
+          const locParts = [f.properties.street, f.properties.city, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
+          const osmVal = f.properties.osm_value || f.properties.osm_key || 'place';
+          const icon = resolvePoiIcon(osmVal, name);
 
-        onlineResults.push({
-          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
-          name,
-          lat: itemLat,
-          lng: itemLng,
-          type: osmVal,
-          distanceKm: dKm,
-        });
-      });
-    }
-
-    // Process Photon Direct Features
-    if (pDirectRes.status === 'fulfilled' && pDirectRes.value.ok) {
-      const data = (await pDirectRes.value.json()) as any;
-      data.features?.forEach((f: any) => {
-        const itemLat = f.geometry.coordinates[1];
-        const itemLng = f.geometry.coordinates[0];
-        const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
-        const name = f.properties.name || f.properties.street || query;
-        const locParts = [f.properties.street, f.properties.city, f.properties.state].filter(Boolean).slice(0, 2).join(', ');
-        const osmVal = f.properties.osm_value || f.properties.osm_key || 'shop';
-        const icon = resolvePoiIcon(osmVal, name);
-
-        onlineResults.push({
-          displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
-          name,
-          lat: itemLat,
-          lng: itemLng,
-          type: osmVal,
-          distanceKm: dKm,
-        });
-      });
-    }
-
-    // Process Nominatim City & Bounded Results
-    for (const resPromise of [nCityRes, nBoundRes]) {
-      if (resPromise.status === 'fulfilled' && resPromise.value.ok) {
-        const data = (await resPromise.value.json()) as any[];
-        if (Array.isArray(data)) {
-          data.forEach((item) => {
-            const itemLat = parseFloat(item.lat);
-            const itemLng = parseFloat(item.lon);
-            const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
-            const primary = item.name || item.display_name.split(',')[0] || query;
-            const parts = item.display_name.split(',').slice(1, 3).map((p: string) => p.trim()).filter(Boolean);
-            const sub = parts.join(', ');
-            const icon = resolvePoiIcon(item.type || '', primary);
-
-            onlineResults.push({
-              displayName: sub ? `${icon} ${primary}, ${sub}` : `${icon} ${primary}`,
-              name: primary,
-              lat: itemLat,
-              lng: itemLng,
-              type: item.type || 'shop',
-              distanceKm: dKm,
-            });
+          onlineResults.push({
+            displayName: locParts ? `${icon} ${name}, ${locParts}` : `${icon} ${name}`,
+            name,
+            lat: itemLat,
+            lng: itemLng,
+            type: osmVal,
+            distanceKm: dKm,
           });
-        }
+        });
+      }
+    }
+
+    // Process Nominatim Nationwide Results
+    if (nomRes.status === 'fulfilled' && nomRes.value.ok) {
+      const data = (await nomRes.value.json()) as any[];
+      if (Array.isArray(data)) {
+        data.forEach((item) => {
+          const itemLat = parseFloat(item.lat);
+          const itemLng = parseFloat(item.lon);
+          const dKm = calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, itemLat, itemLng);
+          const primary = item.name || item.display_name.split(',')[0] || query;
+          const parts = item.display_name.split(',').slice(1, 3).map((p: string) => p.trim()).filter(Boolean);
+          const sub = parts.join(', ');
+          const icon = resolvePoiIcon(item.type || '', primary);
+
+          onlineResults.push({
+            displayName: sub ? `${icon} ${primary}, ${sub}` : `${icon} ${primary}`,
+            name: primary,
+            lat: itemLat,
+            lng: itemLng,
+            type: item.type || 'place',
+            distanceKm: dKm,
+          });
+        });
       }
     }
 
@@ -1002,14 +967,13 @@ export async function searchPlacesLive(
     console.warn('Live real-life POI search warning:', err);
   }
 
-  // 8. Deduplicate and Apply Continuous Proximity-First Priority Ranking
-  // Checks if user explicitly typed a remote city name (e.g. "Domino's Delhi" or "Mumbai Airport")
-  const MAJOR_REMOTE_CITIES = ['delhi', 'mumbai', 'kolkata', 'calcutta', 'bengaluru', 'bangalore', 'chennai', 'madras', 'hyderabad', 'pune', 'ahmedabad', 'jaipur', 'chandigarh', 'lucknow', 'patna', 'kochi', 'goa', 'shimla', 'manali'];
-  const userCityLower = (activeUserLoc.cityName || '').toLowerCase();
-  const isExplicitRemoteSearch = MAJOR_REMOTE_CITIES.some((city) => q.includes(city) && !userCityLower.includes(city));
-
+  // 8. Deduplicate and Apply Balanced Priority Ranking:
+  // Text relevance is dominant for general cross-country searches.
+  // Moderate proximity preference for local area when GPS is present.
+  // Zero negative distance penalties (never penalize distant states or cities).
   const seen = new Set<string>();
   const combined: Array<GeocodedPlace & { relevanceScore: number }> = [];
+  const hasActualGps = (activeUserLoc.hasGpsPriority === true || activeUserLoc.source === 'gps') && activeUserLoc.permissionGranted === true;
 
   for (const item of [...instantMatches, ...onlineResults]) {
     const key = `${item.lat.toFixed(3)}_${item.lng.toFixed(3)}`;
@@ -1020,51 +984,54 @@ export async function searchPlacesLive(
       const displayLower = item.displayName.toLowerCase();
       const typeLower = (item.type || '').toLowerCase();
 
-      // Base Text Relevance Score
+      // 1. Text Relevance is the PRIMARY factor for national search
       let score = 0;
-      if (nameLower === q) score += 2000;
-      else if (nameLower.startsWith(q)) score += 1200;
-      else if (displayLower.startsWith(q)) score += 800;
-      else if (nameLower.includes(q)) score += 600;
-      else if (typeLower.includes(q)) score += 500;
-      else if (qTokens.every((tok) => displayLower.includes(tok) || nameLower.includes(tok))) score += 400;
-      else score += 100;
-
-      // Check category synonym bonus
-      if (expandedKeywords.some((kw) => nameLower.includes(kw) || typeLower.includes(kw))) {
+      if (nameLower === q) {
+        score += 8000; // Exact match to place, city, or monument name
+      } else if (nameLower.startsWith(q)) {
+        score += 5000; // Starts with query (e.g. "Goa...", "Bengaluru...", "Jaipur...")
+      } else if (displayLower.startsWith(q)) {
+        score += 3500;
+      } else if (nameLower.includes(q)) {
+        score += 2400;
+      } else if (qTokens.every((tok) => displayLower.includes(tok) || nameLower.includes(tok))) {
+        score += 1800;
+      } else if (typeLower.includes(q)) {
+        score += 1200;
+      } else {
         score += 400;
       }
 
-      // Proximity Dominant Ranking: Nearby places unconditionally beat distant ones unless explicit remote search
-      const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, item.lat, item.lng);
-
-      if (!isExplicitRemoteSearch) {
-        if (d <= 0.35) {
-          score += 25000; // Immediate walking radius (<350m)
-        } else if (d <= 0.8) {
-          score += 20000; // <800m
-        } else if (d <= 1.5) {
-          score += 16000; // <1.5 km
-        } else if (d <= 3.0) {
-          score += 12000; // <3 km (same campus / local neighborhood)
-        } else if (d <= 6.0) {
-          score += 9000;  // <6 km (same sector / sub-district)
-        } else if (d <= 12.0) {
-          score += 6500;  // <12 km (same city)
-        } else if (d <= 25.0) {
-          score += 4000;  // <25 km (metro area)
-        } else if (d <= 50.0) {
-          score += 2000;  // <50 km (outskirts)
-        } else if (d <= 100.0) {
-          score += 500;
-        } else if (d > 150.0) {
-          score -= 8000;  // Heavy distant penalty
-        } else if (d > 500.0) {
-          score -= 20000; // Remote cross-country penalty
-        }
+      // High-level destination bonus (Major city, capital, airport, railway station, monument)
+      if (item.type === 'city' || item.type === 'state_capital' || item.type === 'airport' || item.type === 'railway' || item.type === 'monument' || item.type === 'tourism') {
+        score += 1200;
       }
 
-      // Formulate clear, accurate distance badge showing near vs far
+      // Category / amenity synonym bonus
+      if (expandedKeywords.some((kw) => nameLower.includes(kw) || typeLower.includes(kw))) {
+        score += 600;
+      }
+
+      // 2. Sensible Local Proximity Preference:
+      // Gives preference to nearby places when user has GPS (e.g. "Hospital", "Station", "Market", "ATM"),
+      // but DOES NOT overwhelm general searches when user is traveling to far-off cities or states.
+      // NO negative distance penalties! Never penalize far-away states or cities.
+      const d = item.distanceKm !== undefined ? item.distanceKm : calculateDistanceKm(activeUserLoc.lat, activeUserLoc.lng, item.lat, item.lng);
+
+      if (hasActualGps) {
+        if (d <= 0.8) {
+          score += 1800; // Immediate vicinity (<800m)
+        } else if (d <= 3.0) {
+          score += 1200; // Walking / quick local transit radius (<3km)
+        } else if (d <= 15.0) {
+          score += 800;  // Same city (<15km)
+        } else if (d <= 40.0) {
+          score += 400;  // Metro area (<40km)
+        }
+        // Beyond 40km: score += 0 (NO distance penalty!)
+      }
+
+      // Accurate human-friendly distance label
       let distanceLabel = item.distanceLabel;
       if (!distanceLabel || distanceLabel.includes('away')) {
         if (d < 0.5) {
@@ -1076,7 +1043,7 @@ export async function searchPlacesLive(
         } else if (d < 50) {
           distanceLabel = `${d.toFixed(1)} km away`;
         } else {
-          distanceLabel = `${Math.round(d)} km away (Far)`;
+          distanceLabel = `${Math.round(d)} km away`;
         }
       }
 
@@ -1089,30 +1056,27 @@ export async function searchPlacesLive(
     }
   }
 
-  // 9. Proximity-First Re-Ordering & Selection
+  // 9. Re-Ordering & Selection:
   const isGenericOrCategoryQuery =
     Object.keys(CATEGORY_SYNONYMS).includes(q) ||
     ['shop', 'shops', 'cinema', 'cinemas', 'theatre', 'theater', 'movie', 'movies', 'cafe', 'cafes', 'coffee', 'tea', 'chai', 'food', 'restaurant', 'restaurants', 'dhaba', 'hotel', 'pharmacy', 'medicine', 'medicines', 'hospital', 'doctor', 'clinic', 'atm', 'bank', 'banks', 'gym', 'gyms', 'bakery', 'mall', 'malls', 'bus', 'station', 'supermarket', 'market', 'bazaar'].includes(q);
 
-  if (isGenericOrCategoryQuery && !isExplicitRemoteSearch) {
-    // For generic/category queries (e.g. "shop", "cinema", "cafe"), sort strictly from near to far
+  if (isGenericOrCategoryQuery && hasActualGps) {
+    // For generic amenity searches (e.g. "atm", "cafe", "hospital", "bus stop"), sort closest first
     combined.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   } else {
-    // For named queries, sort by relevance score first; break ties by proximity
+    // For general & destination searches, sort by relevance score first
     combined.sort((a, b) => {
-      const scoreDiff = b.relevanceScore - a.relevanceScore;
-      if (Math.abs(scoreDiff) > 150) {
-        return scoreDiff;
+      const diff = b.relevanceScore - a.relevanceScore;
+      if (Math.abs(diff) > 200) {
+        return diff;
       }
       return (a.distanceKm || 0) - (b.distanceKm || 0);
     });
   }
 
-  // If local results within 60km exist, filter out remote cross-state results unless explicitly searched
-  const localResults = combined.filter((item) => (item.distanceKm || 0) <= 60);
-  const finalPool = localResults.length >= 2 && !isExplicitRemoteSearch ? localResults : combined;
-
-  const result = finalPool.slice(0, 15).map(({ relevanceScore, ...rest }) => rest);
+  // Return top results nationwide (Never filter out remote cross-state or cross-city results)
+  const result = combined.slice(0, 15).map(({ relevanceScore, ...rest }) => rest);
   searchCache.set(cacheKey, result);
   return result;
 }
@@ -1260,15 +1224,39 @@ export async function fetchRoadGeometryLive(
   const cached = roadGeometryCache.get(cacheKey);
   if (cached) return cached;
 
+  const apiBase =
+    import.meta.env.VITE_API_BASE_URL ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
+
+  // Priority 1: High-Reliability Server-Side Routing Proxy (Eliminates Browser CORS & Rate Limiting)
+  try {
+    const proxyUrl = `${apiBase}/transport/route-geometry?start_lat=${startLat}&start_lng=${startLng}&end_lat=${endLat}&end_lng=${endLng}&mode=${mode}`;
+    const proxyRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(2800) });
+    if (proxyRes.ok) {
+      const pJson = (await proxyRes.json()) as any;
+      if (pJson && pJson.data && Array.isArray(pJson.data.coordinates) && pJson.data.coordinates.length >= 2) {
+        const result: RouteGeometryResult = {
+          coordinates: pJson.data.coordinates,
+          distanceM: pJson.data.distanceM,
+          durationMin: pJson.data.durationMin,
+        };
+        roadGeometryCache.set(cacheKey, result);
+        return result;
+      }
+    }
+  } catch {
+    // try direct mirrors if backend proxy fails
+  }
+
   const endpoints = [
     `https://router.project-osrm.org/route/v1/${mode}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`,
     `https://routing.openstreetmap.de/routed-${mode === 'walking' ? 'foot' : 'car'}/route/v1/${mode === 'walking' ? 'foot' : 'driving'}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`,
   ];
 
-  // Try mirrors with quick 2s timeout
+  // Try direct mirrors with 2.5s timeout
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
       if (res.ok) {
         const data = (await res.json()) as {
           code: string;
@@ -1326,6 +1314,128 @@ export async function fetchRoadGeometryLive(
   };
   roadGeometryCache.set(cacheKey, fallbackResult);
   return fallbackResult;
+}
+
+export interface CleanedRouteGeometry {
+  originToBoardWalk: Array<[number, number]>;
+  transitPath: Array<[number, number]>;
+  connectingTransitPath: Array<[number, number]>;
+  alightToDestWalk: Array<[number, number]>;
+  fullRoute: Array<[number, number]>;
+  // Aliases for intuitive consumption
+  ingressPath: Array<[number, number]>;
+  egressPath: Array<[number, number]>;
+  continuousRoute: Array<[number, number]>;
+}
+
+/**
+ * Sanitize, deduplicate, and stitch multi-modal journey geometries together
+ * Eliminates disjoint gaps, duplicate overlapping lines, and coordinate jitter.
+ */
+export function sanitizeAndStitchJourneyGeometry(params: {
+  originCoords: [number, number];
+  destCoords: [number, number];
+  rawIngress?: Array<[number, number]>;
+  rawTransit?: Array<[number, number]>;
+  rawConnecting?: Array<[number, number]>;
+  rawEgress?: Array<[number, number]>;
+  ingressPath?: Array<[number, number]>;
+  transitPath?: Array<[number, number]>;
+  egressPath?: Array<[number, number]>;
+  fullRoute?: Array<[number, number]>;
+  isDirectTransit?: boolean;
+}): CleanedRouteGeometry {
+  const {
+    originCoords,
+    destCoords,
+    rawIngress = params.ingressPath || [],
+    rawTransit = params.transitPath || [],
+    rawConnecting = [],
+    rawEgress = params.egressPath || [],
+    isDirectTransit = false,
+  } = params;
+
+  const isValidPt = (pt: any): pt is [number, number] =>
+    Array.isArray(pt) &&
+    pt.length >= 2 &&
+    !isNaN(pt[0]) &&
+    !isNaN(pt[1]) &&
+    Math.abs(pt[0]) <= 90 &&
+    Math.abs(pt[1]) <= 180;
+
+  const cleanList = (pts: Array<[number, number]>): Array<[number, number]> => {
+    const valid = pts.filter(isValidPt);
+    const deduped: Array<[number, number]> = [];
+    for (let i = 0; i < valid.length; i++) {
+      if (i === 0) {
+        deduped.push([valid[i][0], valid[i][1]]);
+      } else {
+        const prev = deduped[deduped.length - 1];
+        if (Math.abs(prev[0] - valid[i][0]) > 0.00001 || Math.abs(prev[1] - valid[i][1]) > 0.00001) {
+          deduped.push([valid[i][0], valid[i][1]]);
+        }
+      }
+    }
+    return deduped;
+  };
+
+  const cleanIngress = cleanList(rawIngress);
+  const cleanTransit = cleanList(rawTransit);
+  const cleanConnecting = cleanList(rawConnecting);
+  const cleanEgress = cleanList(rawEgress);
+
+  // Case A: Direct point-to-point transit (Cab, Auto, Carpool, Single vehicle ride)
+  if (isDirectTransit || (cleanIngress.length === 0 && cleanEgress.length === 0 && cleanConnecting.length === 0)) {
+    const path = cleanTransit.length >= 2 ? cleanTransit : (params.fullRoute && params.fullRoute.length >= 2 ? params.fullRoute : [originCoords, destCoords]);
+    path[0] = originCoords;
+    path[path.length - 1] = destCoords;
+    return {
+      originToBoardWalk: [],
+      transitPath: path,
+      connectingTransitPath: [],
+      alightToDestWalk: [],
+      fullRoute: path,
+      ingressPath: [],
+      egressPath: [],
+      continuousRoute: path,
+    };
+  }
+
+  // Case B: Multi-modal transit with pedestrian ingress / egress
+  if (cleanIngress.length > 0) {
+    cleanIngress[0] = originCoords;
+  }
+  if (cleanEgress.length > 0) {
+    cleanEgress[cleanEgress.length - 1] = destCoords;
+  }
+
+  // Bridge seam between walking ingress and transit boarding
+  if (cleanIngress.length > 0 && cleanTransit.length > 0) {
+    cleanIngress[cleanIngress.length - 1] = cleanTransit[0];
+  }
+
+  // Bridge seam between transit alight and walking egress
+  if (cleanEgress.length > 0) {
+    const finalTransitLeg = cleanConnecting.length > 0 ? cleanConnecting : cleanTransit;
+    if (finalTransitLeg.length > 0) {
+      cleanEgress[0] = finalTransitLeg[finalTransitLeg.length - 1];
+    }
+  }
+
+  // Build full combined route seamlessly
+  const full = cleanList([...cleanIngress, ...cleanTransit, ...cleanConnecting, ...cleanEgress]);
+  const finalFull = full.length >= 2 ? full : [originCoords, destCoords];
+
+  return {
+    originToBoardWalk: cleanIngress,
+    transitPath: cleanTransit,
+    connectingTransitPath: cleanConnecting,
+    alightToDestWalk: cleanEgress,
+    fullRoute: finalFull,
+    ingressPath: cleanIngress,
+    egressPath: cleanEgress,
+    continuousRoute: finalFull,
+  };
 }
 
 /**

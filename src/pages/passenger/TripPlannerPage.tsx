@@ -13,6 +13,7 @@ import { getLastSearchedDestination, getRecentSearches, saveRecentSearch } from 
 import { isLoggedInAccount } from '../../utils/authUtils';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import { LocationRegionBanner } from '../../components/LocationRegionBanner';
+import { SavedPlacesBar } from '../../components/SavedPlacesBar';
 
 interface LocationState {
   name: string;
@@ -29,7 +30,7 @@ export default function TripPlannerPage() {
   const isAuth = isLoggedInAccount(state.currentUser);
 
   const urlOrigin = searchParams.get('origin');
-  const urlDest = searchParams.get('destination');
+  const urlDest = searchParams.get('destination') || searchParams.get('to');
   const urlMobility = searchParams.get('mobility');
   const urlOriginLat = searchParams.get('originLat') ? parseFloat(searchParams.get('originLat')!) : null;
   const urlOriginLng = searchParams.get('originLng') ? parseFloat(searchParams.get('originLng')!) : null;
@@ -41,14 +42,67 @@ export default function TripPlannerPage() {
   const lastSavedSearch = getLastSearchedDestination(currentUserId);
   const userRecentSearches = getRecentSearches(currentUserId);
 
-  // Location inputs state
-  const initialOriginName = urlOrigin || (lastSavedSearch?.origin?.name ? lastSavedSearch.origin.name : "Queen's Castle 1 (QC 1)");
-  const initialOriginLat = urlOriginLat ?? (lastSavedSearch?.origin?.lat ? lastSavedSearch.origin.lat : 20.352367250329067);
-  const initialOriginLng = urlOriginLng ?? (lastSavedSearch?.origin?.lng ? lastSavedSearch.origin.lng : 85.81937388473358);
+  const getCityDefaults = () => {
+    if (userLocation.regionKey === 'delhi_ncr') {
+      return {
+        orig: userLocation.placeName || 'Connaught Place, New Delhi',
+        origLat: 28.6315,
+        origLng: 77.2167,
+        dest: 'Indira Gandhi International Airport (DEL)',
+        destLat: 28.5562,
+        destLng: 77.1000,
+      };
+    }
+    if (userLocation.regionKey === 'mumbai') {
+      return {
+        orig: userLocation.placeName || 'Marine Drive, Mumbai',
+        origLat: 18.9438,
+        origLng: 72.8232,
+        dest: 'Chhatrapati Shivaji Maharaj Terminus (CSMT)',
+        destLat: 18.9400,
+        destLng: 72.8354,
+      };
+    }
+    if (userLocation.regionKey === 'bengaluru') {
+      return {
+        orig: userLocation.placeName || 'Indiranagar, Bengaluru',
+        origLat: 12.9784,
+        origLng: 77.6408,
+        dest: 'Kempegowda International Airport (BLR)',
+        destLat: 13.1986,
+        destLng: 77.7066,
+      };
+    }
+    if (userLocation.regionKey === 'bhubaneswar_kiit') {
+      return {
+        orig: "Queen's Castle 1 (QC 1)",
+        origLat: 20.352367250329067,
+        origLng: 85.81937388473358,
+        dest: 'Campus 3 OAT',
+        destLat: 20.352708891788033,
+        destLng: 85.81637927996144,
+      };
+    }
+    return {
+      orig: userLocation.placeName || `${userLocation.cityName} Central`,
+      origLat: userLocation.lat,
+      origLng: userLocation.lng,
+      dest: `${userLocation.cityName} Railway Station`,
+      destLat: userLocation.lat + 0.02,
+      destLng: userLocation.lng + 0.02,
+    };
+  };
 
-  const initialDestName = urlDest || (isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT');
-  const initialDestLat = urlDestLat ?? (isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : 20.352708891788033);
-  const initialDestLng = urlDestLng ?? (isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : 85.81637927996144);
+  const cityDefaults = getCityDefaults();
+
+  // Location inputs state
+  const initialOriginName = urlOrigin || (lastSavedSearch?.origin?.name ? lastSavedSearch.origin.name : cityDefaults.orig);
+  const initialOriginLat = urlOriginLat ?? (lastSavedSearch?.origin?.lat ? lastSavedSearch.origin.lat : cityDefaults.origLat);
+  const initialOriginLng = urlOriginLng ?? (lastSavedSearch?.origin?.lng ? lastSavedSearch.origin.lng : cityDefaults.origLng);
+
+  const initialDestName = urlDest || (isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : cityDefaults.dest);
+  const initialDestLat = urlDestLat ?? (isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : cityDefaults.destLat);
+  const initialDestLng = urlDestLng ?? (isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : cityDefaults.destLng);
 
   const [originInput, setOriginInput] = useState<string>(initialOriginName);
   const [originLocation, setOriginLocation] = useState<LocationState>({
@@ -63,6 +117,19 @@ export default function TripPlannerPage() {
     lat: initialDestLat,
     lng: initialDestLng,
   });
+
+  // Re-sync when user switches city if not given explicit URL params
+  useEffect(() => {
+    if (!urlOrigin && !urlDest) {
+      const updated = getCityDefaults();
+      setOriginInput(updated.orig);
+      setOriginLocation({ name: updated.orig, lat: updated.origLat, lng: updated.origLng });
+      if (!lastSavedSearch?.destination?.name) {
+        setDestinationInput(updated.dest);
+        setDestinationLocation({ name: updated.dest, lat: updated.destLat, lng: updated.destLng });
+      }
+    }
+  }, [userLocation.regionKey, userLocation.cityName]);
 
   // Autocomplete Suggestions State
   const [originSuggestions, setOriginSuggestions] = useState<GeocodedPlace[]>([]);
@@ -279,15 +346,30 @@ export default function TripPlannerPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6">
-      {/* Clean Header */}
-      <div>
-        <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
-          Where to?
-        </h1>
-        <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-          Plan real-time accessible bus lines, shared auto stands & step-free paths.
-        </p>
+    <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6 font-sans">
+      {/* Clean Header with City Switcher */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
+            Where to?
+          </h1>
+          <p className="text-xs sm:text-sm text-neutral-500 mt-1">
+            Find accessible, fast and multimodal routes across India.
+          </p>
+        </div>
+        <LocationRegionBanner
+          compact
+          onLocationChanged={() => {
+            clearSearchPlacesCache();
+            const recs = getRegionalDefaultRecommendations(userLocation);
+            if (recs && recs.length >= 2) {
+              setOriginInput(recs[0].name);
+              setOriginLocation({ name: recs[0].name, lat: recs[0].lat, lng: recs[0].lng });
+              setDestinationInput(recs[1].name);
+              setDestinationLocation({ name: recs[1].name, lat: recs[1].lat, lng: recs[1].lng });
+            }
+          }}
+        />
       </div>
 
       {/* Active Navigation Card (If trip active) */}
@@ -324,17 +406,11 @@ export default function TripPlannerPage() {
         </div>
       )}
 
-      {/* Location & Regional Priority Banner */}
-      <LocationRegionBanner
-        onLocationChanged={() => {
-          clearSearchPlacesCache();
-          const recs = getRegionalDefaultRecommendations(userLocation);
-          if (recs && recs.length >= 2) {
-            setOriginInput(recs[0].name);
-            setOriginLocation({ name: recs[0].name, lat: recs[0].lat, lng: recs[0].lng });
-            setDestinationInput(recs[1].name);
-            setDestinationLocation({ name: recs[1].name, lat: recs[1].lat, lng: recs[1].lng });
-          }
+      {/* Saved Places Fast 1-Tap Bar (Home / Work) & Commuter Pass */}
+      <SavedPlacesBar
+        onSelectPlace={(place) => {
+          setDestinationInput(place.address);
+          setDestinationLocation({ name: place.address, lat: place.lat, lng: place.lng });
         }}
       />
 
@@ -622,6 +698,34 @@ export default function TripPlannerPage() {
               <span>{gpsError}</span>
             </div>
           )}
+
+          {/* Quick City Hub Categories */}
+          <div className="pt-1">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400 mb-1.5">
+              Quick Hubs in {userLocation.cityName}:
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              {[
+                { label: '✈️ Airports', query: `${userLocation.cityName} Airport` },
+                { label: '🚆 Railways', query: `${userLocation.cityName} Railway Station` },
+                { label: '🚇 Metro Stations', query: `${userLocation.cityName} Metro` },
+                { label: '🚏 Bus Terminals', query: `${userLocation.cityName} Bus Stand` },
+                { label: '🏥 Hospitals', query: `${userLocation.cityName} Hospital` },
+              ].map((chip) => (
+                <button
+                  key={chip.query}
+                  type="button"
+                  onClick={() => {
+                    setDestinationInput(chip.query);
+                    setActiveDropdown('dest');
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-bold shrink-0 transition-colors cursor-pointer border border-neutral-200"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Mobility Mode Options */}
           <div className="pt-2 space-y-1.5">

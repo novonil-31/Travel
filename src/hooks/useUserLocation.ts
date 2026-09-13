@@ -79,6 +79,8 @@ export function useUserLocation() {
                 permissionGranted: true,
                 accuracyM: pos.coords.accuracy,
                 detectedAt: Date.now(),
+                source: 'gps',
+                hasGpsPriority: true,
               };
               setUserLocation(updatedState);
               saveUserLocation(updatedState);

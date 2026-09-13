@@ -89,6 +89,7 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
   const [emergencyPhone, setEmergencyPhone] = useState<string>('');
   const [emergencyRelation, setEmergencyRelation] = useState<string>('Family');
   const [savedUserTemp, setSavedUserTemp] = useState<any>(null);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
 
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const gsiInitialized = useRef(false);
@@ -359,7 +360,7 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
     };
     setUser(guestUser);
     updateProfile(guestUser.profile);
-    addToast('info', 'Continuing as Guest Passenger. Sign in anytime to activate Emergency SOS.');
+    addToast('info', 'Browsing as Guest. Sign in anytime to unlock 1-Tap Home/Work, Family SOS & ₹50 Commuter Credit.');
     navigate(getTargetUrl());
   };
 
@@ -412,6 +413,15 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
               {isGoogleLoading ? 'Signing in with Google...' : mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
             </button>
           )}
+
+          {/* Quick Instant Guest Access */}
+          <button
+            type="button"
+            onClick={handleGuestMode}
+            className="w-full py-2.5 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-neutral-800 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>⚡ Continue as Guest (Instant Access)</span>
+          </button>
 
           {/* Divider */}
           <div className="flex items-center gap-3 py-1">
@@ -541,20 +551,6 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           )}
         </div>
 
-        {/* Divider + Guest Mode */}
-        <div className="relative border-t border-neutral-200 pt-3 text-center">
-          <span className="bg-white px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider relative -top-5.5">
-            Or quick access
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGuestMode}
-          className="w-full py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
-        >
-          <span>⚡ Continue as Guest (One-Time / No Login)</span>
-        </button>
       </div>
 
       {/* Emergency SOS Setup Modal */}

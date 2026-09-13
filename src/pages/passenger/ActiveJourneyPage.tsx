@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store';
 import { useToast } from '../../store/ToastContext';
@@ -14,7 +14,8 @@ import {
   ExternalLink, Ticket, Train, Plane, Car, LogOut, CheckCircle2,
   ChevronRight, ArrowUpRight, Shield, Lock
 } from 'lucide-react';
-import { haversineDistanceClient } from '../../utils/onlineRouting';
+import { haversineDistanceClient, sanitizeAndStitchJourneyGeometry } from '../../utils/onlineRouting';
+import { watchPrecisionGpsLocation } from '../../utils/userLocationService';
 import {
   snapPointToPolyline,
   calculatePreciseRoadETA,
@@ -52,31 +53,54 @@ const createMapPin = (color: string, label: string) =>
 
 const originPin = createMapPin('#10b981', 'A');
 const destPin = createMapPin('#ef4444', 'B');
-const userGpsPin = createMapPin('#000000', '📍');
+const boardPin = createMapPin('#3b82f6', '🚏');
+const alightPin = createMapPin('#8b5cf6', '🏁');
+const userGpsPin = createMapPin('#2563eb', '👤');
 
-// Transport Change / Mode Switch Badge Pin
 const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
   L.divIcon({
-    className: 'transfer-pin',
+    className: 'custom-transfer-pin',
     html: `
       <div style="
-        background: #000000;
-        color: #ffffff;
-        border: 1.5px solid #262626;
+        background: #1e293b;
+        color: white;
+        border: 2px solid #38bdf8;
         border-radius: 9999px;
-        padding: 2px 7px;
+        padding: 4px 8px;
         display: flex;
         align-items: center;
-        gap: 3px;
+        gap: 4px;
         font-weight: 800;
-        font-size: 10px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        font-size: 11px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.35);
         white-space: nowrap;
-        cursor: pointer;
       ">
         <span>${fromIcon}</span>
-        <span style="color: #ffffff; font-size: 9px; font-weight: 900;">➔</span>
+        <span style="color: #38bdf8; font-size: 10px;">➔</span>
         <span>${toIcon}</span>
+      </div>
+    `,
+    iconSize: [64, 28],
+    iconAnchor: [32, 14],
+  });
+
+// Navigation label badge for intermediate transit points
+const createBadgeIcon = (text: string) =>
+  L.divIcon({
+    className: 'custom-badge-pin',
+    html: `
+      <div style="
+        background: #111827;
+        color: #ffffff;
+        padding: 3px 8px;
+        border-radius: 9999px;
+        font-size: 10px;
+        font-weight: 800;
+        white-space: nowrap;
+        border: 1.5px solid #374151;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      ">
+        ${text}
       </div>
     `,
     iconSize: [60, 22],
@@ -91,18 +115,32 @@ function NavBoundsController({
   currentPos: [number, number];
 }) {
   const map = useMap();
+  const hasFittedInitialRef = useRef<boolean>(false);
 
+  // Fit whole route ONCE when navigation starts
   useEffect(() => {
-    if (coordinates && coordinates.length > 0) {
+    if (!hasFittedInitialRef.current && coordinates && coordinates.length >= 2) {
       try {
         const bounds = L.latLngBounds(coordinates);
-        bounds.extend(currentPos);
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-      } catch {
-        // ignore bounds fit error
-      }
+        if (currentPos && !isNaN(currentPos[0])) {
+          bounds.extend(currentPos);
+        }
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+          hasFittedInitialRef.current = true;
+        }
+      } catch {}
     }
   }, [coordinates, currentPos, map]);
+
+  // Smoothly center on user as they move without jerking or resetting their chosen zoom level
+  useEffect(() => {
+    if (hasFittedInitialRef.current && currentPos && !isNaN(currentPos[0])) {
+      try {
+        map.panTo(currentPos, { animate: true, duration: 0.8 });
+      } catch {}
+    }
+  }, [currentPos, map]);
 
   return null;
 }
@@ -119,6 +157,69 @@ export default function ActiveJourneyPage() {
   const [showGuestSosModal, setShowGuestSosModal] = useState<boolean>(false);
   const [hasArrivedSafely, setHasArrivedSafely] = useState<boolean>(false);
   const [sosActive, setSosActive] = useState<boolean>(false);
+  const [sirenPlaying, setSirenPlaying] = useState<boolean>(false);
+  const sirenAudioCtxRef = useRef<AudioContext | null>(null);
+  const sirenOscRef = useRef<OscillatorNode | null>(null);
+
+  const toggleSiren = () => {
+    if (sirenPlaying) {
+      if (sirenOscRef.current) {
+        try {
+          sirenOscRef.current.stop();
+          sirenOscRef.current.disconnect();
+        } catch (_) {}
+      }
+      if (sirenAudioCtxRef.current) {
+        try {
+          sirenAudioCtxRef.current.close();
+        } catch (_) {}
+      }
+      sirenAudioCtxRef.current = null;
+      sirenOscRef.current = null;
+      setSirenPlaying(false);
+      addToast('info', '🔕 Safety Siren Stopped');
+    } else {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioContextClass();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        let time = ctx.currentTime;
+        for (let i = 0; i < 60; i++) {
+          osc.frequency.linearRampToValueAtTime(1200, time + 0.4);
+          osc.frequency.linearRampToValueAtTime(800, time + 0.8);
+          time += 0.8;
+        }
+
+        gain.gain.setValueAtTime(0.8, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+
+        sirenAudioCtxRef.current = ctx;
+        sirenOscRef.current = osc;
+        setSirenPlaying(true);
+        addToast('error', '🚨 LOUD SECURITY SIREN ACTIVE! Tap to silence.');
+      } catch (err) {
+        console.warn('Web Audio error:', err);
+        addToast('error', 'Audio siren not supported on this device');
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sirenOscRef.current) {
+        try { sirenOscRef.current.stop(); } catch (_) {}
+      }
+      if (sirenAudioCtxRef.current) {
+        try { sirenAudioCtxRef.current.close(); } catch (_) {}
+      }
+    };
+  }, []);
 
   // Custom Report state
   const [customReportCategory, setCustomReportCategory] = useState<'safety' | 'accessibility' | 'crowding' | 'delay'>('safety');
@@ -139,7 +240,7 @@ export default function ActiveJourneyPage() {
   const [starRating, setStarRating] = useState<number>(5);
   const [feedbackComment, setFeedbackComment] = useState<string>('');
 
-  // Safe Coordinates Calculation
+  // Safe Coordinates & Sanitized Continuous Path Calculation
   const fullRouteArr: Array<[number, number]> = activeJourney?.geometry?.fullRoute || [];
   const originCoords: [number, number] =
     activeJourney?.originCoords ? [activeJourney.originCoords.lat, activeJourney.originCoords.lng] :
@@ -148,8 +249,22 @@ export default function ActiveJourneyPage() {
     activeJourney?.destinationCoords ? [activeJourney.destinationCoords.lat, activeJourney.destinationCoords.lng] :
     fullRouteArr.length > 0 ? fullRouteArr[fullRouteArr.length - 1] : [20.3450, 85.8180];
 
-  const continuousRoute: Array<[number, number]> =
-    fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
+  const stitchedGeometry = useMemo(() => {
+    return sanitizeAndStitchJourneyGeometry({
+      originCoords,
+      destCoords,
+      ingressPath: activeJourney?.geometry?.originToBoardWalk,
+      transitPath: activeJourney?.geometry?.transitPath,
+      egressPath: activeJourney?.geometry?.alightToDestWalk,
+      fullRoute: activeJourney?.geometry?.fullRoute,
+      isDirectTransit: !(activeJourney?.geometry?.originToBoardWalk && activeJourney.geometry.originToBoardWalk.length > 0),
+    });
+  }, [originCoords, destCoords, activeJourney?.geometry]);
+
+  const continuousRoute: Array<[number, number]> = stitchedGeometry.continuousRoute;
+  const transitPath = stitchedGeometry.transitPath;
+  const originToBoardWalk = stitchedGeometry.ingressPath;
+  const alightToDestWalk = stitchedGeometry.egressPath;
 
   // Identify Transit Mode strictly (Prevent false train/flight classifications for local bus/auto/cab)
   const isFlight = Boolean(
@@ -198,9 +313,6 @@ export default function ActiveJourneyPage() {
   );
 
   const intermediateStops = activeJourney?.intermediateStops || [];
-  const transitPath = activeJourney?.geometry?.transitPath || [];
-  const originToBoardWalk = activeJourney?.geometry?.originToBoardWalk || [];
-  const alightToDestWalk = activeJourney?.geometry?.alightToDestWalk || [];
 
   const hasOriginTransfer = Boolean(
     isIntermodalJourney &&
@@ -344,93 +456,51 @@ export default function ActiveJourneyPage() {
   const totalRoadDistanceMeters = computePolylineTotalDistance(continuousRoute);
 
   // =========================================================================
-  // STRICT REAL-WORLD GPS TRACKING WITH ROAD NETWORK SNAPPING
+  // HIGH-PRECISION SMOOTHED GPS TRACKING WITH SATELLITE CONVERGENCE
   // =========================================================================
   useEffect(() => {
     if (!activeJourney || hasArrivedSafely) return;
 
-    if (navigator.geolocation) {
-      // 1. Initial GPS check
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUserLocation([lat, lng]);
+    const cleanupGps = watchPrecisionGpsLocation(
+      (locState) => {
+        const lat = locState.lat;
+        const lng = locState.lng;
+        setUserLocation([lat, lng]);
 
-          const distToOrigin = Math.round(haversineDistanceClient(lat, lng, originCoords[0], originCoords[1]));
-          setDistToStartOriginMeters(distToOrigin);
+        const distToOrigin = Math.round(haversineDistanceClient(lat, lng, originCoords[0], originCoords[1]));
+        setDistToStartOriginMeters(distToOrigin);
 
-          if (!hasReachedStartOrigin) {
-            if (distToOrigin <= 40) {
-              setHasReachedStartOrigin(true);
-              addToast('info', `📍 Arrived at Start Location (${activeJourney?.originName})! Commencing journey.`);
-            }
-            setRemainingDistMeters(distToOrigin);
-          } else {
-            const distToTarget = Math.round(haversineDistanceClient(lat, lng, targetCoords[0], targetCoords[1]));
-            setRemainingDistMeters(distToTarget);
-
-            // Check if arrived at intermediate interchange
-            if (isMultiModalTransit && activeStageIndex < stageStageCount - 1 && distToTarget <= 80) {
-              advanceToNextStage();
-            }
-
-            // Strictly complete journey ONLY when within 35m of destination
-            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
-            if ((distToDest <= 35 || snappedResult.distanceToEndMeters <= 35) && !hasArrivedSafely) {
-              triggerSafeArrival();
-            }
+        if (!hasReachedStartOrigin) {
+          if (distToOrigin <= 40) {
+            setHasReachedStartOrigin(true);
+            addToast('info', `📍 Arrived at Start Location (${activeJourney?.originName})! Commencing journey.`);
           }
-        },
-        (err) => {
-          console.warn('Initial GPS check:', err);
-          if (!userLocation) setUserLocation(originCoords);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+          setRemainingDistMeters(distToOrigin);
+        } else {
+          const distToTarget = Math.round(haversineDistanceClient(lat, lng, targetCoords[0], targetCoords[1]));
+          setRemainingDistMeters(distToTarget);
 
-      // 2. Watch real GPS movement strictly
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUserLocation([lat, lng]);
-
-          const distToOrigin = Math.round(haversineDistanceClient(lat, lng, originCoords[0], originCoords[1]));
-          setDistToStartOriginMeters(distToOrigin);
-
-          if (!hasReachedStartOrigin) {
-            if (distToOrigin <= 40) {
-              setHasReachedStartOrigin(true);
-              addToast('info', `📍 Arrived at Start Location (${activeJourney?.originName})! Commencing journey.`);
-            }
-            setRemainingDistMeters(distToOrigin);
-          } else {
-            const distToTarget = Math.round(haversineDistanceClient(lat, lng, targetCoords[0], targetCoords[1]));
-            setRemainingDistMeters(distToTarget);
-
-            // Advance stage if reached intermediate interchange
-            if (isMultiModalTransit && activeStageIndex < stageStageCount - 1 && distToTarget <= 80) {
-              advanceToNextStage();
-            }
-
-            // Strictly complete journey ONLY when within 35m of destination
-            const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
-            if ((distToDest <= 35 || snappedResult.distanceToEndMeters <= 35) && !hasArrivedSafely) {
-              triggerSafeArrival();
-            }
+          // Check if arrived at intermediate interchange
+          if (isMultiModalTransit && activeStageIndex < stageStageCount - 1 && distToTarget <= 80) {
+            advanceToNextStage();
           }
-        },
-        (err) => {
-          console.warn('Live GPS watcher:', err);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
-      );
 
-      return () => navigator.geolocation.clearWatch(watchId);
-    } else {
-      if (!userLocation) setUserLocation(originCoords);
-    }
+          // Strictly complete journey ONLY when within 35m of destination
+          const distToDest = Math.round(haversineDistanceClient(lat, lng, destCoords[0], destCoords[1]));
+          if ((distToDest <= 35 || snappedResult.distanceToEndMeters <= 35) && !hasArrivedSafely) {
+            triggerSafeArrival();
+          }
+        }
+      },
+      (err) => {
+        console.warn('Live GPS watcher warning:', err);
+        if (!userLocation) setUserLocation(originCoords);
+      }
+    );
+
+    return () => {
+      cleanupGps();
+    };
   }, [activeJourney, destCoords, originCoords, targetCoords, hasArrivedSafely, hasReachedStartOrigin, userLocation, activeStageIndex, stageStageCount, isMultiModalTransit, snappedResult.distanceToEndMeters]);
 
   // Advance stage helper
@@ -530,57 +600,50 @@ export default function ActiveJourneyPage() {
   const isGuest = isGuestAccount(state.currentUser);
 
   const activeContact = state.currentUser?.emergencyContact || {
-    name: 'Emergency Contact',
-    phone: '+91 98765 43210',
+    name: 'National Emergency Help',
+    phone: '112',
   };
 
   const rawPhone = activeContact.phone.replace(/[^0-9]/g, '').slice(-10);
-  const physicalSmsText = `🚨 EMERGENCY ALERT: ${state.currentUser?.name || 'I'} triggered SOS near ${activeJourney?.originName || 'Bhubaneswar'}. Live Google Maps: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}`;
-  const nativeSmsUri = `sms:${rawPhone}?body=${encodeURIComponent(physicalSmsText)}`;
-  const whatsAppUri = `https://api.whatsapp.com/send?phone=91${rawPhone}&text=${encodeURIComponent(physicalSmsText)}`;
+  const physicalSmsText = `🚨 EMERGENCY SOS from Maarg Darshan!\nUser is in distress near ${activeJourney?.originName || 'Current Location'} traveling to ${activeJourney?.destinationName || 'Destination'}.\n📍 Live Google Maps GPS: https://maps.google.com/?q=${livePos[0].toFixed(5)},${livePos[1].toFixed(5)}\nPlease send immediate assistance!`;
+  const nativeSmsUri = `sms:${rawPhone || '112'}?body=${encodeURIComponent(physicalSmsText)}`;
+  const whatsAppUri = rawPhone && rawPhone.length === 10
+    ? `https://api.whatsapp.com/send?phone=91${rawPhone}&text=${encodeURIComponent(physicalSmsText)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(physicalSmsText)}`;
+  const universalWhatsAppUri = `https://api.whatsapp.com/send?text=${encodeURIComponent(physicalSmsText)}`;
 
   // Emergency SOS Trigger
   const handleSosClick = async () => {
-    if (isGuest) {
-      setShowGuestSosModal(true);
-      addToast('info', '🔒 Please log in to activate Emergency SOS & live contact alerts.');
-      return;
-    }
-
     setSosActive(true);
 
     const coordsStr = `${livePos[0].toFixed(5)}, ${livePos[1].toFixed(5)}`;
-    try {
-      await safetyApi.sendEmergencySms({
-        recipientPhone: activeContact.phone,
-        recipientName: activeContact.name,
-        senderName: state.currentUser?.name,
-        locationName: activeJourney?.originName,
-        latitude: livePos[0],
-        longitude: livePos[1],
-      });
-    } catch (err) {
-      console.warn('API Gateway error:', err);
+    if (!isGuest) {
+      try {
+        await safetyApi.sendEmergencySms({
+          recipientPhone: activeContact.phone,
+          recipientName: activeContact.name,
+          senderName: state.currentUser?.name,
+          locationName: activeJourney?.originName,
+          latitude: livePos[0],
+          longitude: livePos[1],
+        });
+      } catch (err) {
+        console.warn('API Gateway error:', err);
+      }
     }
 
-    try {
-      window.location.href = nativeSmsUri;
-    } catch (e) {
-      console.warn('Native SMS launcher:', e);
-    }
-
-    const sosMessage = `🚨 REAL-TIME EMERGENCY SOS DISPATCHED: Live GPS location (${coordsStr}) prepared for ${activeContact.name} (${activeContact.phone}) and Transit Dispatch.`;
+    const sosMessage = `🚨 REAL-TIME EMERGENCY SOS ACTIVATED: Live GPS (${coordsStr}) ready for broadcast to Emergency Services (112) and Contacts.`;
 
     addNotification({
       id: `sos-${Date.now()}`,
-      title: '🚨 EMERGENCY SOS DISPATCHED',
+      title: '🚨 EMERGENCY SOS ACTIVE',
       message: sosMessage,
       type: 'safety',
       timestamp: new Date().toISOString(),
       read: false,
     });
 
-    addToast('error', `🚨 EMERGENCY SMS PREPARED: Live GPS (${coordsStr}) ready to send to ${activeContact.phone}!`);
+    addToast('error', `🚨 EMERGENCY SOS ACTIVE: Live GPS (${coordsStr}) prepared. Tap WhatsApp or Call 112 below!`);
   };
 
   if (!activeJourney && !hasArrivedSafely) {
@@ -723,17 +786,23 @@ export default function ActiveJourneyPage() {
             Live GPS ({livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}) prepared for <strong>{activeContact.name} ({activeContact.phone})</strong> and Transit Dispatch.
           </div>
 
-          {/* 1-Tap Immediate SIM Carrier Dispatch Actions */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-            <a
-              href={nativeSmsUri}
-              className="py-2.5 px-2 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
+          {/* 1-Tap Immediate SIM Carrier & Siren Dispatch Actions */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+            {/* Siren Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleSiren}
+              className={`py-2.5 px-2 rounded-xl font-black text-xs text-center flex items-center justify-center gap-1 shadow-md transition-all cursor-pointer ${
+                sirenPlaying
+                  ? 'bg-amber-300 text-neutral-900 ring-2 ring-white animate-bounce'
+                  : 'bg-amber-400 hover:bg-amber-300 text-neutral-900'
+              }`}
             >
-              <Phone className="w-3.5 h-3.5" /> Send SMS
-            </a>
+              <span>{sirenPlaying ? '🔕 Stop Siren' : '📢 Loud Siren'}</span>
+            </button>
 
             <a
-              href={whatsAppUri}
+              href={universalWhatsAppUri}
               target="_blank"
               rel="noopener noreferrer"
               className="py-2.5 px-2 rounded-xl bg-emerald-700 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-emerald-800"
@@ -742,40 +811,44 @@ export default function ActiveJourneyPage() {
             </a>
 
             <a
-              href={`tel:${activeContact.phone}`}
+              href="tel:112"
               className="py-2.5 px-2 rounded-xl bg-neutral-900 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
             >
-              <Phone className="w-3.5 h-3.5" /> Call Contact
+              <ShieldAlert className="w-3.5 h-3.5" /> Call 112
             </a>
 
             <a
-              href="tel:112"
-              className="py-2.5 px-2 rounded-xl bg-red-950 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-black"
+              href="tel:1091"
+              className="py-2.5 px-2 rounded-xl bg-pink-900 text-white font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-pink-950"
             >
-              <ShieldAlert className="w-3.5 h-3.5" /> Call 112
+              <Phone className="w-3.5 h-3.5" /> 1091 Women
+            </a>
+
+            <a
+              href={nativeSmsUri}
+              className="py-2.5 px-2 rounded-xl bg-white text-red-900 font-black text-xs text-center flex items-center justify-center gap-1 shadow-md hover:bg-neutral-100"
+            >
+              <Phone className="w-3.5 h-3.5" /> SMS Alert
             </a>
           </div>
         </div>
       )}
 
-      {/* Guest Mode SOS & Real-Time Alert Notice */}
+      {/* Guest Mode Helpful Tip */}
       {isGuest && (
-        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-3.5 flex items-center justify-between text-xs text-amber-950 shadow-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-800 shadow-2xs">
-              <Shield className="w-4 h-4" />
-            </div>
-            <div className="text-[11px] leading-tight">
-              <span className="font-black text-amber-950">Guest Mode: </span>
-              <span className="text-amber-900 font-medium">Log in to enable Emergency SOS & live alerts with your emergency contacts.</span>
-            </div>
+        <div className="bg-neutral-50 border border-neutral-200 rounded-3xl p-3 flex items-center justify-between text-xs text-neutral-700 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <span className="text-[11px] truncate">
+              Guest Safety Active: 112 Police, Siren & WhatsApp live sharing are unlocked.
+            </span>
           </div>
           <button
             type="button"
             onClick={() => navigate('/login?returnTo=/journey')}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[11px] shrink-0 ml-2 shadow-xs transition-colors cursor-pointer"
+            className="text-[11px] font-bold text-neutral-900 underline shrink-0 ml-2"
           >
-            Log In ➔
+            Save Contacts
           </button>
         </div>
       )}
@@ -789,7 +862,10 @@ export default function ActiveJourneyPage() {
               ? '🚶 Heading to Pickup / Start Point'
               : currentStageTitle}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <span className="bg-neutral-800 text-neutral-300 font-bold px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
+              <span>⚡ {hasReachedStartOrigin ? (isBus ? '28' : isTrain ? '75' : isFlight ? '540' : '32') : '4.5'} km/h</span>
+            </span>
             <span className="bg-neutral-800 text-emerald-400 font-bold px-2.5 py-0.5 rounded-full text-[11px]">
               {!hasReachedStartOrigin && liveDistToStartMeters > 40
                 ? `${liveDistToStartMeters}m to Start (~${walkingEtaToStartMins} min)`
@@ -894,9 +970,9 @@ export default function ActiveJourneyPage() {
             />
           )}
 
-          {/* 1. Backdrop Casing Polyline */}
+          {/* 1. Backdrop Casing Polyline (Seamless full continuous route) */}
           <Polyline
-            positions={activeJourney?.geometry?.fullRoute || continuousRoute}
+            positions={continuousRoute}
             pathOptions={{
               color: '#000000',
               weight: 8,
@@ -907,9 +983,9 @@ export default function ActiveJourneyPage() {
           />
 
           {/* 2. Ingress Road Segment */}
-          {activeJourney?.geometry?.originToBoardWalk && activeJourney.geometry.originToBoardWalk.length > 0 && (
+          {originToBoardWalk.length > 0 && (
             <Polyline
-              positions={activeJourney.geometry.originToBoardWalk}
+              positions={originToBoardWalk}
               pathOptions={{
                 color: isBus ? '#10b981' : '#d97706',
                 weight: 5,
@@ -921,21 +997,23 @@ export default function ActiveJourneyPage() {
           )}
 
           {/* 3. Main Transit Segment */}
-          <Polyline
-            positions={activeJourney?.geometry?.transitPath || continuousRoute}
-            pathOptions={{
-              color: isFlight ? '#0284c7' : isTrain ? '#1d4ed8' : isBus ? '#059669' : '#9333ea',
-              weight: isFlight ? 4 : 5,
-              opacity: 0.95,
-              dashArray: isFlight ? '12, 10' : undefined,
-              className: isFlight ? 'animated-flight-flow' : 'animated-route-flow',
-            }}
-          />
+          {transitPath.length > 0 && (
+            <Polyline
+              positions={transitPath}
+              pathOptions={{
+                color: isFlight ? '#0284c7' : isTrain ? '#1d4ed8' : isBus ? '#059669' : '#9333ea',
+                weight: isFlight ? 4 : 5,
+                opacity: 0.95,
+                dashArray: isFlight ? '12, 10' : undefined,
+                className: isFlight ? 'animated-flight-flow' : 'animated-route-flow',
+              }}
+            />
+          )}
 
           {/* 4. Egress Road Segment */}
-          {activeJourney?.geometry?.alightToDestWalk && activeJourney.geometry.alightToDestWalk.length > 0 && (
+          {alightToDestWalk.length > 0 && (
             <Polyline
-              positions={activeJourney.geometry.alightToDestWalk}
+              positions={alightToDestWalk}
               pathOptions={{
                 color: isBus ? '#10b981' : '#d97706',
                 weight: 5,

@@ -4,12 +4,14 @@ import { useUserLocation } from '../hooks/useUserLocation';
 
 interface LocationRegionBannerProps {
   compact?: boolean;
+  dark?: boolean;
   className?: string;
   onLocationChanged?: () => void;
 }
 
 export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
   compact = false,
+  dark = false,
   className = '',
   onLocationChanged,
 }) => {
@@ -25,36 +27,46 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
     }
   };
 
+  const isRealGps = userLocation.hasGpsPriority === true || userLocation.permissionGranted;
+
   if (compact) {
     return (
-      <div className={`inline-flex items-center gap-2 bg-neutral-100 border border-neutral-300 rounded-xl px-2.5 py-1.5 text-xs text-neutral-800 ${className}`}>
+      <div
+        className={`inline-flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-all border ${
+          dark
+            ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-750'
+            : 'bg-neutral-100 border-neutral-300 text-neutral-800 hover:border-neutral-400'
+        } ${className}`}
+      >
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="relative flex h-2 w-2 shrink-0">
-            {userLocation.permissionGranted ? (
+            {isRealGps ? (
               <>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </>
             ) : (
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-neutral-400"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" title="Approximate IP location"></span>
             )}
           </span>
-          <MapPin className="w-3.5 h-3.5 text-neutral-800 shrink-0" />
-          <span className="truncate max-w-[180px] sm:max-w-[240px] font-semibold text-neutral-900">
+          <MapPin className={`w-3.5 h-3.5 shrink-0 ${dark ? 'text-neutral-300' : 'text-neutral-800'}`} />
+          <span className={`truncate max-w-[160px] sm:max-w-[220px] font-semibold ${dark ? 'text-white' : 'text-neutral-900'}`}>
             {userLocation.placeName || userLocation.cityName || userLocation.regionLabel}
           </span>
         </div>
 
-        <div className="h-3 w-px bg-neutral-300 mx-0.5 shrink-0" />
+        <div className={`h-3 w-px mx-0.5 shrink-0 ${dark ? 'bg-neutral-700' : 'bg-neutral-300'}`} />
 
         <button
           type="button"
           onClick={handleDetectGPS}
           disabled={isLocating}
-          title="Refresh GPS Location"
-          className="p-1 rounded-md text-neutral-600 hover:text-black hover:bg-neutral-200 transition-colors focus:outline-none shrink-0"
+          title={isRealGps ? "Live GPS Active - Click to Re-center" : "Detect Live GPS"}
+          className={`p-1 rounded-md transition-colors focus:outline-none shrink-0 cursor-pointer ${
+            dark ? 'text-neutral-400 hover:text-white hover:bg-neutral-700' : 'text-neutral-600 hover:text-black hover:bg-neutral-200'
+          }`}
         >
-          {isLocating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-900" /> : <Crosshair className="w-3.5 h-3.5" />}
+          {isLocating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Crosshair className="w-3.5 h-3.5" />}
         </button>
       </div>
     );

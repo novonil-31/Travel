@@ -107,11 +107,17 @@ router.get('/places/search', async (req, res, next) => {
         const displayLower = (item.displayName || '').toLowerCase();
         let score = 0;
 
-        if (nameLower === q.toLowerCase()) score += 1000;
-        else if (nameLower.startsWith(q.toLowerCase())) score += 600;
-        else if (displayLower.startsWith(q.toLowerCase())) score += 400;
-        else if (nameLower.includes(q.toLowerCase())) score += 300;
-        else score += 100;
+        if (nameLower === q.toLowerCase()) score += 4000;
+        else if (nameLower.startsWith(q.toLowerCase())) score += 2500;
+        else if (displayLower.startsWith(q.toLowerCase())) score += 1800;
+        else if (nameLower.includes(q.toLowerCase())) score += 1200;
+        else if (displayLower.includes(q.toLowerCase())) score += 600;
+        else score += 200;
+
+        // Destination / hub bonus
+        if (item.type === 'city' || item.type === 'state_capital' || item.type === 'airport' || item.type === 'railway' || item.type === 'monument') {
+          score += 600;
+        }
 
         if (userLat !== undefined && userLng !== undefined) {
           const R = 6371;
@@ -123,10 +129,10 @@ router.get('/places/search', async (req, res, next) => {
           const dKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           item.distanceKm = dKm;
 
-          if (dKm <= 5) score += 800; // In immediate neighborhood / campus
-          else if (dKm <= 35) score += 500; // In city
-          else if (dKm <= 100) score += 250; // In district
-          else if (dKm <= 300) score += 100; // In region
+          // Moderate local proximity preference (Tie-breaker for nearby places without overwhelming distant searches)
+          if (dKm <= 2) score += 600; // Immediate neighborhood
+          else if (dKm <= 10) score += 400; // In city
+          else if (dKm <= 40) score += 200; // Metro area
         }
 
         allResults.push({ ...item, score });

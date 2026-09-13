@@ -147,4 +147,53 @@ router.get('/shared/estimate', async (req, res, next) => {
   }
 });
 
+const RouteGeometryQuerySchema = z.object({
+  start_lat: z.coerce.number(),
+  start_lng: z.coerce.number(),
+  end_lat: z.coerce.number(),
+  end_lng: z.coerce.number(),
+  mode: z.enum(['driving', 'walking']).default('driving'),
+});
+
+/**
+ * @swagger
+ * /transport/route-geometry:
+ *   get:
+ *     summary: Server-side OSRM routing proxy for reliable cross-platform route mapping without CORS limits
+ *     tags: [SharedTransport]
+ */
+router.get('/route-geometry', async (req, res, next) => {
+  try {
+    const { start_lat, start_lng, end_lat, end_lng, mode } = RouteGeometryQuerySchema.parse(req.query);
+    const endpoints = [
+      `https://router.project-osrm.org/route/v1/${mode}/${start_lng},${start_lat};${end_lng},${end_lat}?overview=full&geometries=geojson&steps=true`,
+      `https://routing.openstreetmap.de/routed-${mode === 'walking' ? 'foot' : 'car'}/route/v1/${mode === 'walking' ? 'foot' : 'driving'}/${start_lng},${start_lat};${end_lng},${end_lat}?overview=full&geometries=geojson&steps=true`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        if (response.ok) {
+          const json: any = await response.json();
+          if (json.code === 'Ok' && json.routes && json.routes.length > 0) {
+            const route = json.routes[0];
+            const coordinates = route.geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon]);
+            return sendSuccess(res, {
+              coordinates,
+              distanceM: Math.round(route.distance),
+              durationMin: Math.max(1, Math.round(route.duration / 60)),
+            });
+          }
+        }
+      } catch {
+        // try next mirror
+      }
+    }
+
+    sendSuccess(res, null);
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;

@@ -1,0 +1,45 @@
+{
+  "name": "मार्ग Darshan — National Transit & Navigation",
+  "short_name": "Maarg Darshan",
+  "description": "Pan-India Accessible Transit, Bike Taxi, Auto, Metro, Bus & Step-Free GPS Navigation Platform",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Trip Planner",
+      "short_name": "Plan",
+      "url": "/plan",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Discover Transit",
+      "short_name": "Routes",
+      "url": "/routes",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Live Vehicle Radar",
+      "short_name": "Live Radar",
+      "url": "/tracking",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["navigation", "travel", "utilities"]
+}

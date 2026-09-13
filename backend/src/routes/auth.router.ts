@@ -48,10 +48,12 @@ const EmergencyContactSchema = z.object({
 router.post('/register', async (req, res, next) => {
   try {
     const body = RegisterSchema.parse(req.body);
+    const normalizedEmail = body.email ? body.email.trim().toLowerCase() : null;
+    const normalizedPhone = body.phoneNumber ? body.phoneNumber.trim() : null;
 
     // Check existing email
-    if (body.email && body.email.length > 0) {
-      const exists = await prisma.user.findUnique({ where: { email: body.email } });
+    if (normalizedEmail && normalizedEmail.length > 0) {
+      const exists = await prisma.user.findUnique({ where: { email: normalizedEmail } });
       if (exists) {
         sendError(res, Errors.CONFLICT, 'Email address already registered. Please sign in.', 409);
         return;
@@ -72,8 +74,8 @@ router.post('/register', async (req, res, next) => {
     const user = await prisma.user.create({
       data: {
         name: body.name,
-        email: body.email || null,
-        phoneNumber: body.phoneNumber || null,
+        email: normalizedEmail,
+        phoneNumber: normalizedPhone,
         passwordHash,
         role: 'PASSENGER',
         profile: {
@@ -116,11 +118,13 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', async (req, res, next) => {
   try {
     const body = LoginSchema.parse(req.body);
+    const normalizedEmail = body.email ? body.email.trim().toLowerCase() : undefined;
+    const normalizedPhone = body.phoneNumber ? body.phoneNumber.trim() : undefined;
 
     const user = await prisma.user.findFirst({
-      where: body.email
-        ? { email: body.email }
-        : { phoneNumber: body.phoneNumber },
+      where: normalizedEmail
+        ? { email: normalizedEmail }
+        : { phoneNumber: normalizedPhone },
       include: {
         emergencyContacts: { where: { isPrimary: true }, take: 1 },
       },

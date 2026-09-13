@@ -9,8 +9,8 @@ import {
 import type { AccessibilityProfile, EmergencyContact, SafetyPreference, TravelPreferences } from '../../types';
 import { Link } from 'react-router-dom';
 import { authApi } from '../../api';
-import { Train, Plane } from 'lucide-react';
-import { isGuestAccount } from '../../utils/authUtils';
+import { Train, Plane, Ticket, Sparkles, Home, Briefcase, Lock, AlertTriangle } from 'lucide-react';
+import { isGuestAccount, getOrCreateCommuterPass } from '../../utils/authUtils';
 
 export default function ProfilePage() {
   const { state, updateProfile, setUser, dispatch } = useAppStore();
@@ -47,6 +47,9 @@ export default function ProfilePage() {
 
   const [offlineDownloaded, setOfflineDownloaded] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [homeInput, setHomeInput] = useState<string>(state.currentUser?.savedPlaces?.home?.address || '');
+  const [workInput, setWorkInput] = useState<string>(state.currentUser?.savedPlaces?.work?.address || '');
+  const commuterPass = getOrCreateCommuterPass(state.currentUser);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -57,6 +60,11 @@ export default function ProfilePage() {
       emergencyContact,
       profile,
       travelPreferences: travelPrefs,
+      savedPlaces: {
+        ...state.currentUser.savedPlaces,
+        home: homeInput.trim() ? { name: 'Home', address: homeInput.trim(), lat: 28.6139, lng: 77.2090 } : undefined,
+        work: workInput.trim() ? { name: 'Work', address: workInput.trim(), lat: 28.5562, lng: 77.1000 } : undefined,
+      },
     } : {
       id: 'local-user',
       name: 'Registered Passenger',
@@ -64,6 +72,10 @@ export default function ProfilePage() {
       emergencyContact,
       profile,
       travelPreferences: travelPrefs,
+      savedPlaces: {
+        home: homeInput.trim() ? { name: 'Home', address: homeInput.trim(), lat: 28.6139, lng: 77.2090 } : undefined,
+        work: workInput.trim() ? { name: 'Work', address: workInput.trim(), lat: 28.5562, lng: 77.1000 } : undefined,
+      },
     };
 
     setUser(updatedUser);
@@ -120,27 +132,99 @@ export default function ProfilePage() {
         </Button>
       </div>
 
-      {isGuest && (
-        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex items-center justify-between text-xs text-amber-950 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-800">
-              <Shield className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="font-bold text-amber-950">Guest Passenger Mode</div>
-              <div className="text-[11px] text-amber-800">
-                Log in to link your emergency contacts and activate Emergency SOS dispatch.
+      {/* National Commuter Pass Card (Logged-in Members) */}
+      {!isGuest && (
+        <div className="bg-gradient-to-br from-neutral-900 via-neutral-950 to-black text-white p-6 rounded-3xl border border-neutral-800 shadow-xl relative overflow-hidden">
+          <div className="absolute -right-8 -bottom-8 w-40 h-40 rounded-full bg-emerald-500/10 pointer-events-none blur-xl" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
+                <Ticket className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">National Transit Pass</div>
+                <div className="text-sm font-black text-white">मार्ग Darshan Verified Commuter</div>
               </div>
             </div>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black tracking-wide uppercase">
+              Active Member
+            </span>
           </div>
-          <Link
-            to="/login?returnTo=/profile"
-            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-2xs"
-          >
-            Log In ➔
-          </Link>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-neutral-800 text-xs">
+            <div>
+              <span className="text-[10px] text-neutral-400 block">Pass Identifier</span>
+              <strong className="font-mono text-emerald-400 text-xs">{commuterPass.passId}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] text-neutral-400 block">Commuter Credit</span>
+              <strong className="text-white text-xs font-bold">₹{commuterPass.balanceRupees.toFixed(2)}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] text-neutral-400 block">Active Discount</span>
+              <strong className="text-emerald-400 text-xs font-bold">{commuterPass.discountPercent}% Off</strong>
+            </div>
+            <div>
+              <span className="text-[10px] text-neutral-400 block">CO₂ Saved</span>
+              <strong className="text-white text-xs font-bold">{commuterPass.carbonSavedKg} kg</strong>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Saved Places Manager (Home & Work) */}
+      <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Home className="w-5 h-5 text-neutral-900" />
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+                Saved Commute Places (1-Tap Navigation)
+              </h2>
+              <p className="text-xs text-neutral-500">
+                Quick 1-tap destinations saved across all your devices.
+              </p>
+            </div>
+          </div>
+          {isGuest && (
+            <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+              <Lock className="w-3 h-3" /> Locked for Guests
+            </span>
+          )}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-bold text-neutral-700 flex items-center gap-1.5 mb-1.5">
+              <Home className="w-3.5 h-3.5 text-blue-600" />
+              <span>Home Address / Landmark</span>
+            </label>
+            <input
+              type="text"
+              value={homeInput}
+              disabled={isGuest}
+              onChange={(e) => setHomeInput(e.target.value)}
+              placeholder={isGuest ? "Sign in to save Home location" : "e.g. Flat 402, Green Avenue, Delhi"}
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 disabled:opacity-60 focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-neutral-700 flex items-center gap-1.5 mb-1.5">
+              <Briefcase className="w-3.5 h-3.5 text-purple-600" />
+              <span>Work / Office Address</span>
+            </label>
+            <input
+              type="text"
+              value={workInput}
+              disabled={isGuest}
+              onChange={(e) => setWorkInput(e.target.value)}
+              placeholder={isGuest ? "Sign in to save Work location" : "e.g. Cyber City, Sector 24, Gurugram"}
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 disabled:opacity-60 focus:outline-none focus:border-black"
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-5">
         {/* Mobility Category */}

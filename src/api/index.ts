@@ -8,7 +8,9 @@ import { DEMO_STOPS, DEMO_TRANSPORT_STANDS, generateDynamicSearchResults } from 
 import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '../utils/onlineRouting';
 import type { RouteSearchResult } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : undefined);
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
 
 interface RequestOptions {
   method?: string;
@@ -706,6 +708,382 @@ export const crowdingApi = {
   },
 };
 
+export interface LiveCabOption {
+  id: string;
+  provider: 'uber' | 'ola' | 'rapido' | 'nammayatri' | 'blusmart';
+  providerName: string;
+  category: 'cab' | 'auto' | 'bike';
+  vehicleType: string;
+  displayName: string;
+  icon: string;
+  fare: number;
+  baseFare: number;
+  perKmRate: number;
+  surgeMultiplier: number;
+  isSurgeActive: boolean;
+  surgeReason?: string;
+  estimatedWaitMins: number;
+  estimatedDurationMins: number;
+  isCheapest?: boolean;
+  isFastest?: boolean;
+  savingsVsMax?: number;
+  savingsVsUber?: number;
+  deepLink: string;
+  webFallbackLink: string;
+  features: string[];
+}
+
+export interface LiveCabComparisonResult {
+  origin: { name: string; lat: number; lng: number };
+  destination: { name: string; lat: number; lng: number };
+  distanceKm: number;
+  durationMins: number;
+  calculatedAt: string;
+  surgeStatus: {
+    isPeakHour: boolean;
+    periodName: string;
+    description: string;
+  };
+  cheapestOption: LiveCabOption;
+  fastestOption: LiveCabOption;
+  options: LiveCabOption[];
+}
+
+export function generateClientCabComparison(params: {
+  pickupLat: number;
+  pickupLng: number;
+  pickupName?: string;
+  dropLat: number;
+  dropLng: number;
+  dropName?: string;
+  category?: 'all' | 'cab' | 'auto' | 'bike';
+}): LiveCabComparisonResult {
+  const { pickupLat, pickupLng, pickupName = 'Pickup Location', dropLat, dropLng, dropName = 'Destination', category = 'all' } = params;
+  
+  const R = 6371;
+  const dLat = ((dropLat - pickupLat) * Math.PI) / 180;
+  const dLon = ((dropLng - pickupLng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((pickupLat * Math.PI) / 180) *
+      Math.cos((dropLat * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const crowFlies = R * c;
+  const distanceKm = Math.max(0.6, Math.round(crowFlies * 1.28 * 10) / 10);
+  const durationMins = Math.max(5, Math.round((distanceKm / 21) * 60));
+
+  const now = new Date();
+  const istMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() + 330) % 1440;
+  const istHour = istMinutes / 60;
+  let isPeak = false;
+  let periodName = 'Standard Hours';
+  let uberSurge = 1.0;
+  let olaSurge = 1.0;
+  let rapidoSurge = 1.0;
+
+  if (istHour >= 8.5 && istHour < 11.5) {
+    isPeak = true;
+    periodName = 'Morning Peak Rush';
+    uberSurge = 1.25;
+    olaSurge = 1.30;
+    rapidoSurge = 1.15;
+  } else if (istHour >= 17.5 && istHour < 21.5) {
+    isPeak = true;
+    periodName = 'Evening Peak Rush';
+    uberSurge = 1.35;
+    olaSurge = 1.40;
+    rapidoSurge = 1.20;
+  } else if (istHour >= 23 || istHour < 5) {
+    periodName = 'Late Night Transit';
+    uberSurge = 1.15;
+    olaSurge = 1.15;
+    rapidoSurge = 1.10;
+  }
+
+  const oNameEnc = encodeURIComponent(pickupName);
+  const dNameEnc = encodeURIComponent(dropName);
+  const makeUber = (prod?: string) =>
+    `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${pickupLat}&pickup[longitude]=${pickupLng}&pickup[nickname]=${oNameEnc}&pickup[formatted_address]=${oNameEnc}&dropoff[latitude]=${dropLat}&dropoff[longitude]=${dropLng}&dropoff[nickname]=${dNameEnc}&dropoff[formatted_address]=${dNameEnc}${prod ? `&product_id=${prod}` : ''}`;
+  const makeOla = (cat: string) =>
+    `https://book.olacabs.com/?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&category=${cat}`;
+  const makeRapido = (svc: string) =>
+    `https://rapido.bike/booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}&service=${svc}`;
+  const makeNamma = () =>
+    `https://nammayatri.in/open?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}`;
+  const makeBlu = () =>
+    `https://blusmart.com/book?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&drop_lat=${dropLat}&drop_lng=${dropLng}`;
+
+  const list: LiveCabOption[] = [];
+
+  if (category === 'all' || category === 'cab') {
+    // Uber Go
+    const uFare = Math.round(((55 + distanceKm * 15.5 + durationMins * 1.5) * uberSurge * 1.05) / 5) * 5;
+    list.push({
+      id: 'uber-go',
+      provider: 'uber',
+      providerName: 'Uber',
+      category: 'cab',
+      vehicleType: 'Uber Go',
+      displayName: 'Uber Go (AC Hatchback)',
+      icon: '🚗',
+      fare: Math.max(75, uFare),
+      baseFare: 55,
+      perKmRate: 15.5,
+      surgeMultiplier: uberSurge,
+      isSurgeActive: uberSurge > 1.0,
+      surgeReason: uberSurge > 1.0 ? periodName : undefined,
+      estimatedWaitMins: 3,
+      estimatedDurationMins: durationMins,
+      deepLink: makeUber('uber-go'),
+      webFallbackLink: makeUber(),
+      features: ['AC Cab', '4 Seats', 'Cash / UPI', 'Live GPS Tracking'],
+    });
+
+    // Ola Mini
+    const oFare = Math.round(((50 + distanceKm * 16.0 + durationMins * 1.5) * olaSurge * 1.05) / 5) * 5;
+    list.push({
+      id: 'ola-mini',
+      provider: 'ola',
+      providerName: 'Ola',
+      category: 'cab',
+      vehicleType: 'Ola Mini',
+      displayName: 'Ola Mini (AC Compact)',
+      icon: '🚕',
+      fare: Math.max(70, oFare),
+      baseFare: 50,
+      perKmRate: 16.0,
+      surgeMultiplier: olaSurge,
+      isSurgeActive: olaSurge > 1.0,
+      surgeReason: olaSurge > 1.0 ? periodName : undefined,
+      estimatedWaitMins: 3,
+      estimatedDurationMins: durationMins,
+      deepLink: makeOla('mini'),
+      webFallbackLink: makeOla('mini'),
+      features: ['Compact AC', 'Instant OTP', 'Emergency SOS'],
+    });
+
+    // Rapido Cab Economy
+    const rFare = Math.round(((45 + distanceKm * 14.0 + durationMins * 1.25) * rapidoSurge * 1.05) / 5) * 5;
+    list.push({
+      id: 'rapido-cab',
+      provider: 'rapido',
+      providerName: 'Rapido',
+      category: 'cab',
+      vehicleType: 'Rapido Cab',
+      displayName: 'Rapido Cab (Economy)',
+      icon: '🚖',
+      fare: Math.max(65, rFare),
+      baseFare: 45,
+      perKmRate: 14.0,
+      surgeMultiplier: rapidoSurge,
+      isSurgeActive: rapidoSurge > 1.0,
+      estimatedWaitMins: 4,
+      estimatedDurationMins: durationMins,
+      deepLink: makeRapido('cab_economy'),
+      webFallbackLink: 'https://rapido.onelink.me/',
+      features: ['Low commission', 'Direct driver payout', 'Affordable AC'],
+    });
+
+    // Namma Yatri Cab (ONDC 0% Commission)
+    const nyFare = Math.round((40 + distanceKm * 13.5 + durationMins * 1.0) / 5) * 5;
+    list.push({
+      id: 'namma-yatri-cab',
+      provider: 'nammayatri',
+      providerName: 'Namma Yatri',
+      category: 'cab',
+      vehicleType: 'ONDC Cab',
+      displayName: 'Namma Yatri Cab (Zero Commission)',
+      icon: '🚙',
+      fare: Math.max(60, nyFare),
+      baseFare: 40,
+      perKmRate: 13.5,
+      surgeMultiplier: 1.0,
+      isSurgeActive: false,
+      estimatedWaitMins: 5,
+      estimatedDurationMins: durationMins,
+      deepLink: makeNamma(),
+      webFallbackLink: 'https://nammayatri.in/',
+      features: ['100% to Driver', 'Open Network (ONDC)', 'Zero Surge Guarantee'],
+    });
+
+    // BluSmart EV
+    const bFare = Math.round((99 + Math.max(0, distanceKm - 2) * 16.0) / 5) * 5;
+    list.push({
+      id: 'blusmart-ev',
+      provider: 'blusmart',
+      providerName: 'BluSmart',
+      category: 'cab',
+      vehicleType: 'BluSmart EV',
+      displayName: 'BluSmart EV Cab (Zero Surge)',
+      icon: '⚡',
+      fare: Math.max(99, bFare),
+      baseFare: 99,
+      perKmRate: 16.0,
+      surgeMultiplier: 1.0,
+      isSurgeActive: false,
+      estimatedWaitMins: 6,
+      estimatedDurationMins: durationMins,
+      deepLink: makeBlu(),
+      webFallbackLink: 'https://blusmart.com/',
+      features: ['100% Electric', 'Zero Cancellations', 'Zero Surge Ever'],
+    });
+  }
+
+  if (category === 'all' || category === 'auto') {
+    // Namma Yatri Auto
+    const nyAutoFare = Math.round((30 + Math.max(0, distanceKm - 1.8) * 15.0) / 5) * 5;
+    list.push({
+      id: 'namma-yatri-auto',
+      provider: 'nammayatri',
+      providerName: 'Namma Yatri',
+      category: 'auto',
+      vehicleType: 'Meter Auto',
+      displayName: 'Namma Yatri Auto (Govt Meter)',
+      icon: '🛺',
+      fare: Math.max(30, nyAutoFare),
+      baseFare: 30,
+      perKmRate: 15.0,
+      surgeMultiplier: 1.0,
+      isSurgeActive: false,
+      estimatedWaitMins: 2,
+      estimatedDurationMins: Math.round(durationMins * 0.95),
+      deepLink: makeNamma(),
+      webFallbackLink: 'https://nammayatri.in/',
+      features: ['Government Meter Rate', 'Direct UPI to Driver', 'No Commission'],
+    });
+
+    // Rapido Auto
+    const rAutoFare = Math.round(((28 + Math.max(0, distanceKm - 1.5) * 14.5) * rapidoSurge) / 5) * 5;
+    list.push({
+      id: 'rapido-auto',
+      provider: 'rapido',
+      providerName: 'Rapido',
+      category: 'auto',
+      vehicleType: 'Rapido Auto',
+      displayName: 'Rapido Auto (Verified)',
+      icon: '🛺',
+      fare: Math.max(30, rAutoFare),
+      baseFare: 28,
+      perKmRate: 14.5,
+      surgeMultiplier: rapidoSurge,
+      isSurgeActive: rapidoSurge > 1.0,
+      estimatedWaitMins: 2,
+      estimatedDurationMins: Math.round(durationMins * 0.95),
+      deepLink: makeRapido('auto'),
+      webFallbackLink: 'https://rapido.onelink.me/',
+      features: ['Doorstep Pickup', 'Verified Drivers', 'No Haggling'],
+    });
+
+    // Uber Auto
+    const uAutoFare = Math.round(((32 + Math.max(0, distanceKm - 1.5) * 15.5) * uberSurge) / 5) * 5;
+    list.push({
+      id: 'uber-auto',
+      provider: 'uber',
+      providerName: 'Uber',
+      category: 'auto',
+      vehicleType: 'Uber Auto',
+      displayName: 'Uber Auto',
+      icon: '🛺',
+      fare: Math.max(35, uAutoFare),
+      baseFare: 32,
+      perKmRate: 15.5,
+      surgeMultiplier: uberSurge,
+      isSurgeActive: uberSurge > 1.0,
+      estimatedWaitMins: 3,
+      estimatedDurationMins: Math.round(durationMins * 0.95),
+      deepLink: makeUber('uber-auto'),
+      webFallbackLink: makeUber(),
+      features: ['Cashless UPI', 'Live Trip Share', 'Uber Safety'],
+    });
+  }
+
+  if (category === 'all' || category === 'bike') {
+    // Rapido Bike
+    const rBikeFare = Math.round(((20 + Math.max(0, distanceKm - 1.0) * 7.5) * rapidoSurge) / 5) * 5;
+    list.push({
+      id: 'rapido-bike',
+      provider: 'rapido',
+      providerName: 'Rapido',
+      category: 'bike',
+      vehicleType: 'Rapido Bike',
+      displayName: 'Rapido Bike Taxi (Fastest)',
+      icon: '🛵',
+      fare: Math.max(25, rBikeFare),
+      baseFare: 20,
+      perKmRate: 7.5,
+      surgeMultiplier: rapidoSurge,
+      isSurgeActive: rapidoSurge > 1.0,
+      estimatedWaitMins: 1,
+      estimatedDurationMins: Math.round(durationMins * 0.65),
+      deepLink: makeRapido('bike'),
+      webFallbackLink: 'https://rapido.onelink.me/',
+      features: ['Traffic Buster', 'Single Commuter', 'Helmet Provided'],
+    });
+
+    // Uber Moto
+    const uMotoFare = Math.round(((22 + Math.max(0, distanceKm - 1.0) * 8.5) * uberSurge) / 5) * 5;
+    list.push({
+      id: 'uber-moto',
+      provider: 'uber',
+      providerName: 'Uber',
+      category: 'bike',
+      vehicleType: 'Uber Moto',
+      displayName: 'Uber Moto',
+      icon: '🏍️',
+      fare: Math.max(25, uMotoFare),
+      baseFare: 22,
+      perKmRate: 8.5,
+      surgeMultiplier: uberSurge,
+      isSurgeActive: uberSurge > 1.0,
+      estimatedWaitMins: 2,
+      estimatedDurationMins: Math.round(durationMins * 0.65),
+      deepLink: makeUber('uber-moto'),
+      webFallbackLink: makeUber(),
+      features: ['In-app Insurance', 'Sanitized Helmet', 'Quick Dispatch'],
+    });
+  }
+
+  list.sort((a, b) => a.fare - b.fare);
+  const cheapest = list[0];
+  let fastest = list[0];
+  let minT = Infinity;
+  for (const opt of list) {
+    if (opt.estimatedDurationMins < minT) {
+      minT = opt.estimatedDurationMins;
+      fastest = opt;
+    }
+  }
+
+  const uberGo = list.find((o) => o.id === 'uber-go') || list[list.length - 1];
+  const maxFare = Math.max(...list.map((o) => o.fare));
+
+  const options = list.map((opt) => ({
+    ...opt,
+    isCheapest: opt.id === cheapest?.id,
+    isFastest: opt.id === fastest?.id,
+    savingsVsMax: Math.max(0, maxFare - opt.fare),
+    savingsVsUber: uberGo ? Math.max(0, uberGo.fare - opt.fare) : 0,
+  }));
+
+  return {
+    origin: { name: pickupName, lat: pickupLat, lng: pickupLng },
+    destination: { name: dropName, lat: dropLat, lng: dropLng },
+    distanceKm,
+    durationMins,
+    calculatedAt: new Date().toISOString(),
+    surgeStatus: {
+      isPeakHour: isPeak,
+      periodName,
+      description: isPeak ? 'Live peak hour rush' : 'Standard daytime rates',
+    },
+    cheapestOption: options[0],
+    fastestOption: options.find((o) => o.isFastest) || options[0],
+    options,
+  };
+}
+
 export const faresApi = {
   estimate: async (routeId?: string, originZoneId?: string, destinationZoneId?: string) => {
     try {
@@ -721,7 +1099,33 @@ export const faresApi = {
       throw error;
     }
   },
+  compareCabs: async (params: {
+    pickupLat: number;
+    pickupLng: number;
+    pickupName?: string;
+    dropLat: number;
+    dropLng: number;
+    dropName?: string;
+    category?: 'all' | 'cab' | 'auto' | 'bike';
+  }): Promise<LiveCabComparisonResult> => {
+    const q = new URLSearchParams({
+      pickup_lat: String(params.pickupLat),
+      pickup_lng: String(params.pickupLng),
+      pickup_name: params.pickupName || 'Pickup Location',
+      drop_lat: String(params.dropLat),
+      drop_lng: String(params.dropLng),
+      drop_name: params.dropName || 'Destination',
+      category: params.category || 'all',
+    });
+    try {
+      return await request<LiveCabComparisonResult>(`/fares/compare-cabs?${q.toString()}`);
+    } catch {
+      return generateClientCabComparison(params);
+    }
+  },
 };
+
+export const ridesApi = faresApi;
 
 // ============ Shared Transport ============
 export const transportApi = {

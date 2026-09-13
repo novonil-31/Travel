@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/backend/api/index.ts"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

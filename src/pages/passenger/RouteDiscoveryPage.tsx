@@ -33,7 +33,10 @@ import {
   type AuthenticVehicleRecord,
   type AuthenticRadarStatus,
 } from '../../utils/liveTransitRadar';
+import { calculateDistanceKm } from '../../utils/userLocationService';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
+import { LiveCabPriceComparator } from '../../components/LiveCabPriceComparator';
+import { sanitizeAndStitchJourneyGeometry } from '../../utils/onlineRouting';
 
 // Modern High-Clarity Circular Journey Endpoint Pin (Prevents Overlap with nearby Station Badges)
 const createEndpointPin = (color: string, label: string) =>
@@ -94,19 +97,31 @@ const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
     iconAnchor: [30, 11],
   });
 
-// Auto-fit map viewport to continuous polyline so starting & ending points are clearly visible (especially for campus distances)
+// Auto-fit map viewport to continuous polyline smoothly without jarring resets on background telemetry
 function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
   const map = useMap();
+  const lastBoundsKeyRef = useRef<string>('');
+
   useEffect(() => {
-    if (coordinates && coordinates.length > 0) {
-      const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, {
-          padding: [50, 50],
-          maxZoom: 17,
-          animate: true,
-          duration: 0.6,
-        });
+    if (coordinates && coordinates.length >= 2) {
+      const start = coordinates[0];
+      const end = coordinates[coordinates.length - 1];
+      const key = `${start[0].toFixed(4)},${start[1].toFixed(4)}_${end[0].toFixed(4)},${end[1].toFixed(4)}_${coordinates.length}`;
+      if (key !== lastBoundsKeyRef.current) {
+        lastBoundsKeyRef.current = key;
+        try {
+          const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, {
+              padding: [50, 50],
+              maxZoom: 17,
+              animate: true,
+              duration: 0.5,
+            });
+          }
+        } catch {
+          // ignore bounds calculation error
+        }
       }
     }
   }, [coordinates, map]);
@@ -441,6 +456,7 @@ export default function RouteDiscoveryPage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
   const [showRouteOverview, setShowRouteOverview] = useState<boolean>(false);
+  const [showRideDispatchModal, setShowRideDispatchModal] = useState<boolean>(false);
 
   const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
 
@@ -780,32 +796,139 @@ export default function RouteDiscoveryPage() {
     }
   }, [searchResults, selectedIndex]);
 
-  // Coordinates extraction
-  const fullRouteArr: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
+  // Coordinates extraction & Sanitized Geometry Stitching
+  const rawFullRoute: Array<[number, number]> = selectedRoute?.geometry?.fullRoute || [];
   const originCoords: [number, number] = [
-    selectedRoute?.originCoords?.lat ?? (fullRouteArr[0] ? fullRouteArr[0][0] : 20.3555),
-    selectedRoute?.originCoords?.lng ?? (fullRouteArr[0] ? fullRouteArr[0][1] : 85.8145),
+    selectedRoute?.originCoords?.lat ?? (rawFullRoute[0] ? rawFullRoute[0][0] : 20.3555),
+    selectedRoute?.originCoords?.lng ?? (rawFullRoute[0] ? rawFullRoute[0][1] : 85.8145),
   ];
   const destCoords: [number, number] = [
-    selectedRoute?.destinationCoords?.lat ?? (fullRouteArr[fullRouteArr.length - 1] ? fullRouteArr[fullRouteArr.length - 1][0] : 20.3450),
-    selectedRoute?.destinationCoords?.lng ?? (fullRouteArr[fullRouteArr.length - 1] ? fullRouteArr[fullRouteArr.length - 1][1] : 85.8180),
+    selectedRoute?.destinationCoords?.lat ?? (rawFullRoute[rawFullRoute.length - 1] ? rawFullRoute[rawFullRoute.length - 1][0] : 20.3450),
+    selectedRoute?.destinationCoords?.lng ?? (rawFullRoute[rawFullRoute.length - 1] ? rawFullRoute[rawFullRoute.length - 1][1] : 85.8180),
   ];
-
-  const continuousRoute: Array<[number, number]> =
-    fullRouteArr.length > 0 ? fullRouteArr : [originCoords, destCoords];
-
-  // Ingress, Transit, and Egress geometries for multi-colored crisp rendering
-  const ingressPath: Array<[number, number]> = selectedRoute?.geometry?.originToBoardWalk || [];
-  const transitPath: Array<[number, number]> = selectedRoute?.geometry?.transitPath || continuousRoute;
-  const connectingTransitPath: Array<[number, number]> = selectedRoute?.geometry?.connectingTransitPath || [];
-  const egressPath: Array<[number, number]> = selectedRoute?.geometry?.alightToDestWalk || [];
-
-  // Extract transfer points for transport change symbols
-  const transferPoints = extractTransferChangePoints(selectedRoute);
 
   const isFlight = selectedRoute?.route?.vehicleType === 'flight' || selectedRoute?.travelScope === 'international';
   const isTrain = selectedRoute?.route?.vehicleType === 'train';
   const isBus = selectedRoute?.route?.vehicleType === 'bus';
+  const isCabOrTaxi = !isFlight && !isTrain && !isBus;
+
+  // Stitched and sanitized geometry ensuring zero disconnects and no overlapping paths
+  const stitchedGeometry = useMemo(() => {
+    return sanitizeAndStitchJourneyGeometry({
+      originCoords,
+      destCoords,
+      rawIngress: selectedRoute?.geometry?.originToBoardWalk,
+      rawTransit: selectedRoute?.geometry?.transitPath,
+      rawConnecting: selectedRoute?.geometry?.connectingTransitPath,
+      rawEgress: selectedRoute?.geometry?.alightToDestWalk,
+      isDirectTransit: isCabOrTaxi,
+    });
+  }, [
+    selectedRoute?.route?.id,
+    selectedRoute?.geometry,
+    originCoords[0],
+    originCoords[1],
+    destCoords[0],
+    destCoords[1],
+    isCabOrTaxi,
+  ]);
+
+  const ingressPath: Array<[number, number]> = stitchedGeometry.originToBoardWalk;
+  const transitPath: Array<[number, number]> = stitchedGeometry.transitPath;
+  const connectingTransitPath: Array<[number, number]> = stitchedGeometry.connectingTransitPath;
+  const egressPath: Array<[number, number]> = stitchedGeometry.alightToDestWalk;
+  const continuousRoute: Array<[number, number]> = stitchedGeometry.fullRoute;
+
+  // Multi-Modal Transfer Points on Map
+  const transferPoints = useMemo(() => {
+    if (!selectedRoute) return [];
+    const pts: Array<{
+      id: string;
+      latitude: number;
+      longitude: number;
+      fromIcon: string;
+      toIcon: string;
+      badgeLabel?: string;
+      locationName: string;
+      fromMode: string;
+      toMode: string;
+      description: string;
+      hasRamp?: boolean;
+    }> = [];
+
+    const chain = selectedRoute.transitChainInfo;
+    const isIntermodal = selectedRoute.travelScope !== 'local' && (isFlight || isTrain || selectedRoute.route?.shortName?.includes('MULTI'));
+
+    const originHubCoord: [number, number] | null =
+      transitPath.length > 0
+        ? transitPath[0]
+        : ingressPath.length > 0
+        ? ingressPath[ingressPath.length - 1]
+        : null;
+
+    const destHubCoord: [number, number] | null =
+      transitPath.length > 0
+        ? transitPath[transitPath.length - 1]
+        : egressPath.length > 0
+        ? egressPath[0]
+        : null;
+
+    if (isIntermodal && chain) {
+      if (originHubCoord) {
+        pts.push({
+          id: 'transfer-origin-hub',
+          latitude: originHubCoord[0],
+          longitude: originHubCoord[1],
+          fromIcon: '🚖',
+          toIcon: isFlight ? '✈️' : isTrain ? '🚆' : '🚌',
+          badgeLabel: chain.originHubName,
+          locationName: chain.originHubName,
+          fromMode: 'Cab / City Transit',
+          toMode: isFlight ? 'Flight Transit' : isTrain ? 'Train Transit' : 'Intercity Transit',
+          description: `Transfer from local road transport to ${chain.originHubName}`,
+          hasRamp: true,
+        });
+      }
+      if (destHubCoord) {
+        pts.push({
+          id: 'transfer-dest-hub',
+          latitude: destHubCoord[0],
+          longitude: destHubCoord[1],
+          fromIcon: isFlight ? '✈️' : isTrain ? '🚆' : '🚌',
+          toIcon: '🚖',
+          badgeLabel: chain.destHubName,
+          locationName: chain.destHubName,
+          fromMode: isFlight ? 'Flight Transit' : isTrain ? 'Train Transit' : 'Intercity Transit',
+          toMode: 'Cab / Local Transport',
+          description: `Arrival at ${chain.destHubName} and transfer to final destination transport`,
+          hasRamp: true,
+        });
+      }
+    }
+
+    // Also include any intermediate transfer stops
+    if (selectedRoute.intermediateStops) {
+      selectedRoute.intermediateStops
+        .filter((s) => s.stopRole === 'transfer')
+        .forEach((stop, idx) => {
+          pts.push({
+            id: `transfer-stop-${stop.id || idx}`,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+            fromIcon: '🚌',
+            toIcon: '🚌',
+            badgeLabel: stop.name,
+            locationName: stop.name,
+            fromMode: 'Inbound Transit',
+            toMode: 'Outbound Transit',
+            description: `Interchange at ${stop.name}`,
+            hasRamp: stop.hasRamp ?? true,
+          });
+        });
+    }
+
+    return pts;
+  }, [selectedRoute, isFlight, isTrain]);
 
   // 🛰️ Authentic Transit Radar & Telemetry State (Zero Fabrication)
   const [liveRadarEnabled, setLiveRadarEnabled] = useState<boolean>(true);
@@ -959,16 +1082,8 @@ export default function RouteDiscoveryPage() {
       return;
     }
 
-    // Cab / Auto / Rideshare
-    const oLat = originCoords[0];
-    const oLng = originCoords[1];
-    const dLat = destCoords[0];
-    const dLng = destCoords[1];
-    const oName = encodeURIComponent(selectedRoute?.originName || 'Pickup');
-    const dName = encodeURIComponent(selectedRoute?.destinationName || 'Destination');
-    const uberUrl = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${oLat}&pickup[longitude]=${oLng}&pickup[formatted_address]=${oName}&dropoff[latitude]=${dLat}&dropoff[longitude]=${dLng}&dropoff[formatted_address]=${dName}`;
-    window.open(uberUrl, '_blank', 'noopener,noreferrer');
-    addToast('info', `🚖 Opening Uber Ride Booking...`, 3000);
+    // Cab / Auto / Bike Rideshare Dispatch Modal
+    setShowRideDispatchModal(true);
   };
 
   // Open booking / external partner provider directly
@@ -1759,21 +1874,6 @@ export default function RouteDiscoveryPage() {
                     </div>
                   </div>
 
-                  {/* Live Internet Demand & Popularity Status */}
-                  {(() => {
-                    const popularity = detectCorridorPopularity(selectedRoute?.originName || '', selectedRoute?.destinationName || '', searchParams.get('date') || undefined);
-                    return (
-                      <div className="flex items-center justify-between text-[11px] bg-white border border-neutral-200/90 px-2.5 py-1.5 rounded-xl font-medium shadow-2xs">
-                        <div className="flex items-center gap-1.5 text-neutral-800">
-                          <span className="text-xs">🌐</span>
-                          <span><strong>Live Market Index:</strong> {popularity.demandStatus}</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-neutral-700 bg-neutral-100 border border-neutral-200 px-2 py-0.5 rounded-md">
-                          {popularity.capacityNotice || 'Live Availability'}
-                        </span>
-                      </div>
-                    );
-                  })()}
 
                   {/* On-The-Spot Train Coach Class Selector & Quota (General vs Tatkal) */}
                   {isTrain && (
@@ -1935,6 +2035,30 @@ export default function RouteDiscoveryPage() {
               );
             })()}
 
+            {/* Quick Cab & Auto Price Compare Banner */}
+            {(isCabOrTaxi || selectedRoute?.priceBreakdown?.itemizedLegs?.some((l: any) => l.mode === 'cab' || l.mode === 'taxi' || l.mode === 'auto')) && (
+              <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-xl shrink-0">🚖</span>
+                  <div className="min-w-0">
+                    <div className="font-bold text-neutral-900 text-xs">
+                      Compare Cab & Auto Fares
+                    </div>
+                    <div className="text-[11px] text-neutral-500 truncate">
+                      Uber • Ola • Rapido • Namma Yatri
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRideDispatchModal(true)}
+                  className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+                >
+                  Compare
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <button
                 onClick={handleStart}
@@ -1961,11 +2085,11 @@ export default function RouteDiscoveryPage() {
                     else if (isBus) handleDirectBooking('bus');
                     else handleDirectBooking('cab');
                   }}
-                  className={`py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm ${isTrain ? 'bg-blue-700 hover:bg-blue-800' : isFlight ? 'bg-neutral-900 hover:bg-neutral-800' : isBus ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-neutral-900 hover:bg-neutral-800'
+                  className={`py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm ${isTrain ? 'bg-blue-700 hover:bg-blue-800' : isFlight ? 'bg-neutral-900 hover:bg-neutral-800' : isBus ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-neutral-900 hover:bg-black'
                     }`}
                 >
                   <ExternalLink className="w-4 h-4" />
-                  <span>{isTrain ? 'Book IRCTC Train' : isFlight ? 'Book Flight Ticket' : isBus ? 'Book Bus Ticket' : 'Book Ride'}</span>
+                  <span>{isTrain ? 'Book IRCTC Train' : isFlight ? 'Book Flight Ticket' : isBus ? 'Book Bus Ticket' : '🚖 Compare Cabs & Book'}</span>
                 </button>
               )}
             </div>
@@ -2759,6 +2883,26 @@ export default function RouteDiscoveryPage() {
               </Button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Ride Provider Dispatch / Live Fare Comparison Modal */}
+      {showRideDispatchModal && (
+        <Modal
+          open={showRideDispatchModal}
+          onClose={() => setShowRideDispatchModal(false)}
+          title="Compare Cab & Auto Fares"
+        >
+          <LiveCabPriceComparator
+            pickupLat={originCoords[0]}
+            pickupLng={originCoords[1]}
+            pickupName={selectedRoute?.originName || 'Pickup Location'}
+            dropLat={destCoords[0]}
+            dropLng={destCoords[1]}
+            dropName={selectedRoute?.destinationName || 'Destination'}
+            initialCategory="all"
+            onClose={() => setShowRideDispatchModal(false)}
+          />
         </Modal>
       )}
     </div>

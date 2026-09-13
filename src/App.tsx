@@ -114,6 +114,15 @@ export default function App() {
               <Route path="/demo/reporting" element={<ReportingDemo />} />
             </Route>
 
+            {/* Operator Operations Routes */}
+            <Route element={<OperatorLayout />}>
+              <Route path="/operator" element={<OperatorDashboard />} />
+              <Route path="/operator/routes" element={<OperatorRoutesPage />} />
+              <Route path="/operator/vehicles" element={<OperatorVehiclesPage />} />
+              <Route path="/operator/reports" element={<OperatorReportsPage />} />
+              <Route path="/operator/conditions" element={<OperatorConditionsPage />} />
+            </Route>
+
             {/* 404 */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

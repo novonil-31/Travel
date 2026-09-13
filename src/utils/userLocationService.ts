@@ -32,6 +32,8 @@ export interface UserLocationState {
   accuracyM?: number;
   detectedAt?: number;
   placeName?: string;
+  source?: 'gps' | 'ip' | 'default';
+  hasGpsPriority?: boolean;
 }
 
 export interface RegionalPresetCity {
@@ -116,6 +118,42 @@ export const PRESET_REGIONS: RegionalPresetCity[] = [
     lat: 13.0827,
     lng: 80.2707,
     fameTag: 'Chennai Central MAS, Marina Beach, T. Nagar & Airport',
+  },
+  {
+    key: 'rajasthan',
+    cityName: 'Jaipur',
+    stateName: 'Rajasthan',
+    label: 'Jaipur & Rajasthan',
+    lat: 26.9124,
+    lng: 75.7873,
+    fameTag: 'Hawa Mahal, Jaipur Junction, Mansarovar & MI Road',
+  },
+  {
+    key: 'gujarat',
+    cityName: 'Ahmedabad',
+    stateName: 'Gujarat',
+    label: 'Ahmedabad & Gandhinagar',
+    lat: 23.0225,
+    lng: 72.5714,
+    fameTag: 'Sabarmati Ashram, SG Highway, Kalupur & Airport',
+  },
+  {
+    key: 'other',
+    cityName: 'Pune',
+    stateName: 'Maharashtra',
+    label: 'Pune & PCMC',
+    lat: 18.5204,
+    lng: 73.8567,
+    fameTag: 'Shivajinagar, Hinjawadi IT Park, Kothrud & Viman Nagar',
+  },
+  {
+    key: 'up_central',
+    cityName: 'Lucknow',
+    stateName: 'Uttar Pradesh',
+    label: 'Lucknow & Central UP',
+    lat: 26.8467,
+    lng: 80.9462,
+    fameTag: 'Charbagh Station, Hazratganj, Gomti Nagar & Airport',
   },
 ];
 
@@ -275,6 +313,8 @@ export function getSavedUserLocation(): UserLocationState {
     regionLabel: defaultRegion.regionLabel,
     isCustom: false,
     permissionGranted: false,
+    source: 'default',
+    hasGpsPriority: false,
   };
 }
 
@@ -298,32 +338,87 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
     throw new Error('Geolocation is not supported by your browser.');
   }
 
-  // Resilient multi-tier geolocation with instant fallbacks to avoid "Timeout expired"
-  const getPositionPromise = (highAccuracy: boolean, timeoutMs: number): Promise<GeolocationPosition> => {
+  // Acquire true hardware satellite/WiFi location by sampling the best accuracy
+  const acquirePrecisionGps = (): Promise<GeolocationPosition> => {
     return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: highAccuracy,
-        timeout: timeoutMs,
-        maximumAge: 120000,
-      });
+      let bestPos: GeolocationPosition | null = null;
+      let watchId: number | null = null;
+
+      const finish = () => {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+        }
+        if (bestPos) {
+          resolve(bestPos);
+        } else {
+          // Last single fallback attempt
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 6000,
+            maximumAge: 0,
+          });
+        }
+      };
+
+      // Watch for up to 6 seconds to lock onto the highest precision fix
+      const timeoutTimer = setTimeout(finish, 6000);
+
+      try {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (!bestPos || pos.coords.accuracy < bestPos.coords.accuracy) {
+              bestPos = pos;
+            }
+            // If we've acquired an exceptionally precise GPS fix (< 15 meters), resolve immediately
+            if (pos.coords.accuracy <= 15) {
+              clearTimeout(timeoutTimer);
+              finish();
+            }
+          },
+          (err) => {
+            if (!bestPos) {
+              clearTimeout(timeoutTimer);
+              if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+              reject(err);
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 8000,
+          }
+        );
+      } catch {
+        clearTimeout(timeoutTimer);
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 6000,
+          maximumAge: 0,
+        });
+      }
     });
   };
 
   let pos: GeolocationPosition | null = null;
 
-  // Attempt 1: Fast high accuracy (4 seconds)
   try {
-    pos = await getPositionPromise(true, 4000);
+    pos = await acquirePrecisionGps();
   } catch (err: any) {
-    // If timed out or unavailable, immediately fallback to network/Wi-Fi low accuracy (8 seconds)
+    console.warn('High precision GPS lock timed out, checking lower accuracy fix:', err);
     try {
-      pos = await getPositionPromise(false, 8000);
+      pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 10000,
+        });
+      });
     } catch (fallbackErr) {
-      console.warn('Browser geolocation fallback failed, resolving via IP or campus anchor:', fallbackErr);
+      console.warn('Browser hardware geolocation completely unavailable, falling back to IP:', fallbackErr);
     }
   }
 
-  // If browser geolocation succeeded
+  // If browser geolocation succeeded with real hardware GPS
   if (pos && pos.coords) {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
@@ -339,15 +434,17 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
       placeName: accurate.placeName,
       isCustom: false,
       permissionGranted: true,
-      accuracyM: pos.coords.accuracy,
+      accuracyM: Math.round(pos.coords.accuracy),
       detectedAt: Date.now(),
+      source: 'gps',
+      hasGpsPriority: true, // Actual GPS verified: user gets search proximity priority
     };
 
     saveUserLocation(newState);
     return newState;
   }
 
-  // Attempt 3: Fast IP-based geolocation fallback if browser GPS hardware is disabled/timed out
+  // Attempt 3: Fast IP-based geolocation fallback ONLY if normal GPS is not working
   try {
     const ipRes = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) });
     if (ipRes.ok) {
@@ -365,11 +462,13 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
           stateName,
           regionKey: accurate.regionKey,
           regionLabel: accurate.regionLabel,
-          placeName: accurate.placeName || `${cityName} (Network Location)`,
+          placeName: accurate.placeName || `${cityName} (Approx. Network Location)`,
           isCustom: false,
-          permissionGranted: true,
-          accuracyM: 5000,
+          permissionGranted: false, // Not real hardware GPS
+          accuracyM: 15000,
           detectedAt: Date.now(),
+          source: 'ip',
+          hasGpsPriority: false, // Per user requirement: Do NOT give search priority if only IP location
         };
         saveUserLocation(newState);
         return newState;
@@ -379,17 +478,84 @@ export async function requestBrowserGeolocation(): Promise<UserLocationState> {
     // ignore IP lookup error
   }
 
-  // Safe fallback to active saved location or default
+  // Safe fallback to active saved location or default without GPS priority
   const saved = getSavedUserLocation();
   const fallbackState: UserLocationState = {
     ...saved,
-    placeName: saved.placeName || `${saved.cityName} (Current Location)`,
+    placeName: saved.placeName || `${saved.cityName} (Default Location)`,
     isCustom: false,
-    permissionGranted: true,
+    permissionGranted: false,
+    source: 'default',
+    hasGpsPriority: false, // No GPS priority
     detectedAt: Date.now(),
   };
   saveUserLocation(fallbackState);
   return fallbackState;
+}
+
+/**
+ * Continuous high-precision GPS tracking watcher with exponential moving average (EMA) smoothing
+ * Filters out jitter and provides smooth coordinate streams during navigation.
+ */
+export function watchPrecisionGpsLocation(
+  onUpdate: (loc: UserLocationState) => void,
+  onError?: (err: any) => void,
+): () => void {
+  if (!navigator.geolocation) {
+    onError?.(new Error('Geolocation not supported'));
+    return () => {};
+  }
+
+  let smoothedLat: number | null = null;
+  let smoothedLng: number | null = null;
+
+  const watchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      const rawLat = pos.coords.latitude;
+      const rawLng = pos.coords.longitude;
+
+      // Exponential smoothing: 70% new weight, 30% historical to absorb GPS drift
+      if (smoothedLat === null || smoothedLng === null) {
+        smoothedLat = rawLat;
+        smoothedLng = rawLng;
+      } else {
+        smoothedLat = smoothedLat * 0.3 + rawLat * 0.7;
+        smoothedLng = smoothedLng * 0.3 + rawLng * 0.7;
+      }
+
+      const accurate = await resolveAccurateLocation(smoothedLat, smoothedLng);
+      const state: UserLocationState = {
+        lat: smoothedLat,
+        lng: smoothedLng,
+        cityName: accurate.cityName,
+        stateName: accurate.stateName,
+        regionKey: accurate.regionKey,
+        regionLabel: accurate.regionLabel,
+        placeName: accurate.placeName,
+        isCustom: false,
+        permissionGranted: true,
+        accuracyM: Math.round(pos.coords.accuracy),
+        detectedAt: Date.now(),
+        source: 'gps',
+        hasGpsPriority: true,
+      };
+
+      saveUserLocation(state);
+      onUpdate(state);
+    },
+    (err) => {
+      onError?.(err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 10000,
+    }
+  );
+
+  return () => {
+    navigator.geolocation.clearWatch(watchId);
+  };
 }
 
 /**

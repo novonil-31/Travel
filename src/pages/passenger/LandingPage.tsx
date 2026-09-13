@@ -56,18 +56,73 @@ export default function LandingPage() {
   const isAuth = isLoggedInAccount(state.currentUser);
   const lastSavedSearch = isAuth && state.currentUser ? getLastSearchedDestination(state.currentUser.id) : null;
 
-  const [pickup, setPickup] = useState("Queen's Castle 1 (QC 1)");
-  const [dropoff, setDropoff] = useState(isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT');
+  // City-adaptive default locations
+  const getCityDefaults = () => {
+    if (userLocation.regionKey === 'delhi_ncr') {
+      return {
+        origin: userLocation.placeName || 'Connaught Place, New Delhi',
+        originCoords: { lat: 28.6315, lng: 77.2167 },
+        dest: 'Indira Gandhi International Airport (DEL)',
+        destCoords: { lat: 28.5562, lng: 77.1000 },
+      };
+    }
+    if (userLocation.regionKey === 'mumbai') {
+      return {
+        origin: userLocation.placeName || 'Marine Drive, Mumbai',
+        originCoords: { lat: 18.9438, lng: 72.8232 },
+        dest: 'Chhatrapati Shivaji Maharaj Terminus (CSMT)',
+        destCoords: { lat: 18.9400, lng: 72.8354 },
+      };
+    }
+    if (userLocation.regionKey === 'bengaluru') {
+      return {
+        origin: userLocation.placeName || 'Indiranagar, Bengaluru',
+        originCoords: { lat: 12.9784, lng: 77.6408 },
+        dest: 'Kempegowda International Airport (BLR)',
+        destCoords: { lat: 13.1986, lng: 77.7066 },
+      };
+    }
+    if (userLocation.regionKey === 'bhubaneswar_kiit') {
+      return {
+        origin: "Queen's Castle 1 (QC 1)",
+        originCoords: { lat: 20.352367250329067, lng: 85.81937388473358 },
+        dest: 'Campus 3 OAT',
+        destCoords: { lat: 20.352708891788033, lng: 85.81637927996144 },
+      };
+    }
+    return {
+      origin: userLocation.placeName || `${userLocation.cityName} Central`,
+      originCoords: { lat: userLocation.lat, lng: userLocation.lng },
+      dest: `${userLocation.cityName} Railway Station`,
+      destCoords: { lat: userLocation.lat + 0.02, lng: userLocation.lng + 0.02 },
+    };
+  };
+
+  const cityDefaults = getCityDefaults();
+
+  const [pickup, setPickup] = useState(cityDefaults.origin);
+  const [dropoff, setDropoff] = useState(isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : cityDefaults.dest);
   const [pickupLocation, setPickupLocation] = useState<{ name: string; lat: number; lng: number }>({
-    name: "Queen's Castle 1 (QC 1)",
-    lat: 20.352367250329067,
-    lng: 85.81937388473358,
+    name: cityDefaults.origin,
+    lat: cityDefaults.originCoords.lat,
+    lng: cityDefaults.originCoords.lng,
   });
   const [dropoffLocation, setDropoffLocation] = useState<{ name: string; lat: number; lng: number }>({
-    name: isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : 'Campus 3 OAT',
-    lat: isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : 20.352708891788033,
-    lng: isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : 85.81637927996144,
+    name: isAuth && lastSavedSearch?.destination?.name ? lastSavedSearch.destination.name : cityDefaults.dest,
+    lat: isAuth && lastSavedSearch?.destination?.lat ? lastSavedSearch.destination.lat : cityDefaults.destCoords.lat,
+    lng: isAuth && lastSavedSearch?.destination?.lng ? lastSavedSearch.destination.lng : cityDefaults.destCoords.lng,
   });
+
+  // Re-sync when user changes city
+  useEffect(() => {
+    const updated = getCityDefaults();
+    setPickup(updated.origin);
+    setPickupLocation({ name: updated.origin, lat: updated.originCoords.lat, lng: updated.originCoords.lng });
+    if (!lastSavedSearch?.destination?.name) {
+      setDropoff(updated.dest);
+      setDropoffLocation({ name: updated.dest, lat: updated.destCoords.lat, lng: updated.destCoords.lng });
+    }
+  }, [userLocation.regionKey, userLocation.cityName]);
 
   const [activeDropdown, setActiveDropdown] = useState<'pickup' | 'dropoff' | null>(null);
   const searchFormRef = useRef<HTMLDivElement>(null);
@@ -197,8 +252,8 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Search Region</span>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Live GPS Location</span>
               <LocationRegionBanner compact />
             </div>
 

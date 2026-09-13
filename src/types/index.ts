@@ -19,6 +19,19 @@ export interface User {
   emergencyContact?: EmergencyContact;
   role: 'passenger' | 'operator';
   isGuest?: boolean;
+  savedPlaces?: {
+    home?: { name: string; address: string; lat: number; lng: number };
+    work?: { name: string; address: string; lat: number; lng: number };
+    favorites?: Array<{ id: string; name: string; address: string; lat: number; lng: number; icon?: string }>;
+  };
+  commuterPass?: {
+    passId: string;
+    tier: 'standard' | 'verified_commuter' | 'gold_patron';
+    balanceRupees: number;
+    discountPercent: number;
+    tripsCount: number;
+    carbonSavedKg: number;
+  };
 }
 
 export interface AccessibilityProfile {
