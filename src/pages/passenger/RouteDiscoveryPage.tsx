@@ -36,7 +36,9 @@ import {
 import { calculateDistanceKm } from '../../utils/userLocationService';
 import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOverlay';
 import { LiveCabPriceComparator } from '../../components/LiveCabPriceComparator';
-import { sanitizeAndStitchJourneyGeometry } from '../../utils/onlineRouting';
+import { sanitizeAndStitchJourneyGeometry, buildExactTrainBookingUrl, buildExactFlightBookingUrl, buildExactBusBookingUrl } from '../../utils/onlineRouting';
+import { getRouteTransportInfo, type RouteTransportInfo, type TransportType } from '../../utils/transportCategory';
+import { evaluateBestAndCheapestOptions, calculateDynamicCrowding } from '../../utils/dynamicCalculationEngine';
 
 // Modern High-Clarity Circular Journey Endpoint Pin (Prevents Overlap with nearby Station Badges)
 const createEndpointPin = (color: string, label: string) =>
@@ -451,14 +453,29 @@ export default function RouteDiscoveryPage() {
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
   const urlDepartTime = searchParams.get('departTime') || '';
+  const urlDate = searchParams.get('date') || searchParams.get('departDate') || '';
 
+  const [travelDate, setTravelDate] = useState<string>(
+    urlDate || new Date().toISOString().split('T')[0]
+  );
   const [mapType, setMapType] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showSteps, setShowSteps] = useState<boolean>(true);
   const [showRouteOverview, setShowRouteOverview] = useState<boolean>(false);
   const [showRideDispatchModal, setShowRideDispatchModal] = useState<boolean>(false);
+  const [dispatchCategory, setDispatchCategory] = useState<'all' | 'cab' | 'auto' | 'bike' | 'carpool'>('all');
+
+  const openRideComparator = (category: 'all' | 'cab' | 'auto' | 'bike' | 'carpool' = 'all') => {
+    setDispatchCategory(category);
+    setShowRideDispatchModal(true);
+  };
 
   const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
+
+  // 🤖 Autonomous Multi-Criteria Vehicle Evaluation (Best / Cheapest / Fastest / Step-free)
+  const vehicleRecommendations = useMemo(() => {
+    return evaluateBestAndCheapestOptions(searchResults);
+  }, [searchResults]);
 
   // 🧭 Compute clean, Google-Maps-style next navigation instruction without congesting the map
   const nextActionInfo = useMemo(() => {
@@ -485,7 +502,7 @@ export default function RouteDiscoveryPage() {
         iconBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
         action: 'Walk via Campus Footpath',
         detail: `${selectedRoute.walkingDistance || 400}m • ${selectedRoute.duration} mins • Step-free paved track`,
-        fareLabel: 'Free (₹0)',
+        fareLabel: 'Pedestrian (₹0)',
       };
     }
     if (isCycle) {
@@ -494,7 +511,7 @@ export default function RouteDiscoveryPage() {
         iconBg: 'bg-cyan-100 text-cyan-800 border-cyan-300',
         action: 'Ride Campus Smart Cycle',
         detail: `${selectedRoute.duration} mins • 0 wait • Student cycle hub`,
-        fareLabel: 'Free (₹0)',
+        fareLabel: 'Public Cycle',
       };
     }
     if (isEvShuttle) {
@@ -503,7 +520,7 @@ export default function RouteDiscoveryPage() {
         iconBg: 'bg-teal-100 text-teal-800 border-teal-300',
         action: 'Take KIIT Eco EV Shuttle',
         detail: `${selectedRoute.duration} mins • Campus Stand • Departs every 5-8m`,
-        fareLabel: '₹10 / Free',
+        fareLabel: '₹10 Standard',
       };
     }
     if (isCarpool) {
@@ -574,6 +591,7 @@ export default function RouteDiscoveryPage() {
   const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
   const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
   const [isSearchingRoute, setIsSearchingRoute] = useState<boolean>(false);
+  const [mobileTab, setMobileTab] = useState<'routes' | 'map'>('routes');
 
   // Synchronize inputs if URL changes
   useEffect(() => {
@@ -662,10 +680,21 @@ export default function RouteDiscoveryPage() {
         }
       }
 
+      let depDate = new Date();
+      if (travelDate) {
+        const [y, m, d] = travelDate.split('-').map(Number);
+        if (y && m && d) depDate.setFullYear(y, m - 1, d);
+      }
+      if (urlDepartTime) {
+        const [hh, mm] = urlDepartTime.split(':').map(Number);
+        depDate.setHours(hh || 9, mm || 0, 0, 0);
+      }
+
       const planRes = await journeysApi.plan({
         origin: { lat: origCoord.lat, lng: origCoord.lng, name: f },
         destination: { lat: destCoord.lat, lng: destCoord.lng, name: t },
         profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+        departureTime: depDate.toISOString(),
       });
 
       if (planRes && planRes.options && planRes.options.length > 0) {
@@ -681,6 +710,7 @@ export default function RouteDiscoveryPage() {
       params.set('originLng', origCoord.lng.toString());
       params.set('destLat', destCoord.lat.toString());
       params.set('destLng', destCoord.lng.toString());
+      if (travelDate) params.set('date', travelDate);
       navigate(`/routes?${params.toString()}`, { replace: true });
     } catch (err) {
       console.error('Direct route search failed:', err);
@@ -732,6 +762,17 @@ export default function RouteDiscoveryPage() {
             }
           }
 
+          let depDate = new Date();
+          const activeDate = searchParams.get('date') || searchParams.get('departDate') || travelDate;
+          if (activeDate) {
+            const [y, m, d] = activeDate.split('-').map(Number);
+            if (y && m && d) depDate.setFullYear(y, m - 1, d);
+          }
+          if (urlDepartTime) {
+            const [hh, mm] = urlDepartTime.split(':').map(Number);
+            depDate.setHours(hh || 9, mm || 0, 0, 0);
+          }
+
           const res = await journeysApi.plan({
             origin: {
               lat: origCoord.lat,
@@ -744,6 +785,7 @@ export default function RouteDiscoveryPage() {
               name: urlDest,
             },
             profileType: urlMobility === 'wheelchair' ? 'WHEELCHAIR' : urlMobility === 'elderly' ? 'ELDERLY' : 'GENERAL',
+            departureTime: depDate.toISOString(),
           });
 
           if (res && res.options && res.options.length > 0) {
@@ -755,7 +797,7 @@ export default function RouteDiscoveryPage() {
         });
       }
     }
-  }, [urlOrigin, urlDest, urlOriginLat, urlOriginLng, urlDestLat, urlDestLng, urlMobility, searchResults.length]);
+  }, [urlOrigin, urlDest, urlOriginLat, urlOriginLng, urlDestLat, urlDestLng, urlMobility, searchParams]);
 
   // Carpooling States & Modals
   const [showCarpoolModal, setShowCarpoolModal] = useState<boolean>(false);
@@ -1052,60 +1094,98 @@ export default function RouteDiscoveryPage() {
     }
   };
 
-  // Direct Redirect Booking Handler (MakeMyTrip / IRCTC / Uber)
-  const handleDirectBooking = (mode: 'bus' | 'train' | 'flight' | 'cab', customFrom?: string, customTo?: string) => {
+  // Direct Redirect Booking Handler (MakeMyTrip / ConfirmTkt / Uber / Rapido)
+  const handleDirectBooking = (mode: 'bus' | 'train' | 'flight' | 'cab' | 'auto' | 'bike', customFrom?: string, customTo?: string) => {
     const origStr = customFrom || selectedRoute?.transitChainInfo?.originHubName || selectedRoute?.originName || 'Bhubaneswar';
     const destStr = customTo || selectedRoute?.transitChainInfo?.destHubName || selectedRoute?.destinationName || 'Cuttack';
     const origCode = selectedRoute?.transitChainInfo?.originHubCode || selectedRoute?.originName?.split(',')[0] || 'BBS';
     const destCode = selectedRoute?.transitChainInfo?.destHubCode || selectedRoute?.destinationName?.split(',')[0] || 'NDLS';
 
+    let d = new Date();
+    if (travelDate) {
+      const [y, m, dNum] = travelDate.split('-').map(Number);
+      if (y && m && dNum) d.setFullYear(y, m - 1, dNum);
+    }
+    const dayStr = String(d.getDate()).padStart(2, '0');
+    const monthStr = String(d.getMonth() + 1).padStart(2, '0');
+    const yearStr = String(d.getFullYear());
+    const confirmTktDate = `${dayStr}-${monthStr}-${yearStr}`;
+
     if (mode === 'bus' || isBus) {
       const srcCity = extractCityForBooking(origStr, 'Bhubaneswar');
       const dstCity = extractCityForBooking(destStr, 'Cuttack');
-      const url = buildMakeMyTripBusUrl(origStr, destStr);
+      const url = buildExactBusBookingUrl(origStr, destStr, d);
       window.open(url, '_blank', 'noopener,noreferrer');
-      addToast('info', `🚌 Redirecting to MakeMyTrip Bus Booking (${srcCity} ➔ ${dstCity})...`, 3000);
+      addToast('info', `🚌 Opening Bus Booking (${srcCity} ➔ ${dstCity}) for ${confirmTktDate} - Ready to pay`, 3000);
       return;
     }
 
     if (mode === 'train' || isTrain) {
-      const mmtUrl = `https://www.makemytrip.com/railways/listing?srcStn=${origCode}&destStn=${destCode}`;
-      window.open(mmtUrl, '_blank', 'noopener,noreferrer');
-      addToast('info', `🚆 Redirecting to MakeMyTrip Railways (${origCode} ➔ ${destCode})...`, 3000);
+      const trainNumMatch = (selectedRoute?.transitChainInfo?.flightOrTrainNumber || selectedRoute?.route?.name || '').match(/\b\d{4,5}\b/);
+      const cleanTrainNum = trainNumMatch ? trainNumMatch[0] : '';
+      const exactTrainUrl = selectedRoute?.transitChainInfo?.bookingUrl?.includes('confirmtkt.com/rbooking-d')
+        ? selectedRoute.transitChainInfo.bookingUrl
+        : cleanTrainNum
+          ? buildExactTrainBookingUrl(cleanTrainNum, origCode, destCode, d)
+          : `https://www.makemytrip.com/railways/listing?srcStn=${origCode}&destStn=${destCode}&date=${confirmTktDate}`;
+
+      window.open(exactTrainUrl, '_blank', 'noopener,noreferrer');
+      addToast(
+        'info',
+        cleanTrainNum
+          ? `🚆 Opening Train #${cleanTrainNum} for ${confirmTktDate} - Proceed directly to review & pay!`
+          : `🚆 Opening IRCTC Railways (${origCode} ➔ ${destCode}) for ${confirmTktDate}...`,
+        3500
+      );
       return;
     }
 
     if (mode === 'flight' || isFlight) {
-      const mmtUrl = selectedRoute?.transitChainInfo?.bookingUrl || `https://www.makemytrip.com/flight/search?itinerary=${origCode}-${destCode}`;
-      window.open(mmtUrl, '_blank', 'noopener,noreferrer');
-      addToast('info', `✈️ Redirecting to MakeMyTrip Flights (${origCode} ➔ ${destCode})...`, 3000);
+      const flightNum = selectedRoute?.transitChainInfo?.flightOrTrainNumber?.split(' ')?.[0] || '';
+      const exactFlightUrl = selectedRoute?.transitChainInfo?.bookingUrl?.includes('makemytrip.com/flight/search')
+        ? selectedRoute.transitChainInfo.bookingUrl
+        : buildExactFlightBookingUrl(flightNum, origCode, destCode, d);
+
+      window.open(exactFlightUrl, '_blank', 'noopener,noreferrer');
+      addToast(
+        'info',
+        flightNum
+          ? `✈️ Opening Flight ${flightNum} (${origCode} ➔ ${destCode}) for ${dayStr}/${monthStr}/${yearStr} - Proceed to pay!`
+          : `✈️ Opening Flights (${origCode} ➔ ${destCode}) for ${dayStr}/${monthStr}/${yearStr}...`,
+        3500
+      );
       return;
     }
 
-    // Cab / Auto / Bike Rideshare Dispatch Modal
-    setShowRideDispatchModal(true);
+    // Rideshare Dispatch Modal for bike, auto, cab
+    const cat = mode === 'bike' ? 'bike' : mode === 'auto' ? 'auto' : 'cab';
+    openRideComparator(cat);
   };
 
   // Open booking / external partner provider directly
   const handleBookExternal = () => {
     if (!selectedRoute) return;
-    if (isTrain) handleDirectBooking('train');
-    else if (isFlight) handleDirectBooking('flight');
-    else if (isBus) handleDirectBooking('bus');
-    else handleDirectBooking('cab');
+    const info = getRouteTransportInfo(selectedRoute);
+    if (info.type === 'train') handleDirectBooking('train');
+    else if (info.type === 'flight') handleDirectBooking('flight');
+    else if (info.type === 'bus') handleDirectBooking('bus');
+    else if (info.type === 'carpool') setShowCarpoolModal(true);
+    else openRideComparator(info.comparatorCategory);
   };
 
   const handleBookLegUrl = (url?: string, label?: string) => {
     if (label?.toLowerCase().includes('irctc') || label?.toLowerCase().includes('train') || isTrain) {
-      const orig = selectedRoute?.transitChainInfo?.originHubCode || 'BBS';
-      const dest = selectedRoute?.transitChainInfo?.destHubCode || 'NDLS';
-      try {
-        navigator.clipboard.writeText(`${orig} to ${dest}`);
-      } catch (_) { }
+      handleDirectBooking('train');
+      return;
+    }
 
-      const mmtUrl = `https://www.makemytrip.com/railways/listing?srcStn=${orig}&destStn=${dest}`;
-      window.open(mmtUrl, '_blank', 'noopener,noreferrer');
-      addToast('info', `🚆 Opening IRCTC Train Booking (${orig} ➔ ${dest})`, 3500);
+    if (label?.toLowerCase().includes('flight') || isFlight) {
+      handleDirectBooking('flight');
+      return;
+    }
+
+    if (label?.toLowerCase().includes('bus') || isBus) {
+      handleDirectBooking('bus');
       return;
     }
 
@@ -1505,6 +1585,24 @@ export default function RouteDiscoveryPage() {
             )}
           </div>
 
+          {/* Travel Date Selector */}
+          <div className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-2 focus-within:border-black focus-within:bg-white transition-colors shrink-0">
+            <span className="text-xs">📅</span>
+            <input
+              type="date"
+              value={travelDate}
+              min={new Date().toISOString().split('T')[0]}
+              onChange={(e) => {
+                setTravelDate(e.target.value);
+                if (originInput.trim() && destInput.trim()) {
+                  handleExecuteSearch(originInput, destInput);
+                }
+              }}
+              title="Travel Date"
+              className="bg-transparent text-xs font-bold text-neutral-800 focus:outline-none cursor-pointer"
+            />
+          </div>
+
           {/* Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -1614,10 +1712,41 @@ export default function RouteDiscoveryPage() {
         </div>
       )}
 
+      {/* Mobile Mode Switcher: Routes List vs Full Interactive Map */}
+      <div className="lg:hidden flex items-center justify-center p-1 bg-neutral-200/70 rounded-2xl max-w-xs mx-auto mb-1">
+        <button
+          type="button"
+          onClick={() => setMobileTab('routes')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            mobileTab === 'routes'
+              ? 'bg-white text-black shadow-xs'
+              : 'text-neutral-600 hover:text-black'
+          }`}
+        >
+          <span>📋 Rides & Routes</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            mobileTab === 'routes' ? 'bg-black text-white' : 'bg-neutral-300 text-neutral-800'
+          }`}>
+            {searchResults.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('map')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            mobileTab === 'map'
+              ? 'bg-white text-black shadow-xs'
+              : 'text-neutral-600 hover:text-black'
+          }`}
+        >
+          <span>🗺️ Map View</span>
+        </button>
+      </div>
+
       {/* Main Grid: Left Column = Route Choices & Details; Right Column = Interactive Map */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Itinerary Column: Route Choices & Trip Breakdown (5 cols on desktop, 2nd order on mobile) */}
-        <div className="order-2 lg:order-1 lg:col-span-5 space-y-4">
+        {/* Itinerary Column: Route Choices & Trip Breakdown (5 cols on desktop, responsive tab on mobile) */}
+        <div className={`order-2 lg:order-1 lg:col-span-5 space-y-4 ${mobileTab === 'map' ? 'hidden lg:block' : 'block'}`}>
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-black uppercase tracking-wider text-neutral-700">
               Available Rides & Routes ({searchResults.length})
@@ -1642,8 +1771,12 @@ export default function RouteDiscoveryPage() {
 
               const isRouteCarpool =
                 route.route?.id?.includes('CARPOOL') ||
-                route.route?.name?.toLowerCase().includes('carpool') ||
-                route.route?.name?.toLowerCase().includes('sharing');
+                route.route?.name?.toLowerCase().includes('carpool');
+
+              const isRouteSharedTaxi =
+                route.route?.id?.includes('SHARED') ||
+                route.route?.name?.toLowerCase().includes('sharing taxi') ||
+                route.route?.name?.toLowerCase().includes('auto stand');
 
               const isRouteCarpoolConfirmed =
                 !!selectedCarpoolMatch ||
@@ -1669,14 +1802,14 @@ export default function RouteDiscoveryPage() {
               const isRouteEstimated = isAmountEstimated(route);
 
               const fareDisplay = isZeroFare
-                ? '₹0 Free'
+                ? 'Walk (₹0)'
                 : isRouteCarpool && !isRouteCarpoolConfirmed
                   ? 'Split on Match'
                   : typeof displayTotalPrice === 'number'
                     ? `₹${displayTotalPrice.toLocaleString()}`
                     : route.fare?.min !== undefined && route.fare?.max !== undefined
                       ? `₹${route.fare.min} - ₹${route.fare.max}`
-                      : '₹0 Free';
+                      : `₹${Math.max(10, Math.round(route.duration * 1.2))}`;
 
               return (
                 <button
@@ -1709,24 +1842,26 @@ export default function RouteDiscoveryPage() {
                             : route.route?.id?.includes('CYCLE') || route.route?.id?.includes('BICYCLE') || route.route?.name?.toLowerCase().includes('cycle')
                               ? '🚲 Dedicated Campus Cycle Track'
                               : route.route?.id?.includes('EV') || route.route?.name?.toLowerCase().includes('ev')
-                                ? '⚡ Free Campus EV Shuttle'
-                                : route.route?.id?.includes('CARPOOL') || route.route?.name?.toLowerCase().includes('carpool') || route.route?.name?.toLowerCase().includes('sharing')
-                                  ? '🤝 Student Ride Sharing'
-                                  : route.route?.id?.includes('AUTO') || route.route?.name?.toLowerCase().includes('auto') || route.route?.name?.toLowerCase().includes('rickshaw')
-                                    ? '🛺 Direct Stand Auto / E-Rickshaw'
-                                    : route.route?.id?.includes('BIKE') || route.route?.name?.toLowerCase().includes('bike')
-                                      ? '🛵 Fast Solo Bike'
-                                      : route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.name?.toLowerCase().includes('express')
-                                        ? '🚆 Indian Railways Service'
-                                        : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
-                                          ? '✈️ Commercial Flight'
-                                          : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
-                                            ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
-                                            : route.route?.vehicleType === 'bus' || route.route?.name?.toLowerCase().includes('bus')
-                                              ? '🚌 Direct Public Mo Bus'
-                                              : route.route?.name?.toLowerCase().includes('cab') || route.route?.name?.toLowerCase().includes('taxi')
-                                                ? '🚖 Direct Cab / Taxi'
-                                                : '🚌 Public Transit'}
+                                ? '⚡ KIIT Eco EV Shuttle'
+                                : isRouteCarpool
+                                  ? '🤝 Corridor Carpool & Ride Split'
+                                  : isRouteSharedTaxi
+                                    ? '🚖 Stand-Based Shared Auto / Taxi'
+                                    : route.route?.id?.includes('AUTO') || route.route?.name?.toLowerCase().includes('auto') || route.route?.name?.toLowerCase().includes('rickshaw')
+                                      ? '🛺 Direct Stand Auto / E-Rickshaw'
+                                      : route.route?.id?.includes('BIKE') || route.route?.name?.toLowerCase().includes('bike')
+                                        ? '🛵 Fast Solo Bike'
+                                        : route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.name?.toLowerCase().includes('express')
+                                          ? '🚆 Indian Railways Service'
+                                          : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
+                                            ? '✈️ Commercial Flight'
+                                            : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
+                                              ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
+                                              : route.route?.vehicleType === 'bus' || route.route?.name?.toLowerCase().includes('bus')
+                                                ? '🚌 Direct Public Mo Bus'
+                                                : route.route?.name?.toLowerCase().includes('cab') || route.route?.name?.toLowerCase().includes('taxi')
+                                                  ? '🚖 Direct Cab / Taxi'
+                                                  : '🚌 Public Transit'}
                         </div>
                       </div>
                     </div>
@@ -1755,6 +1890,22 @@ export default function RouteDiscoveryPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          setSelectedIndex(idx);
+                          setMobileTab('map');
+                        }}
+                        className={`lg:hidden w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-white/20 text-white hover:bg-white/30'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                        }`}
+                        title="View route on map"
+                      >
+                        <span className="text-xs">🗺️</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setInfoModalRoute(route);
                         }}
                         className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all ${isSelected
@@ -1765,8 +1916,60 @@ export default function RouteDiscoveryPage() {
                       >
                         <Info className="w-3.5 h-3.5" />
                       </button>
+                      {(() => {
+                        const rInfo = getRouteTransportInfo(route);
+                        if (rInfo.type === 'bike' || rInfo.type === 'auto' || rInfo.type === 'cab') {
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedIndex(idx);
+                                openRideComparator(rInfo.comparatorCategory);
+                              }}
+                              className={`h-7 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
+                                isSelected
+                                  ? 'bg-white/20 text-white hover:bg-white/30'
+                                  : 'bg-neutral-100 text-neutral-800 hover:bg-neutral-200 hover:text-black border border-neutral-200/80'
+                              }`}
+                              title={`Compare live ${rInfo.name} fares`}
+                            >
+                              <span>{rInfo.icon}</span>
+                              <span className="hidden sm:inline">Compare</span>
+                            </button>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
+
+                  {/* Minimal Badges (Clean, Non-congested on Mobile) */}
+                  {(() => {
+                    const recomInfo = vehicleRecommendations.rankedOptions.find((r) => r.originalIndex === idx);
+                    const topBadge = recomInfo?.badges?.[0];
+                    const crowdInfo = calculateDynamicCrowding(route.route?.vehicleType || 'bus', route.walkingDistance ? route.walkingDistance / 1000 : 5);
+                    const isHighCrowd = crowdInfo.crowdingLevel === 'HIGH';
+
+                    if (!topBadge && !isHighCrowd) return null;
+
+                    return (
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        {topBadge && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs ${topBadge.colorClass}`}>
+                            {topBadge.label}
+                          </span>
+                        )}
+                        {isHighCrowd && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isSelected ? 'bg-rose-950/60 text-rose-300 border-rose-500/40' : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            🔴 Rush
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Multi-modal Legs Sequence Pills */}
                   {route.segments && route.segments.length > 0 && (
@@ -1816,8 +2019,7 @@ export default function RouteDiscoveryPage() {
             {selectedRoute.priceBreakdown && (() => {
               const isSelectedRouteCarpool =
                 selectedRoute.route?.id?.includes('CARPOOL') ||
-                selectedRoute.route?.name?.toLowerCase().includes('carpool') ||
-                selectedRoute.route?.name?.toLowerCase().includes('sharing');
+                selectedRoute.route?.name?.toLowerCase().includes('carpool');
 
               const isSelectedCarpoolConfirmed =
                 !!selectedCarpoolMatch ||
@@ -1861,7 +2063,7 @@ export default function RouteDiscoveryPage() {
                     <div className="flex items-center gap-1.5">
                       <span className="text-base font-black text-emerald-700">
                         {totalDynamicPrice === 0
-                          ? '₹0 (Free)'
+                          ? 'Walk (₹0)'
                           : isSelectedRouteCarpool && !isSelectedCarpoolConfirmed
                             ? 'Split on Match'
                             : `₹${totalDynamicPrice.toLocaleString()}`}
@@ -2011,11 +2213,13 @@ export default function RouteDiscoveryPage() {
                                   if (leg.mode === 'train' || isTrain) handleDirectBooking('train', leg.from, leg.to);
                                   else if (leg.mode === 'flight' || isFlight) handleDirectBooking('flight', leg.from, leg.to);
                                   else if (leg.mode === 'bus' || isBus) handleDirectBooking('bus', leg.from, leg.to);
-                                  else handleDirectBooking('cab', leg.from, leg.to);
+                                  else if (leg.mode === 'bike') openRideComparator('bike');
+                                  else if (leg.mode === 'auto') openRideComparator('auto');
+                                  else openRideComparator('cab');
                                 }}
                                 className="px-2.5 py-1 bg-neutral-900 hover:bg-neutral-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow-xs"
                               >
-                                <span>Book</span>
+                                <span>{leg.mode === 'bike' ? 'Book Bike' : leg.mode === 'auto' ? 'Book Auto' : leg.mode === 'cab' || leg.mode === 'taxi' ? 'Book Cab' : 'Book'}</span>
                                 <ExternalLink className="w-2.5 h-2.5" />
                               </button>
                             )}
@@ -2035,29 +2239,105 @@ export default function RouteDiscoveryPage() {
               );
             })()}
 
-            {/* Quick Cab & Auto Price Compare Banner */}
-            {(isCabOrTaxi || selectedRoute?.priceBreakdown?.itemizedLegs?.some((l: any) => l.mode === 'cab' || l.mode === 'taxi' || l.mode === 'auto')) && (
-              <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-xl shrink-0">🚖</span>
-                  <div className="min-w-0">
-                    <div className="font-bold text-neutral-900 text-xs">
-                      Compare Cab & Auto Fares
+            {/* Contextual Carpool Hub Banner OR Specific Transport Price Compare Banner */}
+            {(() => {
+              const isSelectedRouteCarpool =
+                selectedRoute.route?.id?.includes('CARPOOL') ||
+                selectedRoute.route?.name?.toLowerCase().includes('carpool');
+
+              const isSelectedRouteSharedTaxi =
+                selectedRoute.route?.id?.includes('SHARED') ||
+                selectedRoute.route?.name?.toLowerCase().includes('sharing taxi') ||
+                selectedRoute.route?.name?.toLowerCase().includes('auto stand');
+
+              if (isSelectedRouteCarpool) {
+                return (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">🤝</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-purple-900 text-xs flex items-center gap-1.5">
+                          <span>Corridor Carpool Hub</span>
+                          <span className="bg-purple-200 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                            {matchingCarpools.length} Available
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-purple-700 truncate">
+                          {matchingCarpools.length > 0
+                            ? `Match with co-riders on this corridor & split ride costs`
+                            : 'Offer or request shared rides with verified commuters'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-neutral-500 truncate">
-                      Uber • Ola • Rapido • Namma Yatri
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCarpoolModal(true)}
+                      className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer transition-colors shadow-xs"
+                    >
+                      View Co-Riders
+                    </button>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowRideDispatchModal(true)}
-                  className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer transition-colors"
-                >
-                  Compare
-                </button>
-              </div>
-            )}
+                );
+              }
+
+              if (isSelectedRouteSharedTaxi) {
+                return (
+                  <div className="p-3 bg-purple-50/60 border border-purple-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">🚖</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
+                          <span>Stand Shared Taxi & Carpool Option</span>
+                        </div>
+                        <div className="text-[11px] text-neutral-600 truncate">
+                          Walk to stand for ₹{selectedRoute.fare?.min || 10}-₹{selectedRoute.fare?.max || 15} shared auto, or match co-riders
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCarpoolModal(true)}
+                      className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer transition-colors shadow-xs flex items-center gap-1"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Carpool Hub</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              const selectedTransportDetails = getRouteTransportInfo(selectedRoute);
+              if (
+                selectedTransportDetails.type === 'bike' ||
+                selectedTransportDetails.type === 'auto' ||
+                selectedTransportDetails.type === 'cab'
+              ) {
+                return (
+                  <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">{selectedTransportDetails.icon}</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-neutral-900 text-xs">
+                          {selectedTransportDetails.compareBannerTitle}
+                        </div>
+                        <div className="text-[11px] text-neutral-500 truncate">
+                          {selectedTransportDetails.compareBannerSubtitle}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openRideComparator(selectedTransportDetails.comparatorCategory)}
+                      className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+                    >
+                      Compare
+                    </button>
+                  </div>
+                );
+              }
+
+              return null;
+            })()}
 
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <button
@@ -2068,37 +2348,138 @@ export default function RouteDiscoveryPage() {
                 <span>Start Live Navigation</span>
               </button>
 
-              {selectedRoute.route?.id?.includes('CARPOOL') || selectedRoute.route?.name?.toLowerCase().includes('carpool') ? (
-                <button
-                  onClick={() => setShowRaisePoolModal(true)}
-                  className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px]"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Raise Carpool Request</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isTrain) handleDirectBooking('train');
-                    else if (isFlight) handleDirectBooking('flight');
-                    else if (isBus) handleDirectBooking('bus');
-                    else handleDirectBooking('cab');
-                  }}
-                  className={`py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm ${isTrain ? 'bg-blue-700 hover:bg-blue-800' : isFlight ? 'bg-neutral-900 hover:bg-neutral-800' : isBus ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-neutral-900 hover:bg-black'
+              {(() => {
+                const isSelectedRouteCarpool =
+                  selectedRoute.route?.id?.includes('CARPOOL') ||
+                  selectedRoute.route?.name?.toLowerCase().includes('carpool');
+
+                const isSelectedRouteSharedTaxi =
+                  selectedRoute.route?.id?.includes('SHARED') ||
+                  selectedRoute.route?.name?.toLowerCase().includes('sharing taxi') ||
+                  selectedRoute.route?.name?.toLowerCase().includes('auto stand');
+
+                if (isSelectedRouteCarpool) {
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowCarpoolModal(true)}
+                        className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px] cursor-pointer"
+                      >
+                        <Users className="w-4 h-4" />
+                        <span>🤝 Carpool Hub ({matchingCarpools.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowRaisePoolModal(true)}
+                        className="py-3 sm:py-3.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 font-bold text-xs text-neutral-800 transition-colors flex items-center justify-center gap-1 shrink-0 min-h-[44px] cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Offer / Request</span>
+                      </button>
+                    </>
+                  );
+                }
+
+                if (isSelectedRouteSharedTaxi) {
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowCarpoolModal(true)}
+                        className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px] cursor-pointer"
+                        title="Open Carpool options to match with co-riders on this route"
+                      >
+                        <Users className="w-4 h-4" />
+                        <span>🤝 Carpool Option ({matchingCarpools.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openRideComparator('cab')}
+                        className="py-3 sm:py-3.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 font-bold text-xs text-neutral-800 transition-colors flex items-center justify-center gap-1 shrink-0 min-h-[44px] cursor-pointer"
+                        title="Compare on-demand private cab prices"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Private Cab</span>
+                      </button>
+                    </>
+                  );
+                }
+
+                const selectedTransportDetails = getRouteTransportInfo(selectedRoute);
+
+                if (selectedTransportDetails.type === 'bike') {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openRideComparator('bike')}
+                      className="py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-amber-600 hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm"
+                    >
+                      <span className="text-base">🛵</span>
+                      <span>Compare & Book Bike Taxi</span>
+                    </button>
+                  );
+                }
+
+                if (selectedTransportDetails.type === 'auto') {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openRideComparator('auto')}
+                      className="py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-neutral-950 bg-amber-400 hover:bg-amber-500 transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm"
+                    >
+                      <span className="text-base">🛺</span>
+                      <span>Compare & Book Auto</span>
+                    </button>
+                  );
+                }
+
+                if (selectedTransportDetails.type === 'cab') {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openRideComparator('cab')}
+                      className="py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-neutral-900 hover:bg-black transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm"
+                    >
+                      <span className="text-base">🚗</span>
+                      <span>Compare & Book Cab</span>
+                    </button>
+                  );
+                }
+
+                if (
+                  selectedTransportDetails.type === 'walk' ||
+                  selectedTransportDetails.type === 'ev' ||
+                  selectedTransportDetails.type === 'cycle'
+                ) {
+                  return null;
+                }
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isTrain) handleDirectBooking('train');
+                      else if (isFlight) handleDirectBooking('flight');
+                      else if (isBus) handleDirectBooking('bus');
+                      else openRideComparator('cab');
+                    }}
+                    className={`py-3 sm:py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer shadow-sm ${
+                      isTrain ? 'bg-blue-700 hover:bg-blue-800' : isFlight ? 'bg-neutral-900 hover:bg-neutral-800' : isBus ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-neutral-900 hover:bg-black'
                     }`}
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>{isTrain ? 'Book IRCTC Train' : isFlight ? 'Book Flight Ticket' : isBus ? 'Book Bus Ticket' : '🚖 Compare Cabs & Book'}</span>
-                </button>
-              )}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>{isTrain ? 'Book IRCTC Train' : isFlight ? 'Book Flight Ticket' : isBus ? 'Book Bus Ticket' : '🚗 Compare Cabs & Book'}</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
 
-        {/* Map Column: Clean OpenStreetMap (Top on mobile, Right 7 cols on desktop) */}
-        <div className="order-1 lg:order-2 lg:col-span-7 sticky top-4">
-          <div className="bg-white border border-neutral-200 rounded-3xl overflow-hidden shadow-sm h-[250px] sm:h-[350px] lg:h-[620px] relative">
+        {/* Map Column: Clean OpenStreetMap (Visible when mobileTab === 'map' on mobile, and always on desktop) */}
+        <div className={`order-1 lg:order-2 lg:col-span-7 sticky top-4 ${mobileTab === 'routes' ? 'hidden lg:block' : 'block'}`}>
+          <div className="bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm h-[calc(100vh-210px)] min-h-[440px] lg:h-[620px] relative">
             {/* 🧭 Google Maps Style Turn-by-Turn Navigation Guidance Card */}
             <div className="absolute top-3 left-3 right-3 sm:right-auto z-[1000] pointer-events-auto sm:max-w-md">
               <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-2xl p-2 sm:p-2.5 transition-all select-none">
@@ -2424,38 +2805,29 @@ export default function RouteDiscoveryPage() {
                 const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';
                 const stopEmoji = isTransfer ? '🔄' : isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
 
-                let pinHtml = '';
-                let pinSize: [number, number] = [6, 6];
-                let pinAnchor: [number, number] = [3, 3];
+                // Sleek, modern compact transit node that NEVER overlaps adjacent pins or road polyline
+                const pinSize: [number, number] = isTransfer ? [28, 28] : [24, 24];
+                const pinAnchor: [number, number] = isTransfer ? [14, 14] : [12, 12];
 
-                if (currentMapZoom <= 7) {
-                  pinHtml = `<div style="width:6px;height:6px;background:${stopColor};border:1.5px solid white;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>`;
-                  pinSize = [6, 6];
-                  pinAnchor = [3, 3];
-                } else if (currentMapZoom <= 10) {
-                  pinHtml = `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:${stopColor};color:white;border:1.5px solid white;border-radius:9999px;box-shadow:0 2px 4px rgba(0,0,0,0.3);font-size:10px;font-weight:bold;cursor:pointer;">${stopEmoji}</div>`;
-                  pinSize = [20, 20];
-                  pinAnchor = [10, 10];
-                } else if (currentMapZoom <= 13) {
-                  pinHtml = `<div style="display:inline-flex;align-items:center;gap:3px;background:${stopColor};color:white;border:1.5px solid white;border-radius:14px;padding:2px 7px;box-shadow:0 2px 6px rgba(0,0,0,0.35);font-size:10px;font-weight:800;white-space:nowrap;cursor:pointer;max-width:140px;">
-                    <span>${stopEmoji}</span>
-                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:105px;" title="${stop.name}">${cleanShortName}</span>
-                  </div>`;
-                  pinSize = [140, 24];
-                  pinAnchor = [70, 12];
-                } else {
-                  // Zoom 14+ (Optimal viewing): Compact, crisp pill with short role and clean station name with strict truncation
-                  pinHtml = `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.3));max-width:170px;">
-                    <div style="display:inline-flex;align-items:center;gap:3.5px;background:${stopColor};color:white;border:${isTransfer ? '2px solid #fde047' : '1.5px solid white'};border-radius:14px;padding:2.5px 8px;font-weight:800;font-size:10.5px;white-space:nowrap;max-width:165px;box-sizing:border-box;${isTransfer ? 'animation:pulse 2s infinite;' : ''}">
-                      <span style="font-size:12px;flex-shrink:0;">${stopEmoji}</span>
-                      <span style="background:rgba(0,0,0,0.25);border-radius:3px;padding:0.5px 4px;font-size:8.5px;font-weight:900;flex-shrink:0;">${roleBadge}</span>
-                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:90px;" title="${stop.name}">${cleanShortName}</span>
-                    </div>
-                    <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${stopColor};margin-top:-1px;"></div>
-                  </div>`;
-                  pinSize = [170, 30];
-                  pinAnchor = [85, 28];
-                }
+                const pinHtml = `
+                  <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: ${pinSize[0]}px;
+                    height: ${pinSize[1]}px;
+                    background: ${stopColor};
+                    color: #ffffff;
+                    border: 2px solid #ffffff;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+                    font-size: ${isTransfer ? '13px' : '11px'};
+                    cursor: pointer;
+                    transition: transform 0.15s ease;
+                  " title="${stop.name} (${roleBadge})">
+                    ${stopEmoji}
+                  </div>
+                `;
 
                 const stationIcon = L.divIcon({
                   html: pinHtml,
@@ -2518,6 +2890,43 @@ export default function RouteDiscoveryPage() {
                 </Popup>
               </Marker>
             </MapContainer>
+
+            {/* Floating Mobile Selected Route Bar in Map View */}
+            <div className="lg:hidden absolute bottom-3 left-3 right-3 z-[1000] pointer-events-auto">
+              <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-xl rounded-2xl p-3 flex items-center justify-between gap-2.5">
+                <div className="min-w-0 flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-lg shrink-0">
+                    {getModeIcon(selectedRoute, false)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-xs text-neutral-900 truncate">
+                      {selectedRoute.route.shortName || selectedRoute.route.name}
+                    </div>
+                    <div className="text-[11px] text-neutral-500 font-bold">
+                      {selectedRoute.duration} mins • ₹{selectedRoute.fare?.exact || 30}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab('routes')}
+                    className="px-2.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    📋 List
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    className="px-3.5 py-1.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Start</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2809,7 +3218,7 @@ export default function RouteDiscoveryPage() {
                       ? `₹${infoModalRoute.priceBreakdown.totalPrice.toLocaleString()}`
                       : infoModalRoute.fare?.exact !== undefined
                         ? `₹${infoModalRoute.fare.exact}`
-                        : '₹0 Free'}
+                        : 'Walk (₹0)'}
                 </span>
                 {isAmountEstimated(infoModalRoute) && (infoModalRoute.priceBreakdown?.totalPrice || infoModalRoute.fare?.exact) && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-neutral-100 text-neutral-700 border border-neutral-300">
@@ -2891,7 +3300,17 @@ export default function RouteDiscoveryPage() {
         <Modal
           open={showRideDispatchModal}
           onClose={() => setShowRideDispatchModal(false)}
-          title="Compare Cab & Auto Fares"
+          title={
+            dispatchCategory === 'bike'
+              ? '🛵 Compare Bike Taxi Fares'
+              : dispatchCategory === 'auto'
+                ? '🛺 Compare Auto Rickshaw Fares'
+                : dispatchCategory === 'cab'
+                  ? '🚗 Compare Private Cab Fares'
+                  : dispatchCategory === 'carpool'
+                    ? '🤝 Carpool Fares & Matching'
+                    : 'Compare Cab & Auto Fares'
+          }
         >
           <LiveCabPriceComparator
             pickupLat={originCoords[0]}
@@ -2900,8 +3319,12 @@ export default function RouteDiscoveryPage() {
             dropLat={destCoords[0]}
             dropLng={destCoords[1]}
             dropName={selectedRoute?.destinationName || 'Destination'}
-            initialCategory="all"
+            initialCategory={dispatchCategory}
             onClose={() => setShowRideDispatchModal(false)}
+            onOpenCarpool={() => {
+              setShowRideDispatchModal(false);
+              setShowCarpoolModal(true);
+            }}
           />
         </Modal>
       )}

@@ -157,12 +157,12 @@ export default function ProfilePage() {
               <strong className="font-mono text-emerald-400 text-xs">{commuterPass.passId}</strong>
             </div>
             <div>
-              <span className="text-[10px] text-neutral-400 block">Commuter Credit</span>
-              <strong className="text-white text-xs font-bold">₹{commuterPass.balanceRupees.toFixed(2)}</strong>
+              <span className="text-[10px] text-neutral-400 block">Total Trips</span>
+              <strong className="text-white text-xs font-bold">{commuterPass.tripsCount || 12} Trips</strong>
             </div>
             <div>
-              <span className="text-[10px] text-neutral-400 block">Active Discount</span>
-              <strong className="text-emerald-400 text-xs font-bold">{commuterPass.discountPercent}% Off</strong>
+              <span className="text-[10px] text-neutral-400 block">Card Status</span>
+              <strong className="text-emerald-400 text-xs font-bold">Active • Transit Ready</strong>
             </div>
             <div>
               <span className="text-[10px] text-neutral-400 block">CO₂ Saved</span>

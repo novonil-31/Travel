@@ -46,13 +46,13 @@ export const GUEST_VS_MEMBER_COMPARISON: FeatureComparisonItem[] = [
     description: 'Save daily Home, Office & Starred places for instant 1-tap route calculation.',
   },
   {
-    feature: 'National Commuter Pass & Wallet',
-    category: 'Perks',
-    guest: '❌ Locked',
+    feature: 'National Digital Transit Smart Pass',
+    category: 'Transit Pass',
+    guest: '❌ Preview Only',
     guestAllowed: false,
-    member: '✅ ₹50 Welcome Credit + 10% Off',
+    member: '✅ Unified Transit Card & Sync',
     memberAllowed: true,
-    description: 'Instant discounts on Metro, Bus, Bike Taxi and Auto ride dispatch.',
+    description: 'Direct digital boarding across Metro, City Bus, and Regulated Public Transit.',
   },
   {
     feature: 'Trusted Family SOS Live Dispatch',
@@ -119,8 +119,8 @@ export function getOrCreateCommuterPass(user: User | null | undefined) {
   return {
     passId: `MD-IN-${Math.abs(user.id.split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0) % 90000 + 10000)}`,
     tier: 'verified_commuter' as const,
-    balanceRupees: 50.0,
-    discountPercent: 10,
+    balanceRupees: 0.0,
+    discountPercent: 0,
     tripsCount: 12,
     carbonSavedKg: 8.4,
   };

@@ -140,6 +140,7 @@ export default function TripPlannerPage() {
 
   const urlTimeMode = searchParams.get('timeMode') || 'now';
   const urlDepartTime = searchParams.get('departTime') || '';
+  const urlDepartDate = searchParams.get('date') || searchParams.get('departDate') || '';
 
   // Mobility Mode (Simple 3 options like Uber/Google Maps)
   const [selectedMobility, setSelectedMobility] = useState<string>(
@@ -147,6 +148,9 @@ export default function TripPlannerPage() {
   );
   const [timeMode, setTimeMode] = useState<string>(urlTimeMode);
   const [departTime, setDepartTime] = useState<string>(urlDepartTime);
+  const [departDate, setDepartDate] = useState<string>(
+    urlDepartDate || new Date().toISOString().split('T')[0]
+  );
 
   // Loading & GPS state
   const [isLocating, setIsLocating] = useState<boolean>(false);
@@ -304,6 +308,12 @@ export default function TripPlannerPage() {
       saveRecentSearch(state.currentUser?.id, finalOrigin, finalDest);
 
       let finalDepartureTime = new Date();
+      if (departDate) {
+        const [y, m, d] = departDate.split('-').map(Number);
+        if (y && m && d) {
+          finalDepartureTime.setFullYear(y, m - 1, d);
+        }
+      }
       if (timeMode !== 'now' && departTime) {
         const [hh, mm] = departTime.split(':').map(Number);
         finalDepartureTime.setHours(hh || 9, mm || 30, 0, 0);
@@ -329,8 +339,9 @@ export default function TripPlannerPage() {
       }
 
       const timeParam = timeMode !== 'now' && departTime ? `&departTime=${encodeURIComponent(departTime)}` : '';
+      const dateParam = departDate ? `&date=${encodeURIComponent(departDate)}` : '';
       navigate(
-        `/routes?origin=${encodeURIComponent(finalOrigin.name)}&destination=${encodeURIComponent(finalDest.name)}&originLat=${finalOrigin.lat}&originLng=${finalOrigin.lng}&destLat=${finalDest.lat}&destLng=${finalDest.lng}&mobility=${mobility}&timeMode=${timeMode}${timeParam}`
+        `/routes?origin=${encodeURIComponent(finalOrigin.name)}&destination=${encodeURIComponent(finalDest.name)}&originLat=${finalOrigin.lat}&originLng=${finalOrigin.lng}&destLat=${finalDest.lat}&destLng=${finalDest.lng}&mobility=${mobility}&timeMode=${timeMode}${timeParam}${dateParam}`
       );
     } catch (err) {
       console.error('Journey planning failed', err);
@@ -348,48 +359,50 @@ export default function TripPlannerPage() {
   return (
     <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6 font-sans">
       {/* Clean Header with City Switcher */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-black text-neutral-900 tracking-tight">
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight truncate">
             Where to?
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-            Find accessible, fast and multimodal routes across India.
+          <p className="text-xs sm:text-sm text-neutral-500 mt-0.5 truncate">
+            Find accessible, fast and multimodal routes
           </p>
         </div>
-        <LocationRegionBanner
-          compact
-          onLocationChanged={() => {
-            clearSearchPlacesCache();
-            const recs = getRegionalDefaultRecommendations(userLocation);
-            if (recs && recs.length >= 2) {
-              setOriginInput(recs[0].name);
-              setOriginLocation({ name: recs[0].name, lat: recs[0].lat, lng: recs[0].lng });
-              setDestinationInput(recs[1].name);
-              setDestinationLocation({ name: recs[1].name, lat: recs[1].lat, lng: recs[1].lng });
-            }
-          }}
-        />
+        <div className="shrink-0">
+          <LocationRegionBanner
+            compact
+            onLocationChanged={() => {
+              clearSearchPlacesCache();
+              const recs = getRegionalDefaultRecommendations(userLocation);
+              if (recs && recs.length >= 2) {
+                setOriginInput(recs[0].name);
+                setOriginLocation({ name: recs[0].name, lat: recs[0].lat, lng: recs[0].lng });
+                setDestinationInput(recs[1].name);
+                setDestinationLocation({ name: recs[1].name, lat: recs[1].lat, lng: recs[1].lng });
+              }
+            }}
+          />
+        </div>
       </div>
 
       {/* Active Navigation Card (If trip active) */}
       {state.activeJourney && (
-        <div className="bg-black text-white p-4 sm:p-5 rounded-3xl border border-neutral-800 shadow-xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 min-w-0">
+        <div className="bg-black text-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-neutral-800 shadow-xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="relative flex items-center justify-center shrink-0">
-              <span className="w-3.5 h-3.5 rounded-full bg-white animate-ping absolute opacity-40" />
-              <span className="w-3 h-3 rounded-full bg-white relative" />
+              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute opacity-60" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 relative" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] uppercase font-black text-neutral-400 tracking-wider">
-                  Active Ride in Progress
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-[9px] uppercase font-black text-neutral-400 tracking-wider">
+                  Active Ride
                 </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-neutral-900 text-neutral-300 border border-neutral-800">
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-neutral-900 text-emerald-400 border border-neutral-800">
                   Live
                 </span>
               </div>
-              <span className="text-sm sm:text-base font-black text-white block truncate">
+              <span className="text-xs sm:text-base font-black text-white block truncate">
                 {state.activeJourney.routeName} → {state.activeJourney.destinationName}
               </span>
             </div>
@@ -397,10 +410,10 @@ export default function TripPlannerPage() {
           <Link to={`/journey/${state.activeJourney.id}`} className="shrink-0">
             <button
               type="button"
-              className="px-4 py-2.5 bg-white hover:bg-neutral-100 text-black font-black rounded-2xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer"
+              className="px-3 py-2 bg-white hover:bg-neutral-100 text-black font-black rounded-xl text-xs flex items-center gap-1 shadow-sm transition-all cursor-pointer"
             >
-              <span>Open Navigation</span>
-              <ArrowRight className="w-3.5 h-3.5 text-black" />
+              <span>Resume</span>
+              <ArrowRight className="w-3 h-3 text-black" />
             </button>
           </Link>
         </div>
@@ -414,14 +427,14 @@ export default function TripPlannerPage() {
         }}
       />
 
-      {/* Main Search Card (Uber / Ola Style) */}
-      <div ref={dropdownRef} className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-sm space-y-4 relative">
+      {/* Main Search Card (Uber / Google Maps Transit Style) */}
+      <div ref={dropdownRef} className="bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs space-y-3.5 relative">
         <form onSubmit={handleSearch} className="space-y-3">
           {/* Pickup Input Row */}
           <div className="relative">
-            <div className="flex items-center gap-3">
-              {/* Green A Icon */}
-              <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800 font-black text-xs shrink-0">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              {/* Green Pickup Dot Indicator */}
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800 font-black text-[11px] sm:text-xs shrink-0 shadow-xs">
                 A
               </div>
 
@@ -434,37 +447,52 @@ export default function TripPlannerPage() {
                     setOriginInput(e.target.value);
                     setActiveDropdown('origin');
                   }}
-                  placeholder="Enter pickup stop, campus or address..."
-                  className="w-full pl-3 pr-10 py-3.5 rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  placeholder="Enter pickup stop or address..."
+                  className="w-full pl-3 pr-16 py-3 rounded-xl sm:rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-xs sm:text-sm font-bold text-neutral-900 focus:outline-none transition-all"
                   required
                 />
 
-                {/* 1-Click GPS Button */}
-                <button
-                  type="button"
-                  onClick={handleUseCurrentLocation}
-                  disabled={isLocating}
-                  title="Use current GPS location"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-xl hover:bg-neutral-200 text-neutral-600 hover:text-black transition-colors"
-                >
-                  {isLocating ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                  ) : (
-                    <Crosshair className="w-4 h-4 text-emerald-600" />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {originInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOriginInput('');
+                        setActiveDropdown('origin');
+                      }}
+                      className="p-1 text-neutral-400 hover:text-neutral-600 rounded-md"
+                      title="Clear origin"
+                    >
+                      ✕
+                    </button>
                   )}
-                </button>
+                  {/* 1-Click GPS Button */}
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={isLocating}
+                    title="Use current GPS location"
+                    className="p-1.5 rounded-lg hover:bg-neutral-200 text-neutral-600 hover:text-black transition-colors"
+                  >
+                    {isLocating ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                    ) : (
+                      <Crosshair className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Origin Autocomplete Dropdown */}
             {activeDropdown === 'origin' && originSuggestions.length > 0 && (
-              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
-                <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
-                  <span className="truncate max-w-[220px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
+              <div className="absolute left-9 sm:left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto divide-y divide-neutral-100">
+                <div className="px-3.5 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                  <span className="truncate max-w-[200px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
                   {userLocation.permissionGranted ? (
                     <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.5 rounded text-[9px]">📍 GPS Active</span>
                   ) : (
-                    <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                    <span className="text-neutral-400 font-normal">Live Search</span>
                   )}
                 </div>
                 {originSuggestions.map((place, idx) => (
@@ -472,9 +500,9 @@ export default function TripPlannerPage() {
                     key={idx}
                     type="button"
                     onClick={() => handleSelectOrigin(place)}
-                    className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-neutral-50 flex items-start gap-2.5 transition-colors text-xs font-semibold"
                   >
-                    <div className="text-base shrink-0 mt-0.5">
+                    <div className="text-sm shrink-0 mt-0.5">
                       {place.displayName.startsWith('🎬') ? '🎬' :
                        place.displayName.startsWith('🛒') ? '🛒' :
                        place.displayName.startsWith('🛍️') ? '🛍️' :
@@ -499,26 +527,9 @@ export default function TripPlannerPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
                         <span>{place.name}</span>
-                        {place.type === 'kp_hostel' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">KP</span>
-                        )}
-                        {place.type === 'qc_hostel' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
-                        )}
                         {place.distanceLabel && (
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto shrink-0 flex items-center gap-1 ${
-                              (place.distanceKm !== undefined && place.distanceKm < 1) || place.distanceLabel.includes('Very Near')
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : (place.distanceKm !== undefined && place.distanceKm < 5) || place.distanceLabel.includes('Near')
-                                ? 'bg-teal-50 text-teal-800 border border-teal-200'
-                                : (place.distanceKm !== undefined && place.distanceKm < 25) || place.distanceLabel.includes('Nearby')
-                                ? 'bg-neutral-100 text-neutral-700 border border-neutral-200'
-                                : 'bg-neutral-50 text-neutral-500 border border-neutral-200'
-                            }`}
-                          >
-                            <span>📍</span>
-                            <span>{place.distanceLabel}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-auto shrink-0 bg-neutral-100 text-neutral-700">
+                            {place.distanceLabel}
                           </span>
                         )}
                       </div>
@@ -531,23 +542,23 @@ export default function TripPlannerPage() {
           </div>
 
           {/* Swap Button Divider */}
-          <div className="flex items-center justify-between pl-4 pr-1 py-0.5">
-            <div className="h-6 border-l-2 border-dashed border-neutral-300 ml-0.5" />
+          <div className="flex items-center justify-between pl-3.5 pr-1 py-0">
+            <div className="h-5 border-l-2 border-dashed border-neutral-300 ml-0" />
             <button
               type="button"
               onClick={handleSwap}
-              className="p-2 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-black transition-colors"
+              className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-black transition-colors"
               title="Swap pickup & destination"
             >
-              <ArrowDownUp className="w-4 h-4" />
+              <ArrowDownUp className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* Destination Input Row */}
           <div className="relative">
-            <div className="flex items-center gap-3">
-              {/* Red B Icon */}
-              <div className="w-8 h-8 rounded-full bg-red-100 border border-red-300 flex items-center justify-center text-red-800 font-black text-xs shrink-0">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              {/* Red Destination B Indicator */}
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-100 border border-red-300 flex items-center justify-center text-red-800 font-black text-[11px] sm:text-xs shrink-0 shadow-xs">
                 B
               </div>
 
@@ -560,44 +571,38 @@ export default function TripPlannerPage() {
                     setDestinationInput(e.target.value);
                     setActiveDropdown('dest');
                   }}
-                  placeholder="Where to? (e.g. KP 7, QC 5, Campus 15, Station)..."
-                  className="w-full pl-3 pr-4 py-3.5 rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-sm font-bold text-neutral-900 focus:outline-none transition-all"
+                  placeholder="Where to? (e.g. Station, Campus, Airport)..."
+                  className="w-full pl-3 pr-10 py-3 rounded-xl sm:rounded-2xl bg-neutral-50 hover:bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-black text-xs sm:text-sm font-bold text-neutral-900 focus:outline-none transition-all"
                   required
                 />
+
+                {destinationInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDestinationInput('');
+                      setActiveDropdown('dest');
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-600 rounded-md"
+                    title="Clear destination"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Logged-in User Last Destination Quick Pill */}
-            {isAuth && lastSavedSearch?.destination && (
-              <div className="flex items-center gap-2 pl-11 pt-1.5">
-                <span className="text-[10px] font-bold text-neutral-500 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-neutral-400" />
-                  <span>Last Destination:</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDestinationInput(lastSavedSearch.destination.name);
-                    setDestinationLocation(lastSavedSearch.destination);
-                  }}
-                  className="px-2.5 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer truncate max-w-[260px] border border-neutral-200"
-                >
-                  <span>📍 {lastSavedSearch.destination.name}</span>
-                </button>
-              </div>
-            )}
-
             {/* Destination Autocomplete Dropdown */}
             {activeDropdown === 'dest' && (
-              <div className="absolute left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto divide-y divide-neutral-100">
+              <div className="absolute left-9 sm:left-11 right-0 top-full mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto divide-y divide-neutral-100">
                 {/* Recent Searches for Logged-In User */}
                 {isAuth && userRecentSearches.length > 0 && destinationInput.trim().length === 0 && (
                   <div className="bg-neutral-50/80">
-                    <div className="px-4 py-1.5 text-[10px] font-black text-neutral-400 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-100">
+                    <div className="px-3.5 py-1 text-[10px] font-black text-neutral-400 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-100">
                       <Clock className="w-3 h-3" />
                       <span>Recent Destinations</span>
                     </div>
-                    {userRecentSearches.map((rec, rIdx) => (
+                    {userRecentSearches.slice(0, 3).map((rec, rIdx) => (
                       <button
                         key={`rec-${rIdx}`}
                         type="button"
@@ -606,25 +611,23 @@ export default function TripPlannerPage() {
                           setDestinationLocation(rec.destination);
                           setActiveDropdown(null);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-neutral-100/80 flex items-center gap-2.5 transition-colors text-xs border-b border-neutral-100/60"
+                        className="w-full px-3.5 py-2 text-left hover:bg-neutral-100/80 flex items-center gap-2 transition-colors text-xs border-b border-neutral-100/60"
                       >
-                        <Clock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        <Clock className="w-3 h-3 text-neutral-400 shrink-0" />
                         <div className="truncate flex-1">
                           <div className="font-bold text-neutral-900 text-xs truncate">{rec.destination.name}</div>
-                          <div className="text-[10px] text-neutral-400 truncate">From {rec.origin?.name || 'Origin'}</div>
                         </div>
                       </button>
                     ))}
                   </div>
                 )}
 
-                {/* Regional Priority Header */}
-                <div className="px-4 py-1.5 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
-                  <span className="truncate max-w-[220px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
+                <div className="px-3.5 py-1 bg-neutral-50 text-[10px] font-black text-neutral-500 uppercase tracking-wider flex items-center justify-between border-b border-neutral-100">
+                  <span className="truncate max-w-[200px]">Priority near {userLocation.placeName || userLocation.cityName}</span>
                   {userLocation.permissionGranted ? (
                     <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.5 rounded text-[9px]">📍 GPS Active</span>
                   ) : (
-                    <span className="text-neutral-400 font-normal">Real-Time Search</span>
+                    <span className="text-neutral-400 font-normal">Live Search</span>
                   )}
                 </div>
 
@@ -633,9 +636,9 @@ export default function TripPlannerPage() {
                     key={idx}
                     type="button"
                     onClick={() => handleSelectDest(place)}
-                    className="w-full px-4 py-3 text-left hover:bg-neutral-50 flex items-start gap-3 transition-colors text-xs font-semibold"
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-neutral-50 flex items-start gap-2.5 transition-colors text-xs font-semibold"
                   >
-                    <div className="text-base shrink-0 mt-0.5">
+                    <div className="text-sm shrink-0 mt-0.5">
                       {place.displayName.startsWith('🎬') ? '🎬' :
                        place.displayName.startsWith('🛒') ? '🛒' :
                        place.displayName.startsWith('🛍️') ? '🛍️' :
@@ -660,26 +663,9 @@ export default function TripPlannerPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
                         <span>{place.name}</span>
-                        {place.type === 'kp_hostel' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">KP</span>
-                        )}
-                        {place.type === 'qc_hostel' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-pink-100 text-pink-800 font-black">QC</span>
-                        )}
                         {place.distanceLabel && (
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto shrink-0 flex items-center gap-1 ${
-                              (place.distanceKm !== undefined && place.distanceKm < 1) || place.distanceLabel.includes('Very Near')
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : (place.distanceKm !== undefined && place.distanceKm < 5) || place.distanceLabel.includes('Near')
-                                ? 'bg-teal-50 text-teal-800 border border-teal-200'
-                                : (place.distanceKm !== undefined && place.distanceKm < 25) || place.distanceLabel.includes('Nearby')
-                                ? 'bg-neutral-100 text-neutral-700 border border-neutral-200'
-                                : 'bg-neutral-50 text-neutral-500 border border-neutral-200'
-                            }`}
-                          >
-                            <span>📍</span>
-                            <span>{place.distanceLabel}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-auto shrink-0 bg-neutral-100 text-neutral-700">
+                            {place.distanceLabel}
                           </span>
                         )}
                       </div>
@@ -693,24 +679,21 @@ export default function TripPlannerPage() {
 
           {/* GPS Error alert */}
           {gpsError && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-center gap-2">
+            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>{gpsError}</span>
             </div>
           )}
 
-          {/* Quick City Hub Categories */}
-          <div className="pt-1">
-            <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400 mb-1.5">
-              Quick Hubs in {userLocation.cityName}:
-            </div>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+          {/* Quick Hubs Chips (Scrollable 1-row) */}
+          <div className="pt-0.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs">
               {[
-                { label: '✈️ Airports', query: `${userLocation.cityName} Airport` },
-                { label: '🚆 Railways', query: `${userLocation.cityName} Railway Station` },
-                { label: '🚇 Metro Stations', query: `${userLocation.cityName} Metro` },
-                { label: '🚏 Bus Terminals', query: `${userLocation.cityName} Bus Stand` },
-                { label: '🏥 Hospitals', query: `${userLocation.cityName} Hospital` },
+                { label: '✈️ Airport', query: `${userLocation.cityName} Airport` },
+                { label: '🚆 Station', query: `${userLocation.cityName} Railway Station` },
+                { label: '🚇 Metro', query: `${userLocation.cityName} Metro` },
+                { label: '🚏 Bus Stand', query: `${userLocation.cityName} Bus Stand` },
+                { label: '🏥 Hospital', query: `${userLocation.cityName} Hospital` },
               ].map((chip) => (
                 <button
                   key={chip.query}
@@ -719,7 +702,7 @@ export default function TripPlannerPage() {
                     setDestinationInput(chip.query);
                     setActiveDropdown('dest');
                   }}
-                  className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-bold shrink-0 transition-colors cursor-pointer border border-neutral-200"
+                  className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[11px] font-bold shrink-0 transition-colors cursor-pointer border border-neutral-200"
                 >
                   {chip.label}
                 </button>
@@ -727,29 +710,29 @@ export default function TripPlannerPage() {
             </div>
           </div>
 
-          {/* Mobility Mode Options */}
-          <div className="pt-2 space-y-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">
+          {/* Mobility Mode Options - Minimalist 3-Pill Segment */}
+          <div className="pt-1 space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
               Mobility Priority
             </span>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {[
-                { id: 'standard', label: '🚶 Standard', desc: 'Fastest Route' },
-                { id: 'wheelchair', label: '♿ Wheelchair', desc: 'Ramps & 0 Stairs' },
-                { id: 'elderly', label: '🧓 Senior', desc: 'Minimal Walk' },
+                { id: 'standard', label: '⚡ Fastest', desc: 'Any mode' },
+                { id: 'wheelchair', label: '♿ Step-Free', desc: 'Ramps only' },
+                { id: 'elderly', label: '🧓 Senior', desc: 'Min walk' },
               ].map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => setSelectedMobility(m.id)}
-                  className={`p-2.5 rounded-2xl border text-left transition-all ${
+                  className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
                     selectedMobility === m.id
-                      ? 'bg-black text-white border-black shadow-sm'
+                      ? 'bg-black text-white border-black shadow-xs font-bold'
                       : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
                   }`}
                 >
-                  <div className="font-bold text-xs">{m.label}</div>
-                  <div className={`text-[10px] mt-0.5 ${selectedMobility === m.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                  <div className="text-xs">{m.label}</div>
+                  <div className={`text-[9px] mt-0.5 ${selectedMobility === m.id ? 'text-neutral-300' : 'text-neutral-400'}`}>
                     {m.desc}
                   </div>
                 </button>
@@ -757,52 +740,56 @@ export default function TripPlannerPage() {
             </div>
           </div>
 
-          {/* Schedule & Time Selector */}
-          <div className="pt-2 space-y-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block">
-              Departure Schedule
-            </span>
-            <div className="grid grid-cols-2 gap-2">
+          {/* Schedule & Travel Date Row */}
+          <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5">
               <select
                 value={timeMode}
                 onChange={(e) => setTimeMode(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-black text-xs font-semibold text-neutral-900 focus:outline-none cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-neutral-100 border border-neutral-200 text-xs font-bold text-neutral-700 focus:outline-none cursor-pointer"
               >
                 <option value="now">⚡ Leave Now</option>
                 <option value="depart">⏰ Depart at...</option>
                 <option value="arrive">🏁 Arrive by...</option>
               </select>
 
-              {timeMode !== 'now' ? (
+              {timeMode !== 'now' && (
                 <input
                   type="time"
                   value={departTime}
                   onChange={(e) => setDepartTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-neutral-300 focus:border-black font-bold text-xs text-neutral-900 focus:outline-none"
+                  className="px-2.5 py-1 rounded-lg bg-white border border-neutral-300 font-bold text-xs text-neutral-900 focus:outline-none"
                 />
-              ) : (
-                <div className="px-3 py-2.5 rounded-xl bg-neutral-50 text-neutral-400 text-xs font-medium text-center">
-                  Live departures
-                </div>
               )}
+            </div>
+
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Date</span>
+              <input
+                type="date"
+                value={departDate}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setDepartDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-neutral-300 font-bold text-xs text-neutral-800 focus:outline-none cursor-pointer shadow-2xs"
+              />
             </div>
           </div>
 
-          {/* Submit Search CTA (Ola / Uber Style) */}
+          {/* Submit Search CTA Button */}
           <button
             type="submit"
             disabled={isPlanning}
-            className="w-full mt-3 py-4 rounded-2xl bg-black hover:bg-neutral-800 text-white font-bold text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2"
+            className="w-full mt-2 py-3.5 rounded-2xl bg-black hover:bg-neutral-800 text-white font-extrabold text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
           >
             {isPlanning ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Finding Accessible Routes & Fares...</span>
+                <span>Finding Best Routes & Fares...</span>
               </>
             ) : (
               <>
                 <Search className="w-4 h-4" />
-                <span>See Routes & Fares</span>
+                <span>Find Routes</span>
               </>
             )}
           </button>

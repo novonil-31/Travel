@@ -28,17 +28,24 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
   };
 
   const isRealGps = userLocation.hasGpsPriority === true || userLocation.permissionGranted;
+  const fullLabel = userLocation.placeName || userLocation.cityName || userLocation.regionLabel || 'Locating...';
+  const shortCityLabel = userLocation.cityName || userLocation.placeName?.split(',')[0]?.trim() || 'My Location';
 
   if (compact) {
     return (
       <div
-        className={`inline-flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-all border ${
+        onClick={handleDetectGPS}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleDetectGPS(); }}
+        title={isRealGps ? `Live GPS Active: ${fullLabel} (Click to refresh)` : `Location: ${fullLabel} (Click to detect GPS)`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs transition-all border cursor-pointer select-none shrink-0 ${
           dark
-            ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-750'
-            : 'bg-neutral-100 border-neutral-300 text-neutral-800 hover:border-neutral-400'
+            ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200 active:scale-95'
+            : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800 active:scale-95'
         } ${className}`}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
           <span className="relative flex h-2 w-2 shrink-0">
             {isRealGps ? (
               <>
@@ -46,28 +53,22 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </>
             ) : (
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" title="Approximate IP location"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" title="Approximate location"></span>
             )}
           </span>
-          <MapPin className={`w-3.5 h-3.5 shrink-0 ${dark ? 'text-neutral-300' : 'text-neutral-800'}`} />
-          <span className={`truncate max-w-[160px] sm:max-w-[220px] font-semibold ${dark ? 'text-white' : 'text-neutral-900'}`}>
-            {userLocation.placeName || userLocation.cityName || userLocation.regionLabel}
+          <MapPin className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`} />
+          {/* Responsive label: on mobile screen show short city name with max-w-[70px] to preserve brand header space */}
+          <span className={`truncate text-[11px] sm:text-xs font-semibold max-w-[65px] xs:max-w-[90px] sm:max-w-[170px] ${dark ? 'text-white' : 'text-neutral-900'}`}>
+            <span className="sm:hidden">{shortCityLabel}</span>
+            <span className="hidden sm:inline">{fullLabel}</span>
           </span>
         </div>
 
-        <div className={`h-3 w-px mx-0.5 shrink-0 ${dark ? 'bg-neutral-700' : 'bg-neutral-300'}`} />
-
-        <button
-          type="button"
-          onClick={handleDetectGPS}
-          disabled={isLocating}
-          title={isRealGps ? "Live GPS Active - Click to Re-center" : "Detect Live GPS"}
-          className={`p-1 rounded-md transition-colors focus:outline-none shrink-0 cursor-pointer ${
-            dark ? 'text-neutral-400 hover:text-white hover:bg-neutral-700' : 'text-neutral-600 hover:text-black hover:bg-neutral-200'
-          }`}
-        >
-          {isLocating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Crosshair className="w-3.5 h-3.5" />}
-        </button>
+        {isLocating ? (
+          <Loader2 className="w-3 h-3 animate-spin text-emerald-400 shrink-0 ml-0.5" />
+        ) : (
+          <Crosshair className={`w-3 h-3 shrink-0 hidden sm:block ${dark ? 'text-neutral-400' : 'text-neutral-500'}`} />
+        )}
       </div>
     );
   }

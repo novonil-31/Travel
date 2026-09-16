@@ -10,9 +10,10 @@ interface LiveCabPriceComparatorProps {
   dropLat: number;
   dropLng: number;
   dropName: string;
-  initialCategory?: 'all' | 'cab' | 'auto' | 'bike';
+  initialCategory?: 'all' | 'cab' | 'auto' | 'bike' | 'carpool';
   onClose?: () => void;
   compact?: boolean;
+  onOpenCarpool?: () => void;
 }
 
 export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
@@ -25,16 +26,25 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
   initialCategory = 'all',
   onClose,
   compact = false,
+  onOpenCarpool,
 }) => {
-  const [category, setCategory] = useState<'all' | 'cab' | 'auto' | 'bike'>(initialCategory);
+  const [category, setCategory] = useState<'all' | 'cab' | 'auto' | 'bike' | 'carpool'>(initialCategory);
   const [loading, setLoading] = useState<boolean>(true);
   const [data, setData] = useState<LiveCabComparisonResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync category whenever initialCategory prop changes
+  useEffect(() => {
+    if (initialCategory) {
+      setCategory(initialCategory);
+    }
+  }, [initialCategory]);
 
   const fetchLivePrices = async () => {
     setLoading(true);
     setError(null);
     try {
+      const apiCategory = category === 'carpool' ? 'all' : category;
       const result = await faresApi.compareCabs({
         pickupLat,
         pickupLng,
@@ -42,7 +52,7 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         dropLat,
         dropLng,
         dropName,
-        category,
+        category: apiCategory,
       });
       setData(result);
     } catch (err: any) {
@@ -60,8 +70,13 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
     window.open(option.deepLink, '_blank', 'noopener,noreferrer');
   };
 
-  // Sort options: lowest price first
-  const sortedOptions = data?.options ? [...data.options].sort((a, b) => a.fare - b.fare) : [];
+  // Sort options: lowest price first, matching active category
+  const filteredOptions = (data?.options || []).filter((opt) => {
+    if (category === 'all') return true;
+    if (category === 'carpool') return false;
+    return opt.category === category;
+  });
+  const sortedOptions = [...filteredOptions].sort((a, b) => a.fare - b.fare);
 
   return (
     <div className={`space-y-3 font-sans ${compact ? 'text-xs' : 'text-sm'}`}>
@@ -92,13 +107,14 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         </button>
       </div>
 
-      {/* Category Tabs: All / Auto / Cabs / Bike */}
-      <div className="flex gap-1.5">
+      {/* Category Tabs: All / Bike / Auto / Cab / Carpool */}
+      <div className="flex gap-1.5 flex-wrap sm:flex-nowrap">
         {[
           { id: 'all', label: 'All' },
+          { id: 'bike', label: '🛵 Bike' },
           { id: 'auto', label: '🛺 Auto' },
           { id: 'cab', label: '🚗 Cab' },
-          { id: 'bike', label: '🛵 Bike' },
+          { id: 'carpool', label: '🤝 Carpool' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -106,7 +122,7 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
             onClick={() => setCategory(tab.id as any)}
             className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold text-center transition-colors cursor-pointer ${
               category === tab.id
-                ? 'bg-neutral-900 text-white'
+                ? 'bg-neutral-900 text-white shadow-xs'
                 : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
             }`}
           >
@@ -115,11 +131,58 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         ))}
       </div>
 
+      {/* Live Verified Carpool Option Banner (Always visible in 'all' and 'carpool') */}
+      {(category === 'all' || category === 'carpool') && (
+        <div className="p-3 rounded-xl border border-purple-300 bg-purple-50/80 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-xl shrink-0">🤝</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-purple-950 text-xs truncate">
+                  Corridor Carpool Split
+                </span>
+                <span className="bg-purple-700 text-white text-[9px] font-black px-1.5 py-0.5 rounded">
+                  Save ~65%
+                </span>
+              </div>
+              <div className="text-[11px] text-purple-800 font-medium truncate">
+                Share ride with verified corridor co-riders
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-black text-xs text-purple-900">
+              ₹15 - ₹25
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenCarpool) onOpenCarpool();
+              }}
+              className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+            >
+              <span>Match Pool</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Loading */}
       {loading && !data && (
         <div className="py-8 text-center text-xs text-neutral-500 space-y-1">
-          <div className="text-lg animate-bounce">🚖</div>
-          <div>Checking live prices across Uber, Ola, Rapido...</div>
+          <div className="text-2xl animate-bounce">
+            {category === 'bike' ? '🛵' : category === 'auto' ? '🛺' : category === 'carpool' ? '🤝' : '🚗'}
+          </div>
+          <div>
+            {category === 'bike'
+              ? 'Checking live prices across Rapido, Uber Moto, Ola Bike...'
+              : category === 'auto'
+                ? 'Checking live prices across Rapido Auto, Namma Yatri, Uber Auto...'
+                : category === 'carpool'
+                  ? 'Finding active corridor carpool matches...'
+                  : 'Checking live prices across Uber, Ola, Rapido, Namma Yatri...'}
+          </div>
         </div>
       )}
 
@@ -136,7 +199,7 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
       {/* Simple, Clean List of Cab & Auto Options */}
       {!loading && sortedOptions.length === 0 && (
         <div className="py-6 text-center text-xs text-neutral-500">
-          No rides available in this category right now.
+          No {category !== 'all' ? (category === 'bike' ? 'bike taxi' : category === 'auto' ? 'auto rickshaw' : category === 'cab' ? 'private cab' : category) : 'ride'} options available right now.
         </div>
       )}
 

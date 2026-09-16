@@ -199,7 +199,7 @@ export interface RouteSearchResult {
     totalPrice: number;
     currency: string;
     itemizedLegs: Array<{
-      mode: 'taxi' | 'flight' | 'train' | 'bus' | 'carpool' | 'walk';
+      mode: 'taxi' | 'cab' | 'auto' | 'bike' | 'flight' | 'train' | 'bus' | 'carpool' | 'walk';
       title: string;
       from: string;
       to: string;

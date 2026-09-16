@@ -1225,7 +1225,7 @@ export async function fetchRoadGeometryLive(
   if (cached) return cached;
 
   const apiBase =
-    import.meta.env.VITE_API_BASE_URL ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
 
   // Priority 1: High-Reliability Server-Side Routing Proxy (Eliminates Browser CORS & Rate Limiting)
@@ -3317,8 +3317,8 @@ export function resolveExactTrainSchedule(
     const orig = OFFICIAL_TRAIN_DATABASE[directKey][0];
     return {
       ...orig,
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+      bookingUrl: buildExactTrainBookingUrl(orig.trainNumber, origKey, destKey, depDate),
+      confirmTktUrl: buildExactTrainBookingUrl(orig.trainNumber, origKey, destKey, depDate),
     };
   }
 
@@ -3333,8 +3333,8 @@ export function resolveExactTrainSchedule(
       originName: `${originCity} (${origKey})`,
       destCode: destKey,
       destName: `${destCity} (${destKey})`,
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+      bookingUrl: buildExactTrainBookingUrl(revNum, origKey, destKey, depDate),
+      confirmTktUrl: buildExactTrainBookingUrl(revNum, origKey, destKey, depDate),
     };
   }
 
@@ -3446,16 +3446,110 @@ export function resolveExactTrainSchedule(
     durationHours: durHours,
     classes,
     operatingDays: 'Daily',
-    bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-    confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+    bookingUrl: buildExactTrainBookingUrl(realNumber, origKey, destKey, depDate),
+    confirmTktUrl: buildExactTrainBookingUrl(realNumber, origKey, destKey, depDate),
   };
+}
+
+// =========================================================================
+// EXACT VEHICLE BOOKING DEEP-LINK BUILDERS (DIRECT CHECKOUT & PAY)
+// =========================================================================
+
+/**
+ * Direct ConfirmTkt IRCTC booking URL that jumps straight into coach selection & passenger checkout
+ * for that specific train number on that exact travel date.
+ */
+export function buildExactTrainBookingUrl(
+  trainNumber: string,
+  originCode: string,
+  destCode: string,
+  travelDate?: Date | string,
+  _quota = 'GN'
+): string {
+  const cleanTrain = (trainNumber || '').replace(/\D/g, '');
+  const orig = (originCode || 'BBS').toUpperCase().trim();
+  const dest = (destCode || 'NDLS').toUpperCase().trim();
+
+  let d = new Date();
+  if (travelDate instanceof Date && !isNaN(travelDate.getTime())) {
+    d = travelDate;
+  } else if (typeof travelDate === 'string') {
+    const p = new Date(travelDate);
+    if (!isNaN(p.getTime())) d = p;
+  }
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const confirmTktDate = `${day}-${month}-${year}`;
+
+  if (cleanTrain && orig && dest) {
+    // Exact train direct booking endpoint on ConfirmTkt (IRCTC Official Partner)
+    return `https://www.confirmtkt.com/rbooking-d/${cleanTrain}/${orig}/${dest}/${confirmTktDate}`;
+  }
+  if (orig && dest) {
+    return `https://www.makemytrip.com/railways/listing?srcStn=${orig}&destStn=${dest}&date=${confirmTktDate}`;
+  }
+  return 'https://www.confirmtkt.com/rbooking/';
+}
+
+/**
+ * Direct MakeMyTrip & Google Flights deep link specifying exact origin, destination, and travel date
+ */
+export function buildExactFlightBookingUrl(
+  _flightNumber: string,
+  originCode: string,
+  destCode: string,
+  travelDate?: Date | string
+): string {
+  const orig = (originCode || 'BBI').toUpperCase().trim();
+  const dest = (destCode || 'DEL').toUpperCase().trim();
+
+  let d = new Date();
+  if (travelDate instanceof Date && !isNaN(travelDate.getTime())) {
+    d = travelDate;
+  } else if (typeof travelDate === 'string') {
+    const p = new Date(travelDate);
+    if (!isNaN(p.getTime())) d = p;
+  }
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+
+  // MakeMyTrip deep link with exact date & cabin
+  return `https://www.makemytrip.com/flight/search?itinerary=${orig}-${dest}-${day}/${month}/${year}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E`;
+}
+
+/**
+ * Direct Intercity Bus booking URL specifying origin city, destination city, and travel date
+ */
+export function buildExactBusBookingUrl(
+  originCity: string,
+  destCity: string,
+  travelDate?: Date | string
+): string {
+  const origSlug = (originCity || 'bhubaneswar').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const destSlug = (destCity || 'cuttack').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+  let d = new Date();
+  if (travelDate instanceof Date && !isNaN(travelDate.getTime())) {
+    d = travelDate;
+  } else if (typeof travelDate === 'string') {
+    const p = new Date(travelDate);
+    if (!isNaN(p.getTime())) d = p;
+  }
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const dateStr = `${day}-${month}-${year}`;
+
+  return `https://www.makemytrip.com/bus-tickets/${origSlug}-${destSlug}-bus-ticket-booking.html?date=${dateStr}`;
 }
 
 // =========================================================================
 // DATE & DAY-OF-WEEK SERVICE AVAILABILITY VALIDATOR
 // =========================================================================
 export function isServiceOperatingOnDate(operatingDays = 'Daily', dateOrDay?: string | Date): boolean {
-  if (!dateOrDay || operatingDays.toLowerCase().includes('daily')) return true;
+  if (!dateOrDay) return true;
 
   let dayCode = 'Mon';
   if (typeof dateOrDay === 'string') {
@@ -3476,6 +3570,19 @@ export function isServiceOperatingOnDate(operatingDays = 'Daily', dateOrDay?: st
 
   const opLower = operatingDays.toLowerCase();
   const dayLower = dayCode.toLowerCase();
+
+  // If daily with exception (e.g. "Daily except Sunday", "Daily except Thu, Sun")
+  if (opLower.includes('except')) {
+    const parts = opLower.split('except');
+    const exceptionPart = parts[1] || '';
+    if (exceptionPart.includes(dayLower)) {
+      return false;
+    }
+    return true;
+  }
+
+  if (opLower.includes('daily')) return true;
+
   return opLower.includes(dayLower);
 }
 
@@ -3727,8 +3834,8 @@ export function resolveExactFlightSchedule(
     flightDurationMinutes: durationMins,
     baseFare,
     aircraftModel: 'Airbus A320neo / A321',
-    bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${origKey}+to+${destKey}`,
-    makeMyTripUrl: `https://www.makemytrip.com/flight/search?itinerary=${origKey}-${destKey}`,
+    bookingUrl: buildExactFlightBookingUrl(flightNum, origKey, destKey),
+    makeMyTripUrl: buildExactFlightBookingUrl(flightNum, origKey, destKey),
   };
 }
 
@@ -3774,8 +3881,8 @@ export function resolveAvailableTrainsForDate(
     const operatingTrains = allTrains.filter(t => isServiceOperatingOnDate(t.operatingDays, travelDate));
     return operatingTrains.map(t => ({
       ...t,
-      bookingUrl: 'https://www.confirmtkt.com/rbooking/',
-      confirmTktUrl: 'https://www.confirmtkt.com/rbooking/',
+      bookingUrl: buildExactTrainBookingUrl(t.trainNumber, origKey, destKey, d),
+      confirmTktUrl: buildExactTrainBookingUrl(t.trainNumber, origKey, destKey, d),
     }));
   }
 
@@ -3806,19 +3913,27 @@ export function resolveAvailableFlightsForDate(
     destCode: destKey,
     destName: f.originName,
     flightNumber: `${f.airlineCode}-${Math.floor(100 + Math.random() * 899)}`,
-    bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${origKey}+to+${destKey}`,
-    makeMyTripUrl: `https://www.makemytrip.com/flight/search?itinerary=${origKey}-${destKey}`,
+    bookingUrl: buildExactFlightBookingUrl(f.flightNumber, origKey, destKey, travelDate),
+    makeMyTripUrl: buildExactFlightBookingUrl(f.flightNumber, origKey, destKey, travelDate),
   })) : []);
 
   if (allFlights.length > 0) {
     const operatingFlights = allFlights.filter(f => isServiceOperatingOnDate(f.operatingDays || 'Daily', travelDate));
-    return operatingFlights;
+    return operatingFlights.map(f => ({
+      ...f,
+      bookingUrl: buildExactFlightBookingUrl(f.flightNumber, origKey, destKey, travelDate),
+      makeMyTripUrl: buildExactFlightBookingUrl(f.flightNumber, origKey, destKey, travelDate),
+    }));
   }
 
   if (distanceKm >= 150) {
     const synth = resolveExactFlightSchedule(originCode, destCode, originCity, destCity, distanceKm);
     if (synth && isServiceOperatingOnDate(synth.operatingDays || 'Daily', travelDate)) {
-      return [synth];
+      return [{
+        ...synth,
+        bookingUrl: buildExactFlightBookingUrl(synth.flightNumber, origKey, destKey, travelDate),
+        makeMyTripUrl: buildExactFlightBookingUrl(synth.flightNumber, origKey, destKey, travelDate),
+      }];
     }
   }
 

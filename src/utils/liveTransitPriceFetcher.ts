@@ -11,8 +11,9 @@
  * 4. Taxis & Rideshare: Regulated Auto, Bike Taxi, City Sedan, Premier, and Outstation
  */
 
-import { haversineDistanceClient, resolveExactTrainSchedule, OFFICIAL_TRAIN_DATABASE, isServiceOperatingOnDate } from './onlineRouting';
+import { haversineDistanceClient, resolveExactTrainSchedule, OFFICIAL_TRAIN_DATABASE, isServiceOperatingOnDate, buildExactTrainBookingUrl, buildExactFlightBookingUrl, buildExactBusBookingUrl } from './onlineRouting';
 import { searchRealTrainsWithGemini, type LiveAiTrainRecord } from './liveTrainGeminiService';
+import { calculateDynamicCrowding, getDynamicPeakMultiplier } from './dynamicCalculationEngine';
 
 export interface LiveTrainFareResult {
   trainNumber: string;
@@ -355,8 +356,8 @@ export async function fetchLiveFlightPricing(
     baseFare: effectiveFare,
     aircraftModel: flightData.aircraftModel,
     source: 'live-airline-gds',
-    bookingUrl: `https://www.google.com/travel/flights?q=flights+from+${orig}+to+${dest}`,
-    makeMyTripUrl: `https://www.makemytrip.com/flight/search?itinerary=${orig}-${dest}`,
+    bookingUrl: buildExactFlightBookingUrl(flightData.flightNumber, orig, dest, depDate),
+    makeMyTripUrl: buildExactFlightBookingUrl(flightData.flightNumber, orig, dest, depDate),
     departureDateStr: dateStr,
     isToday,
     isNextDayRecommendation: isNextDayRec,
@@ -473,8 +474,8 @@ export async function fetchLiveTrainsForRoute(
         operatingDays: [t.operatingDays],
         runsOnDay: true,
         classes: t.classes,
-        bookingUrl: t.bookingUrl || 'https://www.confirmtkt.com/rbooking/',
-        confirmTktUrl: t.confirmTktUrl || 'https://www.confirmtkt.com/rbooking/',
+        bookingUrl: buildExactTrainBookingUrl(t.trainNumber, orig, dest, realDepDate),
+        confirmTktUrl: buildExactTrainBookingUrl(t.trainNumber, orig, dest, realDepDate),
         source: 'verified-irctc',
       }));
     }
@@ -541,7 +542,7 @@ export async function fetchLiveTrainPricing(
       classes: best.classes,
       baseFare,
       source: best.source === 'verified-irctc' ? 'verified-irctc-tariff' : 'gemini-ai-live',
-      bookingUrl: best.bookingUrl || `https://www.confirmtkt.com/rbooking/`,
+      bookingUrl: best.bookingUrl || buildExactTrainBookingUrl(best.trainNumber, orig, dest, realDepDate),
       departureDateStr: dateStr,
       isNextDay: false,
       runsOnDay: true,
@@ -614,14 +615,9 @@ export function extractCityForBooking(rawName?: string, fallback = 'Bhubaneswar'
 export function buildMakeMyTripBusUrl(
   originLocation: string,
   destLocation: string,
+  departureDate?: Date | string,
 ): string {
-  const origCity = extractCityForBooking(originLocation, 'Bhubaneswar');
-  const destCity = extractCityForBooking(destLocation, 'Cuttack');
-
-  const origSlug = origCity.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  const destSlug = destCity.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-
-  return `https://www.makemytrip.com/bus-tickets/${origSlug}-${destSlug}-bus-ticket-booking.html`;
+  return buildExactBusBookingUrl(originLocation, destLocation, departureDate);
 }
 
 export interface CorridorPopularityInfo {
@@ -898,9 +894,9 @@ export async function fetchLiveBusPricing(
     vehiclePlateNumber: assignedPlate,
     hasRamp: true,
     hasAirConditioning: true,
-    crowding: 'LOW',
+    crowding: calculateDynamicCrowding('bus', distanceKm, now).crowdingLevel,
     source: busTariff.sourcesSummary,
-    bookingUrl: buildMakeMyTripBusUrl(originStop, destStop),
+    bookingUrl: buildMakeMyTripBusUrl(originStop, destStop, depDate),
     popularity: busTariff.popularity,
     classFares: busTariff.classFares,
   };
@@ -955,9 +951,11 @@ export function calculateLiveTaxiTariff(
     durationMin = Math.max(15, Math.round((distKm / 55) * 60));
   }
 
-  const calculatedFare = distKm <= 1.5
+  const { multiplier: dynamicSurge } = getDynamicPeakMultiplier(new Date());
+  const rawFare = distKm <= 1.5
     ? basePrice
     : Math.round(basePrice + (distKm - 1.5) * perKmRate);
+  const calculatedFare = Math.round(rawFare * dynamicSurge);
 
   const bookingUrl = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${originLat}&pickup[longitude]=${originLng}&dropoff[latitude]=${destLat}&dropoff[longitude]=${destLng}`;
 

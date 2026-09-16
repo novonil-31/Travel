@@ -78,7 +78,7 @@
     @apply bg-white;
   }
 
-  .custom-map-pin, .custom-nav-pin, .custom-home-pin, .custom-route-pin, .transfer-pin, .vehicle-tracer-pin {
+  .custom-map-pin, .custom-nav-pin, .custom-home-pin, .custom-route-pin, .transfer-pin, .vehicle-tracer-pin, .custom-station-pin, .custom-milestone-pin, .custom-endpoint-pin, .custom-transfer-pin, .custom-badge-pin {
     background: transparent !important;
     border: none !important;
   }

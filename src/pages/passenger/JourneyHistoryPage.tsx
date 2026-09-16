@@ -85,9 +85,9 @@ const JourneyHistoryPage: React.FC = () => {
               <div className="text-[10px] text-neutral-500 mt-0.5">By choosing transit & EV</div>
             </div>
             <div className="p-4 bg-white border border-neutral-200 rounded-3xl shadow-xs">
-              <div className="text-[11px] font-bold text-neutral-500 uppercase">Pass Credit</div>
-              <div className="text-xl font-black text-neutral-900 mt-1">₹{commuterPass.balanceRupees.toFixed(2)}</div>
-              <div className="text-[10px] text-neutral-500 mt-0.5">Active discount 10%</div>
+              <div className="text-[11px] font-bold text-neutral-500 uppercase">Completed Trips</div>
+              <div className="text-xl font-black text-neutral-900 mt-1">{commuterPass.tripsCount || 12}</div>
+              <div className="text-[10px] text-neutral-500 mt-0.5">Tracked transit journeys</div>
             </div>
             <div className="p-4 bg-white border border-neutral-200 rounded-3xl shadow-xs">
               <div className="text-[11px] font-bold text-neutral-500 uppercase">Status</div>

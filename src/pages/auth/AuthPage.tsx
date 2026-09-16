@@ -360,7 +360,7 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
     };
     setUser(guestUser);
     updateProfile(guestUser.profile);
-    addToast('info', 'Browsing as Guest. Sign in anytime to unlock 1-Tap Home/Work, Family SOS & ₹50 Commuter Credit.');
+    addToast('info', 'Browsing as Guest. Sign in anytime to unlock 1-Tap Home/Work, Family SOS & Cloud Sync.');
     navigate(getTargetUrl());
   };
 

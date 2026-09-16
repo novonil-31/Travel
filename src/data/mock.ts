@@ -21,8 +21,11 @@ import {
   generateMultiHopBusCombination,
   isServiceOperatingOnDate,
   getExactRailwayTrackAndStops,
+  buildExactTrainBookingUrl,
+  buildExactFlightBookingUrl,
+  buildExactBusBookingUrl,
 } from '../utils/onlineRouting';
-import { fetchLiveTrainPricing, fetchLiveFlightPricing, fetchLiveBusPricing, calculateLiveTaxiTariff, calculateMultiSourceBusFare, selectBenchmarkTrainClass } from '../utils/liveTransitPriceFetcher';
+import { fetchLiveTrainPricing, fetchLiveFlightPricing, fetchLiveBusPricing, calculateLiveTaxiTariff, calculateMultiSourceBusFare, selectBenchmarkTrainClass, buildMakeMyTripBusUrl } from '../utils/liveTransitPriceFetcher';
 
 import { OFFICIAL_STOPS, OFFICIAL_ROUTES, calculateOfficialBusFare, type OfficialBusLine, type TransitStopInfo } from './liveTimetable';
 import {
@@ -596,7 +599,10 @@ export async function generateDynamicSearchResults(
     const results: RouteSearchResult[] = [];
 
     // ================= AIR TRAVEL (ONLY IF REAL FLIGHT OPERATES ON DATE) =================
-    if ((liveFlightRes || availableFlights.length > 0) && directDistanceKm >= 150) {
+    const operatingFlights = availableFlights.filter(f => isServiceOperatingOnDate(f.operatingDays || 'Daily', baseDepartureTime));
+    const hasOperatingFlight = operatingFlights.length > 0;
+
+    if (hasOperatingFlight && directDistanceKm >= 150) {
       const flightTimeMin = liveFlightRes?.durationMinutes || Math.round(Math.max(65, (directDistanceKm / 750) * 60));
       const origToAirportPath = origToAirportRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 8);
       const destAirportToDestPath = destAirportToDestRes?.coordinates || interpolateCurvedPoints(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 8);
@@ -605,7 +611,13 @@ export async function generateDynamicSearchResults(
       const fullFlightChainRoute = [...origToAirportPath, ...flightArc, ...destAirportToDestPath];
       const totalFlightDurationMin = (origToAirportRes?.durationMin || 30) + flightTimeMin + 60 + (destAirportToDestRes?.durationMin || 30);
 
-      const primaryFlight = availableFlights[0] || resolveExactFlightSchedule(originAirport.code, destAirport.code, originAirport.city, destAirport.city, directDistanceKm);
+      const primaryFlight = operatingFlights[0];
+      const flightBookingUrl = buildExactFlightBookingUrl(
+        liveFlightRes?.flightNumber || primaryFlight.flightNumber,
+        originAirport.code,
+        destAirport.code,
+        baseDepartureTime
+      );
       const flightSched = liveFlightRes ? {
         ...primaryFlight,
         flightNumber: liveFlightRes.flightNumber,
@@ -616,9 +628,13 @@ export async function generateDynamicSearchResults(
         arrivalTime: liveFlightRes.arrivalTime,
         durationMinutes: liveFlightRes.durationMinutes,
         aircraftModel: liveFlightRes.aircraftModel,
-        bookingUrl: liveFlightRes.bookingUrl,
-        makeMyTripUrl: liveFlightRes.makeMyTripUrl,
-      } : primaryFlight;
+        bookingUrl: flightBookingUrl,
+        makeMyTripUrl: flightBookingUrl,
+      } : {
+        ...primaryFlight,
+        bookingUrl: flightBookingUrl,
+        makeMyTripUrl: flightBookingUrl,
+      };
 
       const origTaxi = calculateLiveTaxiTariff(origin.lat, origin.lng, originAirport.lat, originAirport.lng, 'uberGo');
       const destTaxi = calculateLiveTaxiTariff(destAirport.lat, destAirport.lng, destination.lat, destination.lng, 'uberGo');
@@ -832,12 +848,36 @@ export async function generateDynamicSearchResults(
     }
 
     // ================= RAIL TRAVEL (ONLY IF REAL TRAIN OPERATES ON DATE) =================
-    if (liveTrainRes || availableTrains.length > 0) {
+    const operatingTrains = availableTrains.filter(t => isServiceOperatingOnDate(t.operatingDays || 'Daily', baseDepartureTime));
+    const hasOperatingTrain = operatingTrains.length > 0 || (liveTrainRes && liveTrainRes.runsOnDay && isServiceOperatingOnDate(liveTrainRes.operatingDay || 'Daily', baseDepartureTime));
+
+    if (hasOperatingTrain) {
       const trainHours = liveTrainRes?.durationHours || Math.round((directDistanceKm / 75) * 10) / 10;
       const origToStationPath = origToStationRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originStation.lat, originStation.lng, 8);
       const destStationToDestPath = destStationToDestRes?.coordinates || interpolateCurvedPoints(destStation.lat, destStation.lng, destination.lat, destination.lng, 8);
 
-      const primaryTrain = availableTrains[0] || resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm, baseDepartureTime);
+      const primaryTrain = operatingTrains[0] || (liveTrainRes ? {
+        trainNumber: liveTrainRes.trainNumber,
+        trainName: liveTrainRes.trainName,
+        trainType: liveTrainRes.trainType,
+        originCode: originStation.code,
+        originName: originStation.name,
+        destCode: destStation.code,
+        destName: destStation.name,
+        departureTime: liveTrainRes.departureTime,
+        arrivalTime: liveTrainRes.arrivalTime,
+        durationHours: liveTrainRes.durationHours,
+        classes: liveTrainRes.classes,
+        bookingUrl: liveTrainRes.bookingUrl,
+      } : resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm, baseDepartureTime));
+
+      const exactTrainBookingUrl = buildExactTrainBookingUrl(
+        liveTrainRes?.trainNumber || primaryTrain.trainNumber,
+        originStation.code,
+        destStation.code,
+        baseDepartureTime
+      );
+
       const trainSched = liveTrainRes ? {
         ...primaryTrain,
         trainNumber: liveTrainRes.trainNumber,
@@ -847,8 +887,13 @@ export async function generateDynamicSearchResults(
         arrivalTime: liveTrainRes.arrivalTime,
         durationHours: liveTrainRes.durationHours,
         classes: liveTrainRes.classes,
-        bookingUrl: liveTrainRes.bookingUrl,
-      } : primaryTrain;
+        bookingUrl: exactTrainBookingUrl,
+        confirmTktUrl: exactTrainBookingUrl,
+      } : {
+        ...primaryTrain,
+        bookingUrl: exactTrainBookingUrl,
+        confirmTktUrl: exactTrainBookingUrl,
+      };
 
       const railTrackInfo = getExactRailwayTrackAndStops(
         originStation.code,
@@ -1016,7 +1061,7 @@ export async function generateDynamicSearchResults(
         destHubName: multiHopBusData.stops[multiHopBusData.stops.length - 1].name,
         destHubCode: 'BUS_DEST',
         bookingService: 'MakeMyTrip Official Bus Ticketing & Counter',
-        bookingUrl: 'https://www.makemytrip.com/bus-tickets/',
+        bookingUrl: buildMakeMyTripBusUrl(origin.name, destination.name, baseDepartureTime),
         wheelchairAssistanceCode: 'Low-Floor City Bus Ramp & Priority Accessible Seating',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
@@ -1116,11 +1161,35 @@ export async function generateDynamicSearchResults(
     const results: RouteSearchResult[] = [];
 
     // ================= RAIL TRAVEL (ONLY IF OPERATING ON SELECTED DATE) =================
-    if (liveTrainRes || availableRegionalTrains.length > 0) {
+    const operatingRegionalTrains = availableRegionalTrains.filter(t => isServiceOperatingOnDate(t.operatingDays || 'Daily', baseDepartureTime));
+    const hasOperatingRegionalTrain = operatingRegionalTrains.length > 0 || (liveTrainRes && liveTrainRes.runsOnDay && isServiceOperatingOnDate(liveTrainRes.operatingDay || 'Daily', baseDepartureTime));
+
+    if (hasOperatingRegionalTrain) {
       const origToStationPath = origToStationRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, originStation.lat, originStation.lng, 8);
       const destStationToDestPath = destStationToDestRes?.coordinates || interpolateCurvedPoints(destStation.lat, destStation.lng, destination.lat, destination.lng, 8);
 
-      const primaryTrain = availableRegionalTrains[0] || resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm, baseDepartureTime);
+      const primaryTrain = operatingRegionalTrains[0] || (liveTrainRes ? {
+        trainNumber: liveTrainRes.trainNumber,
+        trainName: liveTrainRes.trainName,
+        trainType: liveTrainRes.trainType,
+        originCode: originStation.code,
+        originName: originStation.name,
+        destCode: destStation.code,
+        destName: destStation.name,
+        departureTime: liveTrainRes.departureTime,
+        arrivalTime: liveTrainRes.arrivalTime,
+        durationHours: liveTrainRes.durationHours,
+        classes: liveTrainRes.classes,
+        bookingUrl: liveTrainRes.bookingUrl,
+      } : resolveExactTrainSchedule(originStation.code, destStation.code, originStation.city, destStation.city, directDistanceKm, baseDepartureTime));
+
+      const exactRegTrainBookingUrl = buildExactTrainBookingUrl(
+        liveTrainRes?.trainNumber || primaryTrain.trainNumber,
+        originStation.code,
+        destStation.code,
+        baseDepartureTime
+      );
+
       const trainSched = liveTrainRes ? {
         ...primaryTrain,
         trainNumber: liveTrainRes.trainNumber,
@@ -1130,8 +1199,13 @@ export async function generateDynamicSearchResults(
         arrivalTime: liveTrainRes.arrivalTime,
         durationHours: liveTrainRes.durationHours,
         classes: liveTrainRes.classes,
-        bookingUrl: liveTrainRes.bookingUrl,
-      } : primaryTrain;
+        bookingUrl: exactRegTrainBookingUrl,
+        confirmTktUrl: exactRegTrainBookingUrl,
+      } : {
+        ...primaryTrain,
+        bookingUrl: exactRegTrainBookingUrl,
+        confirmTktUrl: exactRegTrainBookingUrl,
+      };
 
       const regRailTrackInfo = getExactRailwayTrackAndStops(
         originStation.code,
@@ -1293,7 +1367,7 @@ export async function generateDynamicSearchResults(
         destHubName: multiHopBusData.stops[multiHopBusData.stops.length - 1].name,
         destHubCode: 'BUS_DEST',
         bookingService: 'MakeMyTrip Official Bus Ticketing & Counter',
-        bookingUrl: 'https://www.makemytrip.com/bus-tickets/',
+        bookingUrl: buildMakeMyTripBusUrl(origin.name, destination.name, baseDepartureTime),
         wheelchairAssistanceCode: 'Low-Floor City Bus Ramp & Priority Accessible Seating',
       },
       originCoords: { lat: origin.lat, lng: origin.lng },
@@ -1619,11 +1693,17 @@ export async function generateDynamicSearchResults(
   // =========================================================================
   // TIER 1A: SHORT DISTANCE & INTRA-CAMPUS COMMUTE (< 2.2KM OR UNIVERSITY / HOSTEL SITES)
   // =========================================================================
-  const isCampusTrip = directDistanceKm <= 2.2 || (
-    directDistanceKm <= 5.0 && (
-      (origin.name.toLowerCase().includes('campus') || origin.name.toLowerCase().includes('kp') || origin.name.toLowerCase().includes('qc') || origin.name.toLowerCase().includes('kiit') || origin.name.toLowerCase().includes('hostel') || origin.name.toLowerCase().includes('palace') || origin.name.toLowerCase().includes('castle')) &&
-      (destination.name.toLowerCase().includes('campus') || destination.name.toLowerCase().includes('kp') || destination.name.toLowerCase().includes('qc') || destination.name.toLowerCase().includes('kiit') || destination.name.toLowerCase().includes('hostel') || destination.name.toLowerCase().includes('palace') || destination.name.toLowerCase().includes('castle'))
-    )
+  // Only treat as campus commute if physically near the KIIT campus area or explicitly between named campus facilities
+  const isNearKiitArea = (
+    Math.abs(origin.lat - 20.353) < 0.05 && Math.abs(origin.lng - 85.816) < 0.05 &&
+    Math.abs(destination.lat - 20.353) < 0.05 && Math.abs(destination.lng - 85.816) < 0.05
+  );
+  const isCampusTrip = (
+    (isNearKiitArea && directDistanceKm <= 2.5) ||
+    (directDistanceKm <= 5.0 && (
+      (origin.name.toLowerCase().includes('campus') || origin.name.toLowerCase().includes('kp') || origin.name.toLowerCase().includes('qc') || origin.name.toLowerCase().includes('kiit') || origin.name.toLowerCase().includes('hostel')) &&
+      (destination.name.toLowerCase().includes('campus') || destination.name.toLowerCase().includes('kp') || destination.name.toLowerCase().includes('qc') || destination.name.toLowerCase().includes('kiit') || destination.name.toLowerCase().includes('hostel'))
+    ))
   );
 
   if (isCampusTrip) {
@@ -2205,7 +2285,7 @@ export async function generateDynamicSearchResults(
         totalPrice: localAutoTariff.fareInr,
         currency: 'INR',
         itemizedLegs: [
-          { mode: 'taxi', title: `Campus Auto (${nearestCampusStand.name.split('/')[0]})`, from: origin.name, to: destination.name, fare: localAutoTariff.fareInr, bookingUrl: localAutoTariff.bookingUrl, bookingLabel: 'Book Auto' },
+          { mode: 'auto', title: `Campus Auto (${nearestCampusStand.name.split('/')[0]})`, from: origin.name, to: destination.name, fare: localAutoTariff.fareInr, bookingUrl: localAutoTariff.bookingUrl, bookingLabel: 'Book Auto' },
         ],
       },
       recommendation: {
@@ -2284,7 +2364,7 @@ export async function generateDynamicSearchResults(
         totalPrice: localBikeTariff.fareInr,
         currency: 'INR',
         itemizedLegs: [
-          { mode: 'taxi', title: 'Instant Bike Ride (Rapido / Uber)', from: origin.name, to: destination.name, fare: localBikeTariff.fareInr, bookingUrl: localBikeTariff.bookingUrl, bookingLabel: 'Book Ride' },
+          { mode: 'bike', title: 'Solo Bike Taxi (Rapido / Uber Moto)', from: origin.name, to: destination.name, fare: localBikeTariff.fareInr, bookingUrl: localBikeTariff.bookingUrl, bookingLabel: 'Book Bike' },
         ],
       },
       recommendation: {
@@ -2802,15 +2882,15 @@ export async function generateDynamicSearchResults(
   const directDrivingDistM = directDrivingRes?.distanceM || directDistanceM;
   const directDrivingDurationMin = directDrivingRes?.durationMin || Math.max(3, Math.ceil(directDrivingDistM / 500));
 
-  // Dynamic Auto, Shared, and Bike Fares (Real Bhubaneswar RTA Meter Standards)
+  // Dynamic Auto, Shared, and Bike Fares (Standard Regulated Meter Standards)
   const autoFareExact = Math.max(30, 30 + Math.round(Math.max(0, directDistanceKm - 1.5) * 12 / 5) * 5);
   const carpoolSplitFare = Math.max(10, Math.min(25, Math.round(autoFareExact * 0.35 / 5) * 5));
   const sharedAutoMin = directDistanceKm <= 3 ? 10 : directDistanceKm <= 7 ? 15 : 20;
   const sharedAutoMax = sharedAutoMin + 5;
   const bikeTaxiFare = Math.max(20, 20 + Math.round(Math.max(0, directDistanceKm - 1.5) * 6 / 5) * 5);
 
-  // Compute closest shared taxi & auto stands to Origin
-  const nearbyStandsList = DEMO_TRANSPORT_STANDS.map((s) => ({
+  // Check if any pre-configured demo stands are physically within reasonable walking distance (<= 2.5 km) of origin
+  const localConfiguredStands = DEMO_TRANSPORT_STANDS.map((s) => ({
     id: s.id,
     name: s.name,
     type: s.type,
@@ -2822,7 +2902,52 @@ export async function generateDynamicSearchResults(
     typicalFareMin: s.typicalFareMin,
     typicalFareMax: s.typicalFareMax,
     currency: s.currency,
-  })).sort((a, b) => a.distanceM - b.distanceM).slice(0, 3);
+  })).filter((s) => s.distanceM <= 2500).sort((a, b) => a.distanceM - b.distanceM);
+
+  const originShortName = origin.name.split(',')[0].trim() || 'Neighborhood';
+
+  // If outside Bhubaneswar or far from pre-configured demo stands (e.g. Kolkata, Delhi, Mumbai, etc.):
+  // Synthesize realistic local corridor stands right near the user's origin (75m to 140m walk)
+  const syntheticLocalStands = [
+    (() => {
+      const offsetRatio = Math.min(0.04, 75 / Math.max(80, directDistanceM));
+      const lat = origin.lat + (destination.lat - origin.lat) * offsetRatio;
+      const lng = origin.lng + (destination.lng - origin.lng) * offsetRatio;
+      return {
+        id: `stand_local_${Math.round(origin.lat * 10000)}_${Math.round(origin.lng * 10000)}_1`,
+        name: `${originShortName} Auto Stand`,
+        type: 'auto_stand' as const,
+        latitude: lat,
+        longitude: lng,
+        address: `${originShortName} Junction, Near Origin`,
+        operatingHours: '24/7 Stand Service',
+        distanceM: Math.round(haversineDistanceClient(origin.lat, origin.lng, lat, lng)) || 75,
+        typicalFareMin: sharedAutoMin,
+        typicalFareMax: sharedAutoMax,
+        currency: 'INR',
+      };
+    })(),
+    (() => {
+      const offsetRatio = Math.min(0.08, 140 / Math.max(150, directDistanceM));
+      const lat = origin.lat + (destination.lat - origin.lat) * offsetRatio + 0.0003;
+      const lng = origin.lng + (destination.lng - origin.lng) * offsetRatio - 0.0002;
+      return {
+        id: `stand_local_${Math.round(origin.lat * 10000)}_${Math.round(origin.lng * 10000)}_2`,
+        name: `${originShortName} Corner Taxi Stand`,
+        type: 'taxi_stand' as const,
+        latitude: lat,
+        longitude: lng,
+        address: `${originShortName} Crossing`,
+        operatingHours: '05:00 - 23:30 Daily',
+        distanceM: Math.round(haversineDistanceClient(origin.lat, origin.lng, lat, lng)) || 140,
+        typicalFareMin: sharedAutoMin,
+        typicalFareMax: sharedAutoMax,
+        currency: 'INR',
+      };
+    })(),
+  ];
+
+  const nearbyStandsList = localConfiguredStands.length > 0 ? localConfiguredStands : syntheticLocalStands;
 
   // Option: Local Carpool & Auto Split Match (For General City Trips)
   const carpoolOption: RouteSearchResult = {
@@ -2866,6 +2991,15 @@ export async function generateDynamicSearchResults(
       notes: `Split cab/auto ride with nearby commuter — save ₹${autoFareExact - carpoolSplitFare}`,
     },
     nearbyStands: nearbyStandsList,
+    priceBreakdown: {
+      mainTicketFare: carpoolSplitFare,
+      carpoolSplitSavings: autoFareExact - carpoolSplitFare,
+      totalPrice: carpoolSplitFare,
+      currency: 'INR',
+      itemizedLegs: [
+        { mode: 'carpool', title: `Corridor Carpool (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: carpoolSplitFare, bookingLabel: 'Match Co-Riders' },
+      ],
+    },
     recommendation: {
       recommended: busResults.length === 0,
       rank: busResults.length === 0 ? 1 : 2,
@@ -2933,11 +3067,19 @@ export async function generateDynamicSearchResults(
       exact: autoFareExact,
       currency: 'INR',
       confidence: 0.95,
-      source: 'Bhubaneswar RTA Auto Meter Tariff (Base ₹30 + ₹12/km)',
+      source: 'Standard Regulated Auto Meter Tariff (Base ₹30 + ₹12/km)',
       status: 'estimated',
       notes: `Official government meter tariff for ${directDistanceKm.toFixed(1)} km (Base ₹30 for first 1.5 km + ₹12/km)`,
     },
     nearbyStands: nearbyStandsList,
+    priceBreakdown: {
+      mainTicketFare: autoFareExact,
+      totalPrice: autoFareExact,
+      currency: 'INR',
+      itemizedLegs: [
+        { mode: 'auto', title: `Direct Auto Rickshaw (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: autoFareExact, bookingLabel: 'Book Auto' },
+      ],
+    },
     recommendation: {
       recommended: false,
       rank: 3,
@@ -2967,12 +3109,7 @@ export async function generateDynamicSearchResults(
   };
 
   // Option 4: Shared Taxi / Stand Auto Corridor
-  const nearestStand = nearbyStandsList[0] || {
-    id: 'stand_patia',
-    name: 'Patia Transit Chowk Stand',
-    latitude: 20.3450,
-    longitude: 85.8180,
-  };
+  const nearestStand = nearbyStandsList[0];
   const [walkToStandRes, standToDestRes] = await Promise.all([
     fetchRoadGeometryLive(origin.lat, origin.lng, nearestStand.latitude, nearestStand.longitude, 'walking'),
     fetchRoadGeometryLive(nearestStand.latitude, nearestStand.longitude, destination.lat, destination.lng, 'driving'),
@@ -2980,11 +3117,23 @@ export async function generateDynamicSearchResults(
   const walkToStand = walkToStandRes?.coordinates || interpolateCurvedPoints(origin.lat, origin.lng, nearestStand.latitude, nearestStand.longitude, 6);
   const standToDest = standToDestRes?.coordinates || interpolateCurvedPoints(nearestStand.latitude, nearestStand.longitude, destination.lat, destination.lng, 14);
   const fullSharedRoute = [...walkToStand, ...standToDest];
-  const sharedWalkM = walkToStandRes?.distanceM || 80;
-  const sharedDuration = (walkToStandRes?.durationMin || 2) + (standToDestRes?.durationMin || directDrivingDurationMin);
+  const sharedWalkM = walkToStandRes?.distanceM || nearestStand.distanceM || 75;
+  const sharedDuration = (walkToStandRes?.durationMin || 1) + (standToDestRes?.durationMin || directDrivingDurationMin);
 
   const option4: RouteSearchResult = {
-    route: DEMO_ROUTES[2], // S1 - Sharing Taxi
+    route: {
+      id: 'S1_LOCAL_SHARED',
+      name: 'Sharing Taxi & Auto Stand',
+      shortName: 'Shared Taxi',
+      vehicleType: 'shared-transport',
+      color: '#7c3aed',
+      description: `Frequent shared auto & taxi shuttle from ${nearestStand.name}`,
+      active: true,
+      stops: [
+        { stopId: nearestStand.id, order: 0, arrivalOffset: 0, departureOffset: 1 },
+        { stopId: 'dest_drop', order: 1, arrivalOffset: sharedDuration, departureOffset: sharedDuration },
+      ],
+    },
     eta: sharedDuration,
     duration: sharedDuration,
     walkingDistance: sharedWalkM,
@@ -3016,6 +3165,15 @@ export async function generateDynamicSearchResults(
       notes: `Regulated ₹${sharedAutoMin}-₹${sharedAutoMax} shared seat rate for ${directDistanceKm.toFixed(1)} km`,
     },
     nearbyStands: nearbyStandsList,
+    priceBreakdown: {
+      mainTicketFare: sharedAutoMin,
+      totalPrice: sharedAutoMin,
+      currency: 'INR',
+      itemizedLegs: [
+        { mode: 'walk', title: `Walk to ${nearestStand.name}`, from: origin.name, to: nearestStand.name, fare: 0 },
+        { mode: 'taxi', title: `Shared Auto / Taxi (${nearestStand.name} ➔ ${destination.name.split(',')[0]})`, from: nearestStand.name, to: destination.name, fare: sharedAutoMin, bookingLabel: 'Stand Ride' },
+      ],
+    },
     recommendation: {
       recommended: false,
       rank: 4,
@@ -3032,15 +3190,26 @@ export async function generateDynamicSearchResults(
       alightToDestWalk: [],
       fullRoute: fullSharedRoute,
     },
-    intermediateStops: [],
+    intermediateStops: [
+      {
+        id: nearestStand.id,
+        name: nearestStand.name,
+        latitude: nearestStand.latitude,
+        longitude: nearestStand.longitude,
+        sequence: 1,
+        hasRamp: true,
+        stopRole: 'board',
+      },
+    ],
     turnByTurn: [
       `Walk ${sharedWalkM}m to ${nearestStand.name}`,
-      `Board sharing auto/taxi heading along the corridor`,
+      `Board sharing auto/taxi heading toward ${destination.name}`,
+      `Direct transit for ${directDistanceKm.toFixed(1)} km (~${standToDestRes?.durationMin || directDrivingDurationMin} mins)`,
       `Arrive at destination (${destination.name})`,
     ],
     segments: [
       { type: 'walk', from: origin.name, to: nearestStand.name, distance: sharedWalkM, duration: Math.max(1, Math.round(sharedWalkM / 65)), accessible: true, stairs: 0 },
-      { type: 'ride', from: nearestStand.name, to: destination.name, duration: standToDestRes?.durationMin || 10, accessible: true, stairs: 0, routeId: DEMO_ROUTES[2].id, routeName: DEMO_ROUTES[2].name, crowding: 'LOW' },
+      { type: 'ride', from: nearestStand.name, to: destination.name, duration: standToDestRes?.durationMin || directDrivingDurationMin, accessible: true, stairs: 0, routeId: 'S1_LOCAL_SHARED', routeName: 'Sharing Taxi & Auto Stand', vehicleType: 'shared-transport', crowding: 'LOW' },
     ],
     condition: DEMO_CONDITIONS.S1,
   };
@@ -3088,6 +3257,14 @@ export async function generateDynamicSearchResults(
       notes: `Fastest travel time for ${directDistanceKm.toFixed(1)} km`,
     },
     nearbyStands: nearbyStandsList,
+    priceBreakdown: {
+      mainTicketFare: bikeTaxiFare,
+      totalPrice: bikeTaxiFare,
+      currency: 'INR',
+      itemizedLegs: [
+        { mode: 'bike', title: `Solo Bike Taxi (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: bikeTaxiFare, bookingLabel: 'Book Bike' },
+      ],
+    },
     recommendation: {
       recommended: false,
       rank: 5,

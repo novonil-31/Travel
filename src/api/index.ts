@@ -9,7 +9,7 @@ import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '.
 import type { RouteSearchResult } from '../types';
 
 const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
   (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
 
 interface RequestOptions {
@@ -403,8 +403,27 @@ export const journeysApi = {
     const originName = finalOriginName || (await reverseGeocodeLive(finalOriginLat, finalOriginLng)) || 'Origin';
     const destName = finalDestName || (await reverseGeocodeLive(finalDestLat, finalDestLng)) || 'Destination';
 
-    // Compute nearby stands for origin
-    const nearbyStands = DEMO_TRANSPORT_STANDS.map((s) => ({
+    // Compute nearby stands for origin (filter for real local stands within 2.5km, or synthesize local area stand)
+    const validConfiguredStands = DEMO_TRANSPORT_STANDS.filter(
+      (s) => haversineDistanceClient(finalOriginLat, finalOriginLng, s.latitude, s.longitude) <= 2500
+    );
+    const originShort = (originName || 'Local Area').split(',')[0].trim();
+    const standsPool = validConfiguredStands.length > 0 ? validConfiguredStands : [
+      {
+        id: `stand_local_${Math.round(finalOriginLat * 1000)}`,
+        name: `${originShort} Auto Stand`,
+        type: 'auto_stand' as const,
+        latitude: finalOriginLat + 0.0006,
+        longitude: finalOriginLng + 0.0005,
+        address: `Near ${originShort}`,
+        operatingHours: '24/7 Stand Service',
+        typicalFareMin: 10,
+        typicalFareMax: 20,
+        currency: 'INR',
+      },
+    ];
+
+    const nearbyStands = standsPool.map((s) => ({
       id: s.id,
       name: s.name,
       type: s.type,

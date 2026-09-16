@@ -91,7 +91,7 @@ export function PassengerLayout() {
               </div>
               <div className="text-left">
                 <span className="block text-white leading-tight font-black">{state.currentUser.name}</span>
-                <span className="block text-[10px] text-emerald-400 font-medium">₹{commuterPass.balanceRupees.toFixed(0)} Pass Credit</span>
+                <span className="block text-[10px] text-neutral-400 font-mono font-medium">{commuterPass.passId}</span>
               </div>
             </Link>
           ) : (
@@ -108,24 +108,25 @@ export function PassengerLayout() {
       </header>
 
       {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between bg-black text-white px-3 h-14 sticky top-0 z-[1100] shadow-md">
-        <Link to="/" className="flex items-center gap-2 min-w-0">
+      <header className="md:hidden flex items-center justify-between gap-2 bg-black text-white px-3 h-14 sticky top-0 z-[1100] shadow-sm">
+        {/* Brand: Always full and never shrunk or overlapped */}
+        <Link to="/app" className="flex items-center gap-1.5 shrink-0 select-none" aria-label="Maarg Darshan Home">
           <img
             src="/logo.png"
             alt="Maarg Darshan Logo"
-            className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain shrink-0"
+            className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain shrink-0 shadow-xs"
           />
-          <span className="font-black text-white text-base tracking-tight truncate">मार्ग Darshan</span>
+          <span className="font-black text-white text-sm sm:text-base tracking-tight whitespace-nowrap">मार्ग Darshan</span>
         </Link>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <LocationRegionBanner compact dark className="text-[11px] py-1 px-2" />
-          <Link to="/notifications" className="relative p-1.5 text-neutral-300" aria-label="Notifications">
+        <div className="flex items-center gap-1 shrink-0">
+          <LocationRegionBanner compact dark className="py-1 px-2" />
+          <Link to="/notifications" className="relative p-1.5 text-neutral-300 hover:text-white shrink-0" aria-label="Notifications">
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full" />
             )}
           </Link>
-          <button onClick={() => setMobileMenuOpen(true)} className="p-1.5 text-neutral-300" aria-label="Open menu">
+          <button onClick={() => setMobileMenuOpen(true)} className="p-1.5 text-neutral-300 hover:text-white shrink-0 cursor-pointer" aria-label="Open menu">
             <Menu className="w-5 h-5" />
           </button>
         </div>
@@ -134,8 +135,8 @@ export function PassengerLayout() {
       {/* Mobile Menu Drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
-          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-6 flex flex-col justify-between shadow-2xl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobileMenuOpen(false)} />
+          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white p-5 flex flex-col justify-between shadow-2xl">
             <div>
               <div className="flex justify-between items-center mb-5 pb-3 border-b border-neutral-200">
                 <div className="flex items-center gap-2">
@@ -188,8 +189,8 @@ export function PassengerLayout() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px]">
-                    <span className="text-neutral-400">Pass Balance:</span>
-                    <span className="text-emerald-400 font-bold">₹{commuterPass.balanceRupees.toFixed(2)}</span>
+                    <span className="text-neutral-400">Pass ID:</span>
+                    <span className="text-white font-mono font-bold">{commuterPass.passId}</span>
                   </div>
                 </div>
               ) : (
@@ -209,26 +210,30 @@ export function PassengerLayout() {
       )}
 
       {/* Main Outlet */}
-      <main className="pb-20 md:pb-8">
+      <main className="pb-20 md:pb-8 flex-1">
         <Outlet />
       </main>
 
-      {/* Mobile Floating Bottom Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 py-2 px-4 flex items-center justify-around z-30 shadow-lg" aria-label="Mobile bottom navigation">
+      {/* Mobile Floating Bottom Bar (Uber/Citymapper style, safe area, high touch-target) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-neutral-200 h-16 px-2 flex items-center justify-around z-40 shadow-lg pb-[env(safe-area-inset-bottom)]" aria-label="Mobile bottom navigation">
         {navItems.map(item => {
           const active = isActive(item.path);
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all relative ${
-                active ? 'text-black font-bold' : 'text-neutral-500'
+              className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+                active ? 'text-black font-extrabold' : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              <item.icon className="w-5 h-5" />
-              <span className="text-[10px] mt-0.5">{item.label}</span>
+              <div className={`p-1 rounded-xl transition-colors ${active ? 'bg-neutral-100 text-black' : ''}`}>
+                <item.icon className="w-5 h-5" />
+              </div>
+              <span className={`text-[10px] mt-0.5 tracking-tight ${active ? 'font-black' : 'font-medium'}`}>
+                {item.label}
+              </span>
               {item.badge ? (
-                <span className="absolute top-0 right-2 w-2 h-2 bg-red-600 rounded-full" />
+                <span className="absolute top-1 right-3 w-2 h-2 bg-red-600 rounded-full" />
               ) : null}
             </Link>
           );

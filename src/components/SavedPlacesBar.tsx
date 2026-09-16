@@ -57,7 +57,7 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
                 <Check className="w-3.5 h-3.5" />
               </span>
               <span className="font-bold text-neutral-900">
-                Commuter Pass: <span className="text-emerald-700 font-extrabold">₹{commuterPass.balanceRupees.toFixed(2)} Balance</span>
+                Transit Smart Pass: <span className="text-emerald-700 font-extrabold">Active</span>
               </span>
             </div>
             <span className="text-[11px] font-bold text-neutral-500">
