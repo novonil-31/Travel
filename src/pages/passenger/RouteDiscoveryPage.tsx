@@ -38,7 +38,7 @@ import { LiveTransitRadarOverlay } from '../../components/map/LiveTransitRadarOv
 import { LiveCabPriceComparator } from '../../components/LiveCabPriceComparator';
 import { sanitizeAndStitchJourneyGeometry, buildExactTrainBookingUrl, buildExactFlightBookingUrl, buildExactBusBookingUrl } from '../../utils/onlineRouting';
 import { getRouteTransportInfo, type RouteTransportInfo, type TransportType } from '../../utils/transportCategory';
-import { evaluateBestAndCheapestOptions, calculateDynamicCrowding } from '../../utils/dynamicCalculationEngine';
+import { evaluateBestAndCheapestOptions, calculateDynamicCrowding, calculateDynamicTariff } from '../../utils/dynamicCalculationEngine';
 
 // Modern High-Clarity Circular Journey Endpoint Pin (Prevents Overlap with nearby Station Badges)
 const createEndpointPin = (color: string, label: string) =>
@@ -3235,6 +3235,61 @@ export default function RouteDiscoveryPage() {
                 <span>100% Step-Free & Wheelchair Certified Accessible Corridor</span>
               </div>
             )}
+
+            {/* Dynamic Fare Calculation Formula Breakdown */}
+            {(() => {
+              const vType = (infoModalRoute.route?.vehicleType || 'bus').toLowerCase();
+              const modeKey = vType.includes('train') ? 'train' :
+                vType.includes('flight') ? 'flight' :
+                vType.includes('metro') ? 'metro' :
+                vType.includes('auto') ? 'auto' :
+                vType.includes('bike') ? 'bike' :
+                vType.includes('cab') || vType.includes('taxi') ? 'cab' :
+                vType.includes('walk') ? 'walk' : 'bus';
+              const distKm = (infoModalRoute.originCoords && infoModalRoute.destinationCoords)
+                ? calculateDistanceKm(
+                    infoModalRoute.originCoords.lat,
+                    infoModalRoute.originCoords.lng,
+                    infoModalRoute.destinationCoords.lat,
+                    infoModalRoute.destinationCoords.lng
+                  )
+                : (infoModalRoute.walkingDistance ? infoModalRoute.walkingDistance / 1000 : 5);
+              const breakdown = calculateDynamicTariff(modeKey as any, distKm, infoModalRoute.duration || 15);
+
+              return (
+                <div className="bg-neutral-50 rounded-2xl p-3 border border-neutral-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                    <span>Fare Calculation Formula</span>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Dynamic Live Rate
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-white p-2 rounded-xl border border-neutral-100">
+                      <div className="text-neutral-500 text-[10px]">Base Surcharge</div>
+                      <div className="font-bold text-neutral-900">₹{breakdown.baseFare}</div>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-neutral-100">
+                      <div className="text-neutral-500 text-[10px]">Distance Rate</div>
+                      <div className="font-bold text-neutral-900">
+                        {breakdown.ratePerKm ? `₹${breakdown.ratePerKm}/km` : 'Tier Slab'}
+                      </div>
+                    </div>
+                  </div>
+                  {breakdown.slabDescription && (
+                    <div className="text-[11px] text-neutral-600 font-medium bg-white/80 p-2 rounded-xl border border-neutral-100">
+                      {breakdown.slabDescription}
+                    </div>
+                  )}
+                  {breakdown.surgeMultiplier > 1 && (
+                    <div className="flex items-center justify-between text-[11px] text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 font-bold">
+                      <span>Peak Commute Surcharge:</span>
+                      <span>{breakdown.surgeMultiplier}x Surge Factor</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Step-by-Step Direction Legs */}
             <div className="space-y-2">

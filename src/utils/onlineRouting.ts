@@ -217,17 +217,28 @@ export const REGIONAL_LANDMARKS: Array<{
   ];
 
 /**
- * Simple in-memory search cache for 0ms repeat lookups
+ * High-speed in-memory caches with bounded entry protection (prevents memory leaks)
  */
 const searchCache = new Map<string, GeocodedPlace[]>();
+const reverseGeocodeCache = new Map<string, string>();
+
+function setBoundedCache<K, V>(map: Map<K, V>, key: K, value: V, maxEntries = 400): void {
+  if (map.size >= maxEntries) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey);
+  }
+  map.set(key, value);
+}
 
 export function clearSearchPlacesCache(): void {
   searchCache.clear();
+  reverseGeocodeCache.clear();
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('access_user_location_changed', () => {
     searchCache.clear();
+    reverseGeocodeCache.clear();
   });
 }
 
@@ -1082,22 +1093,32 @@ export async function searchPlacesLive(
 }
 
 /**
- * Universal Reverse Geocoder
+ * Universal Reverse Geocoder with 0ms Instant Cache
  */
 export async function reverseGeocodeLive(lat: number, lng: number): Promise<string> {
+  const cacheKey = `${lat.toFixed(4)}_${lng.toFixed(4)}`;
+  if (reverseGeocodeCache.has(cacheKey)) {
+    return reverseGeocodeCache.get(cacheKey)!;
+  }
+
   // Check if close to known airport or railway
   for (const ap of Object.values(MAJOR_AIRPORTS)) {
     if (haversineDistanceClient(lat, lng, ap.lat, ap.lng) <= 1500) {
-      return `${ap.name} (${ap.code})`;
+      const res = `${ap.name} (${ap.code})`;
+      setBoundedCache(reverseGeocodeCache, cacheKey, res);
+      return res;
     }
   }
   for (const st of Object.values(MAJOR_RAILWAY_STATIONS)) {
     if (haversineDistanceClient(lat, lng, st.lat, st.lng) <= 800) {
-      return `${st.name} (${st.code})`;
+      const res = `${st.name} (${st.code})`;
+      setBoundedCache(reverseGeocodeCache, cacheKey, res);
+      return res;
     }
   }
   for (const s of OFFICIAL_STOPS) {
     if (haversineDistanceClient(lat, lng, s.lat, s.lng) <= 60) {
+      setBoundedCache(reverseGeocodeCache, cacheKey, s.name);
       return s.name;
     }
   }
@@ -1117,19 +1138,33 @@ export async function reverseGeocodeLive(lat: number, lng: number): Promise<stri
       if (data.address) {
         const primary = data.name || data.address.amenity || data.address.building || data.address.road;
         const area = data.address.suburb || data.address.neighbourhood || data.address.city || data.address.town || data.address.county;
-        if (primary && area) return `${primary}, ${area}`;
-        if (primary) return primary;
-        if (area) return area;
+        if (primary && area) {
+          const formatted = `${primary}, ${area}`;
+          setBoundedCache(reverseGeocodeCache, cacheKey, formatted);
+          return formatted;
+        }
+        if (primary) {
+          setBoundedCache(reverseGeocodeCache, cacheKey, primary);
+          return primary;
+        }
+        if (area) {
+          setBoundedCache(reverseGeocodeCache, cacheKey, area);
+          return area;
+        }
       }
       if (data.display_name) {
-        return data.display_name.split(',').slice(0, 2).join(', ').trim();
+        const formatted = data.display_name.split(',').slice(0, 2).join(', ').trim();
+        setBoundedCache(reverseGeocodeCache, cacheKey, formatted);
+        return formatted;
       }
     }
   } catch (err) {
     console.warn('Reverse geocode fallback:', err);
   }
 
-  return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  const fallback = `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  setBoundedCache(reverseGeocodeCache, cacheKey, fallback);
+  return fallback;
 }
 
 /**

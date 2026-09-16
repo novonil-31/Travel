@@ -37,6 +37,8 @@ export interface DynamicFareBreakdown {
   confidence: number;
   isPeakHour: boolean;
   notes: string;
+  slabDescription?: string;
+  ratePerKm?: number;
 }
 
 export interface DynamicCrowdResult {
@@ -184,6 +186,8 @@ export function calculateDynamicTariff(
   let distanceFare = 0;
   let timeFare = 0;
   let notes = '';
+  let slabDescription = '';
+  let ratePerKm = 0;
 
   switch (mode) {
     case 'walk':
@@ -199,88 +203,107 @@ export function calculateDynamicTariff(
         confidence: 1.0,
         isPeakHour: false,
         notes: 'Free pedestrian walking path',
+        slabDescription: 'Zero tariff walking path',
+        ratePerKm: 0,
       };
 
     case 'bus':
       // Authoritative State Transport & Urban Bus Tariff Slabs (CRUT/DTC/BMTC/BEST)
       // Base: ₹10 for first 4 km, then tiered slabs
+      ratePerKm = isAc ? 1.8 : 1.25;
       if (safeDistance <= 4) {
         baseFare = isAc ? 15 : 10;
         distanceFare = 0;
+        slabDescription = isAc ? 'AC Bus: ₹15 flat for first 4 km' : 'Standard Bus: ₹10 flat for first 4 km';
       } else if (safeDistance <= 8) {
         baseFare = isAc ? 15 : 10;
         distanceFare = isAc ? 10 : 5;
+        slabDescription = isAc ? 'AC Bus: Stage 2 (4–8 km) ₹25' : 'Standard Bus: Stage 2 (4–8 km) ₹15';
       } else if (safeDistance <= 14) {
         baseFare = isAc ? 20 : 15;
         distanceFare = isAc ? 15 : 10;
+        slabDescription = isAc ? 'AC Bus: Stage 3 (8–14 km) ₹35' : 'Standard Bus: Stage 3 (8–14 km) ₹25';
       } else if (safeDistance <= 22) {
         baseFare = isAc ? 25 : 20;
         distanceFare = isAc ? 20 : 15;
+        slabDescription = isAc ? 'AC Bus: Stage 4 (14–22 km) ₹45' : 'Standard Bus: Stage 4 (14–22 km) ₹35';
       } else {
         baseFare = isAc ? 30 : 25;
-        distanceFare = Math.round((safeDistance - 22) * (isAc ? 1.8 : 1.25));
+        distanceFare = Math.round((safeDistance - 22) * ratePerKm);
+        slabDescription = isAc ? `AC Bus: ₹30 base + ₹1.80/km beyond 22 km` : `Standard Bus: ₹25 base + ₹1.25/km beyond 22 km`;
       }
       notes = isAc ? 'Air-conditioned city bus tariff slab' : 'Non-AC standard city transit fare';
       break;
 
     case 'metro':
       // Standard Metrorail distance tariff slabs (DMRC / BMRCL / MahaMetro)
-      if (safeDistance <= 2) baseFare = 10;
-      else if (safeDistance <= 5) baseFare = 20;
-      else if (safeDistance <= 12) baseFare = 30;
-      else if (safeDistance <= 21) baseFare = 40;
-      else if (safeDistance <= 32) baseFare = 50;
-      else baseFare = 60;
+      ratePerKm = 2.0;
+      if (safeDistance <= 2) { baseFare = 10; slabDescription = 'Metro Slab 1: 0–2 km (₹10)'; }
+      else if (safeDistance <= 5) { baseFare = 20; slabDescription = 'Metro Slab 2: 2–5 km (₹20)'; }
+      else if (safeDistance <= 12) { baseFare = 30; slabDescription = 'Metro Slab 3: 5–12 km (₹30)'; }
+      else if (safeDistance <= 21) { baseFare = 40; slabDescription = 'Metro Slab 4: 12–21 km (₹40)'; }
+      else if (safeDistance <= 32) { baseFare = 50; slabDescription = 'Metro Slab 5: 21–32 km (₹50)'; }
+      else { baseFare = 60; slabDescription = 'Metro Maximum Tier: >32 km (₹60)'; }
       distanceFare = 0;
       notes = 'Regulated rapid transit token/card tariff';
       break;
 
     case 'auto':
       // Regulated 3-Wheeler Auto Rickshaw Meter (First 1.5 km ₹30, then ₹15/km)
+      ratePerKm = 15;
       baseFare = 30;
-      distanceFare = safeDistance > 1.5 ? Math.round((safeDistance - 1.5) * 15) : 0;
+      distanceFare = safeDistance > 1.5 ? Math.round((safeDistance - 1.5) * ratePerKm) : 0;
       timeFare = Math.round(safeDuration * 0.5); // waiting time component
+      slabDescription = `Meter: ₹30 first 1.5 km + ₹15/km + ₹0.50/min wait`;
       notes = 'RTO regulated 3-seater auto meter fare';
       break;
 
     case 'shared':
       // Shared Auto / High-Frequency Corridor Shuttle
-      if (safeDistance <= 4) baseFare = 10;
-      else if (safeDistance <= 10) baseFare = 15;
-      else if (safeDistance <= 18) baseFare = 20;
-      else baseFare = 25;
+      ratePerKm = 1.4;
+      if (safeDistance <= 4) { baseFare = 10; slabDescription = 'Corridor Shared: 0–4 km (₹10)'; }
+      else if (safeDistance <= 10) { baseFare = 15; slabDescription = 'Corridor Shared: 4–10 km (₹15)'; }
+      else if (safeDistance <= 18) { baseFare = 20; slabDescription = 'Corridor Shared: 10–18 km (₹20)'; }
+      else { baseFare = 25; slabDescription = 'Corridor Shared: >18 km (₹25)'; }
       distanceFare = 0;
       notes = 'Fixed corridor shared seat fare';
       break;
 
     case 'bike':
       // Bike Taxi (Rapido / Uber Moto)
+      ratePerKm = 6.5;
       baseFare = 20;
-      distanceFare = Math.round(safeDistance * 6.5);
+      distanceFare = Math.round(safeDistance * ratePerKm);
+      slabDescription = `Bike Taxi: ₹20 base flag-down + ₹6.50/km`;
       notes = '1-passenger motorcycle dispatch';
       break;
 
     case 'cab':
       // Compact Sedan / Hatchback Taxi (Uber Go / Ola Mini)
+      ratePerKm = 14.5;
       baseFare = 50;
-      distanceFare = Math.round(safeDistance * 14.5);
+      distanceFare = Math.round(safeDistance * ratePerKm);
       timeFare = Math.round(safeDuration * 1.5);
+      slabDescription = `Cab: ₹50 base + ₹14.50/km + ₹1.50/min ride-time`;
       notes = 'On-demand AC cab dispatch';
       break;
 
     case 'train':
       // Indian Railways (IRCTC) passenger tariff formula based on distance
-      // Sleeper: ~₹0.45/km, 3AC: ~₹1.20/km, Chair Car: ~₹0.95/km
+      ratePerKm = isAc ? 1.25 : 0.48;
       baseFare = 40; // minimum reservation / superfast
-      distanceFare = Math.round(safeDistance * (isAc ? 1.25 : 0.48));
+      distanceFare = Math.round(safeDistance * ratePerKm);
+      slabDescription = isAc ? `IRCTC 3AC: ₹40 base + ₹1.25/km` : `IRCTC Sleeper: ₹40 base + ₹0.48/km`;
       notes = isAc ? 'IRCTC 3rd AC / AC Chair Car Tariff' : 'IRCTC Sleeper / Second Sitting Tariff';
       break;
 
     case 'flight':
       // Aviation Turbine Fuel & Distance based dynamic airfare
+      ratePerKm = 3.2;
       baseFare = 2800; // airport charges + base ticket
-      distanceFare = Math.round(safeDistance * 3.2);
+      distanceFare = Math.round(safeDistance * ratePerKm);
       timeFare = 0;
+      slabDescription = `Aviation GDS: ₹2,800 base airport & PSF + ₹3.20/km`;
       notes = 'Aviation GDS dynamic economy fare';
       break;
   }
@@ -303,6 +326,8 @@ export function calculateDynamicTariff(
     confidence: 0.95,
     isPeakHour: isPeak,
     notes,
+    slabDescription,
+    ratePerKm,
   };
 }
 
