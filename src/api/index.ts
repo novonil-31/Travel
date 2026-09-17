@@ -7,6 +7,8 @@
 import { DEMO_STOPS, DEMO_TRANSPORT_STANDS, generateDynamicSearchResults } from '../data/mock';
 import { searchPlacesLive, reverseGeocodeLive, haversineDistanceClient } from '../utils/onlineRouting';
 import type { RouteSearchResult } from '../types';
+import { getTransportAvailabilityReport, type CityTransportReport } from '../utils/transportAvailabilityRegistry';
+export type { CityTransportReport };
 
 const BASE_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
@@ -752,6 +754,8 @@ export interface LiveCabOption {
   androidPackage?: string;
   webFallbackLink: string;
   features: string[];
+  isAvailable?: boolean;
+  unavailabilityReason?: string;
 }
 
 export interface LiveCabComparisonResult {
@@ -768,6 +772,7 @@ export interface LiveCabComparisonResult {
   cheapestOption: LiveCabOption;
   fastestOption: LiveCabOption;
   options: LiveCabOption[];
+  availabilityReport?: CityTransportReport;
 }
 
 export function generateClientCabComparison(params: {
@@ -1001,7 +1006,7 @@ export function generateClientCabComparison(params: {
       features: ['Government Meter Rate', 'Direct UPI to Driver', 'No Commission'],
     });
 
-    // Rapido Auto
+    // Rapido Auto (Verified)
     const rAutoFare = Math.round(((28 + Math.max(0, distanceKm - 1.5) * 14.5) * rapidoSurge) / 5) * 5;
     list.push({
       id: 'rapido-auto',
@@ -1023,6 +1028,30 @@ export function generateClientCabComparison(params: {
       androidPackage: 'com.rapido.passenger',
       webFallbackLink: 'https://play.google.com/store/apps/details?id=com.rapido.passenger',
       features: ['Doorstep Pickup', 'Verified Drivers', 'No Haggling'],
+    });
+
+    // Ola Auto (Digital Meter)
+    const oAutoFare = Math.round(((30 + Math.max(0, distanceKm - 1.5) * 14.5) * olaSurge) / 5) * 5;
+    list.push({
+      id: 'ola-auto',
+      provider: 'ola',
+      providerName: 'Ola',
+      category: 'auto',
+      vehicleType: 'Ola Auto',
+      displayName: 'Ola Auto (Digital Meter)',
+      icon: '🛺',
+      fare: Math.max(35, oAutoFare),
+      baseFare: 30,
+      perKmRate: 14.5,
+      surgeMultiplier: olaSurge,
+      isSurgeActive: olaSurge > 1.0,
+      estimatedWaitMins: 3,
+      estimatedDurationMins: Math.round(durationMins * 0.95),
+      deepLink: makeOla('auto'),
+      appScheme: makeOlaScheme('auto'),
+      androidPackage: 'com.olacabs.customer',
+      webFallbackLink: makeOla('auto'),
+      features: ['Digital Meter', 'Verified Driver', 'Cash / UPI'],
     });
 
     // Uber Auto
@@ -1100,24 +1129,39 @@ export function generateClientCabComparison(params: {
     });
   }
 
-  list.sort((a, b) => a.fare - b.fare);
-  const cheapest = list[0];
-  let fastest = list[0];
+  const availabilityReport = getTransportAvailabilityReport(pickupLat, pickupLng, distanceKm, pickupName, dropName);
+
+  // Mark availability on all vehicles
+  const taggedList = list.map((opt) => {
+    const isSupported = availabilityReport.supportedVehicleIds.includes(opt.id);
+    const reason = availabilityReport.unsupportedVehicleReasons[opt.id];
+    return {
+      ...opt,
+      isAvailable: isSupported,
+      unavailabilityReason: reason,
+    };
+  });
+
+  // Pick cheapest and fastest ONLY from real available options in this city
+  const availableOptions = taggedList.filter((o) => o.isAvailable);
+  const pool = availableOptions.length > 0 ? availableOptions : taggedList;
+  const cheapest = [...pool].sort((a, b) => a.fare - b.fare)[0];
+  let fastest = pool[0];
   let minT = Infinity;
-  for (const opt of list) {
+  for (const opt of pool) {
     if (opt.estimatedDurationMins < minT) {
       minT = opt.estimatedDurationMins;
       fastest = opt;
     }
   }
 
-  const uberGo = list.find((o) => o.id === 'uber-go') || list[list.length - 1];
-  const maxFare = Math.max(...list.map((o) => o.fare));
+  const uberGo = taggedList.find((o) => o.id === 'uber-go') || taggedList[taggedList.length - 1];
+  const maxFare = Math.max(...taggedList.map((o) => o.fare));
 
-  const options = list.map((opt) => ({
+  const options = taggedList.map((opt) => ({
     ...opt,
-    isCheapest: opt.id === cheapest?.id,
-    isFastest: opt.id === fastest?.id,
+    isCheapest: opt.isAvailable && opt.id === cheapest?.id,
+    isFastest: opt.isAvailable && opt.id === fastest?.id,
     savingsVsMax: Math.max(0, maxFare - opt.fare),
     savingsVsUber: uberGo ? Math.max(0, uberGo.fare - opt.fare) : 0,
   }));
@@ -1133,9 +1177,10 @@ export function generateClientCabComparison(params: {
       periodName,
       description: isPeak ? 'Live peak hour rush' : 'Standard daytime rates',
     },
-    cheapestOption: options[0],
+    cheapestOption: options.find((o) => o.isCheapest) || options[0],
     fastestOption: options.find((o) => o.isFastest) || options[0],
     options,
+    availabilityReport,
   };
 }
 

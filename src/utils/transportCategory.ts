@@ -157,7 +157,7 @@ export function getRouteTransportInfo(route?: RouteSearchResult | null): RouteTr
       icon: '🛺',
       name: 'Auto Rickshaw',
       compareBannerTitle: 'Compare Auto Rickshaw Fares',
-      compareBannerSubtitle: 'Rapido Auto • Namma Yatri • Uber Auto • Ola Auto',
+      compareBannerSubtitle: 'Rapido Auto • Ola Auto • Verified Meter Rickshaws',
       bookButtonLabel: '🛺 Compare & Book Auto',
       compareButtonLabel: 'Compare Autos',
     };

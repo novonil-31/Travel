@@ -28,6 +28,8 @@ export interface LiveCabOption {
   deepLink: string;
   webFallbackLink: string;
   features: string[];
+  isAvailable?: boolean;
+  unavailabilityReason?: string;
 }
 
 export interface LiveCabComparisonResult {
@@ -44,6 +46,7 @@ export interface LiveCabComparisonResult {
   cheapestOption: LiveCabOption;
   fastestOption: LiveCabOption;
   options: LiveCabOption[];
+  availabilityReport?: any;
 }
 
 /** Calculate Haversine ground distance with road factor */
@@ -158,7 +161,7 @@ export async function compareLiveCabs(params: {
     `https://book.olacabs.com/?pickup_lat=${oLat}&pickup_lng=${oLng}&pickup_name=${oNameEnc}&drop_lat=${dLat}&drop_lng=${dLng}&drop_name=${dNameEnc}&category=${cat}`;
 
   const makeRapidoLink = (service: string) =>
-    `https://rapido.bike/booking?src_lat=${oLat}&src_lng=${oLng}&src_name=${oNameEnc}&dest_lat=${dLat}&dest_lng=${dLng}&dest_name=${dNameEnc}&service=${service}`;
+    `intent://ride?pickup_lat=${oLat}&pickup_lng=${oLng}&pickup_name=${oNameEnc}&drop_lat=${dLat}&drop_lng=${dLng}&drop_name=${dNameEnc}&service=${service}#Intent;scheme=rapido;package=com.rapido.passenger;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.rapido.passenger;end`;
 
   const makeNammaYatriLink = () =>
     `https://nammayatri.in/open?src_lat=${oLat}&src_lng=${oLng}&src_name=${oNameEnc}&dest_lat=${dLat}&dest_lng=${dLng}&dest_name=${dNameEnc}`;
@@ -377,8 +380,33 @@ export async function compareLiveCabs(params: {
       estimatedWaitMins: 2,
       estimatedDurationMins: Math.round(durationMins * 0.95),
       deepLink: makeRapidoLink('auto'),
-      webFallbackLink: 'https://rapido.onelink.me/',
+      webFallbackLink: 'https://play.google.com/store/apps/details?id=com.rapido.passenger',
       features: ['Verified Drivers', 'Doorstep Pickup', 'No Haggling'],
+    });
+
+    // Ola Auto (Digital Meter)
+    const olaAutoBase = 30;
+    const olaAutoPerKm = 14.5;
+    const olaAutoFare = Math.round(((olaAutoBase + Math.max(0, distanceKm - 1.5) * olaAutoPerKm) * surge.olaSurge) / 5) * 5;
+    rawOptions.push({
+      id: 'ola-auto',
+      provider: 'ola',
+      providerName: 'Ola',
+      category: 'auto',
+      vehicleType: 'Ola Auto',
+      displayName: 'Ola Auto (Digital Meter)',
+      icon: '🛺',
+      fare: Math.max(35, olaAutoFare),
+      baseFare: olaAutoBase,
+      perKmRate: olaAutoPerKm,
+      surgeMultiplier: surge.olaSurge,
+      isSurgeActive: surge.olaSurge > 1.0,
+      surgeReason: surge.olaSurge > 1.0 ? surge.periodName : undefined,
+      estimatedWaitMins: 3,
+      estimatedDurationMins: Math.round(durationMins * 0.95),
+      deepLink: makeOlaLink('auto'),
+      webFallbackLink: makeOlaLink('auto'),
+      features: ['Digital Meter', 'Verified Driver', 'Cash / UPI'],
     });
 
     // Uber Auto
@@ -461,14 +489,69 @@ export async function compareLiveCabs(params: {
     });
   }
 
-  // Sort options by fare ascending
-  rawOptions.sort((a, b) => a.fare - b.fare);
+  // City & Regional Geofencing
+  const pStr = (pickupName || '').toLowerCase();
+  const dStr = (dropName || '').toLowerCase();
+  const isOdisha = (pickupLat >= 19.4 && pickupLat <= 21.0 && pickupLng >= 85.0 && pickupLng <= 86.8) ||
+    pStr.includes('bhubaneswar') || pStr.includes('cuttack') || pStr.includes('puri') || pStr.includes('kiit') || dStr.includes('bhubaneswar');
+  const isDelhi = (pickupLat >= 28.2 && pickupLat <= 29.1 && pickupLng >= 76.7 && pickupLng <= 77.7) ||
+    pStr.includes('delhi') || pStr.includes('noida') || pStr.includes('gurgaon');
+  const isBlr = (pickupLat >= 12.7 && pickupLat <= 13.3 && pickupLng >= 77.3 && pickupLng <= 77.9) || pStr.includes('bengaluru') || pStr.includes('bangalore');
+  const isMum = (pickupLat >= 18.7 && pickupLat <= 19.5 && pickupLng >= 72.6 && pickupLng <= 73.4) || pStr.includes('mumbai');
 
-  // Find cheapest and fastest
-  const cheapestOption = rawOptions[0];
-  let fastestOption = rawOptions[0];
+  const cityName = isOdisha ? 'Bhubaneswar' : isDelhi ? 'Delhi NCR' : isBlr ? 'Bengaluru' : isMum ? 'Mumbai' : 'City Region';
+
+  const isBikeSafe = distanceKm <= 18.0;
+  const isAutoSafe = distanceKm <= 25.0;
+
+  // Tag availability on each vehicle
+  const taggedOptions = rawOptions.map((opt) => {
+    let isAvailable = true;
+    let unavailabilityReason: string | undefined;
+
+    if (opt.id === 'uber-auto') {
+      if (isOdisha) {
+        isAvailable = false;
+        unavailabilityReason = 'Uber Auto is NOT operational in Bhubaneswar / Odisha. Use Rapido Auto or Ola Auto instead.';
+      } else if (!isAutoSafe) {
+        isAvailable = false;
+        unavailabilityReason = `Trip distance (${distanceKm.toFixed(1)} km) exceeds Uber Auto city limits (max 25 km).`;
+      }
+    } else if (opt.id === 'blusmart-ev') {
+      if (!isDelhi && !isBlr && !isMum) {
+        isAvailable = false;
+        unavailabilityReason = `BluSmart EV is only active in Delhi NCR, Bengaluru & Mumbai. Not available in ${cityName}.`;
+      }
+    } else if (opt.id === 'namma-yatri-auto' || opt.id === 'namma-yatri-cab') {
+      if (!isBlr && !isDelhi) {
+        isAvailable = false;
+        unavailabilityReason = `Namma Yatri is currently active in Bengaluru & Delhi NCR. Not yet launched in ${cityName}.`;
+      }
+    }
+
+    if (opt.category === 'bike' && !isBikeSafe) {
+      isAvailable = false;
+      unavailabilityReason = `Trip distance (${distanceKm.toFixed(1)} km) exceeds safe Bike Taxi limits (max 18 km).`;
+    }
+    if (opt.category === 'auto' && !isAutoSafe) {
+      isAvailable = false;
+      unavailabilityReason = `Trip distance (${distanceKm.toFixed(1)} km) crosses municipal auto boundaries (max 25 km).`;
+    }
+
+    return {
+      ...opt,
+      isAvailable,
+      unavailabilityReason,
+    };
+  });
+
+  // Pick cheapest and fastest strictly from active options
+  const availablePool = taggedOptions.filter((o) => o.isAvailable);
+  const pool = availablePool.length > 0 ? availablePool : taggedOptions;
+  const cheapestOption = [...pool].sort((a, b) => a.fare - b.fare)[0];
+  let fastestOption = pool[0];
   let minTime = Infinity;
-  for (const opt of rawOptions) {
+  for (const opt of pool) {
     if (opt.estimatedDurationMins < minTime) {
       minTime = opt.estimatedDurationMins;
       fastestOption = opt;
@@ -476,13 +559,13 @@ export async function compareLiveCabs(params: {
   }
 
   // Reference for savings: Uber Go or highest
-  const uberGo = rawOptions.find((o) => o.id === 'uber-go') || rawOptions[rawOptions.length - 1];
-  const maxFare = Math.max(...rawOptions.map((o) => o.fare));
+  const uberGo = taggedOptions.find((o) => o.id === 'uber-go') || taggedOptions[taggedOptions.length - 1];
+  const maxFare = Math.max(...taggedOptions.map((o) => o.fare));
 
   // Tag options
-  const finalOptions = rawOptions.map((opt) => {
-    const isCheapest = opt.id === cheapestOption?.id;
-    const isFastest = opt.id === fastestOption?.id;
+  const finalOptions = taggedOptions.map((opt) => {
+    const isCheapest = opt.isAvailable && opt.id === cheapestOption?.id;
+    const isFastest = opt.isAvailable && opt.id === fastestOption?.id;
     const savingsVsMax = Math.max(0, maxFare - opt.fare);
     const savingsVsUber = uberGo ? Math.max(0, uberGo.fare - opt.fare) : 0;
     return {
@@ -505,8 +588,9 @@ export async function compareLiveCabs(params: {
       periodName: surge.periodName,
       description: surge.description,
     },
-    cheapestOption: finalOptions[0],
+    cheapestOption: finalOptions.find((o) => o.isCheapest) || finalOptions[0],
     fastestOption: finalOptions.find((o) => o.isFastest) || finalOptions[0],
     options: finalOptions,
   };
 }
+
