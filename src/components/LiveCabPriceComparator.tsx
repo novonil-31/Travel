@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { LiveCabComparisonResult, LiveCabOption } from '../api';
 import { faresApi } from '../api';
 import { ExternalLink, RefreshCw, Car } from 'lucide-react';
+import { launchMobileAppOrWeb } from '../utils/mobileAppLauncher';
 
 interface LiveCabPriceComparatorProps {
   pickupLat: number;
@@ -67,7 +68,11 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
   }, [pickupLat, pickupLng, dropLat, dropLng, category]);
 
   const handleBookRedirect = (option: LiveCabOption) => {
-    window.open(option.deepLink, '_blank', 'noopener,noreferrer');
+    launchMobileAppOrWeb(
+      option.appScheme || option.deepLink,
+      option.webFallbackLink || option.deepLink,
+      option.androidPackage
+    );
   };
 
   // Sort options: lowest price first, matching active category

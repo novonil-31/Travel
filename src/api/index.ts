@@ -748,6 +748,8 @@ export interface LiveCabOption {
   savingsVsMax?: number;
   savingsVsUber?: number;
   deepLink: string;
+  appScheme?: string;
+  androidPackage?: string;
   webFallbackLink: string;
   features: string[];
 }
@@ -825,14 +827,28 @@ export function generateClientCabComparison(params: {
   const dNameEnc = encodeURIComponent(dropName);
   const makeUber = (prod?: string) =>
     `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${pickupLat}&pickup[longitude]=${pickupLng}&pickup[nickname]=${oNameEnc}&pickup[formatted_address]=${oNameEnc}&dropoff[latitude]=${dropLat}&dropoff[longitude]=${dropLng}&dropoff[nickname]=${dNameEnc}&dropoff[formatted_address]=${dNameEnc}${prod ? `&product_id=${prod}` : ''}`;
+  const makeUberScheme = (prod?: string) =>
+    `uber://?action=setPickup&pickup[latitude]=${pickupLat}&pickup[longitude]=${pickupLng}&pickup[nickname]=${oNameEnc}&dropoff[latitude]=${dropLat}&dropoff[longitude]=${dropLng}&dropoff[nickname]=${dNameEnc}${prod ? `&client_id=${prod}` : ''}`;
+
   const makeOla = (cat: string) =>
     `https://book.olacabs.com/?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&category=${cat}`;
+  const makeOlaScheme = (cat: string) =>
+    `olacabs://app/launch?lat=${pickupLat}&lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&category=${cat}`;
+
   const makeRapido = (svc: string) =>
     `https://rapido.bike/booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}&service=${svc}`;
+  const makeRapidoScheme = (svc: string) =>
+    `rapido://booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}&service=${svc}`;
+
   const makeNamma = () =>
     `https://nammayatri.in/open?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}`;
+  const makeNammaScheme = () =>
+    `nammayatri://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}`;
+
   const makeBlu = () =>
     `https://blusmart.com/book?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&drop_lat=${dropLat}&drop_lng=${dropLng}`;
+  const makeBluScheme = () =>
+    `blusmart://booking?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&drop_lat=${dropLat}&drop_lng=${dropLng}`;
 
   const list: LiveCabOption[] = [];
 
@@ -856,6 +872,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 3,
       estimatedDurationMins: durationMins,
       deepLink: makeUber('uber-go'),
+      appScheme: makeUberScheme('uber-go'),
+      androidPackage: 'com.ubercab',
       webFallbackLink: makeUber(),
       features: ['AC Cab', '4 Seats', 'Cash / UPI', 'Live GPS Tracking'],
     });
@@ -879,6 +897,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 3,
       estimatedDurationMins: durationMins,
       deepLink: makeOla('mini'),
+      appScheme: makeOlaScheme('mini'),
+      androidPackage: 'com.olacabs.customer',
       webFallbackLink: makeOla('mini'),
       features: ['Compact AC', 'Instant OTP', 'Emergency SOS'],
     });
@@ -901,6 +921,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 4,
       estimatedDurationMins: durationMins,
       deepLink: makeRapido('cab_economy'),
+      appScheme: makeRapidoScheme('cab_economy'),
+      androidPackage: 'com.rapido.passenger',
       webFallbackLink: 'https://rapido.onelink.me/',
       features: ['Low commission', 'Direct driver payout', 'Affordable AC'],
     });
@@ -923,6 +945,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 5,
       estimatedDurationMins: durationMins,
       deepLink: makeNamma(),
+      appScheme: makeNammaScheme(),
+      androidPackage: 'in.juspay.nammayatri',
       webFallbackLink: 'https://nammayatri.in/',
       features: ['100% to Driver', 'Open Network (ONDC)', 'Zero Surge Guarantee'],
     });
@@ -945,6 +969,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 6,
       estimatedDurationMins: durationMins,
       deepLink: makeBlu(),
+      appScheme: makeBluScheme(),
+      androidPackage: 'com.blusmart',
       webFallbackLink: 'https://blusmart.com/',
       features: ['100% Electric', 'Zero Cancellations', 'Zero Surge Ever'],
     });
@@ -969,6 +995,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 2,
       estimatedDurationMins: Math.round(durationMins * 0.95),
       deepLink: makeNamma(),
+      appScheme: makeNammaScheme(),
+      androidPackage: 'in.juspay.nammayatri',
       webFallbackLink: 'https://nammayatri.in/',
       features: ['Government Meter Rate', 'Direct UPI to Driver', 'No Commission'],
     });
@@ -991,6 +1019,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 2,
       estimatedDurationMins: Math.round(durationMins * 0.95),
       deepLink: makeRapido('auto'),
+      appScheme: makeRapidoScheme('auto'),
+      androidPackage: 'com.rapido.passenger',
       webFallbackLink: 'https://rapido.onelink.me/',
       features: ['Doorstep Pickup', 'Verified Drivers', 'No Haggling'],
     });
@@ -1013,6 +1043,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 3,
       estimatedDurationMins: Math.round(durationMins * 0.95),
       deepLink: makeUber('uber-auto'),
+      appScheme: makeUberScheme('uber-auto'),
+      androidPackage: 'com.ubercab',
       webFallbackLink: makeUber(),
       features: ['Cashless UPI', 'Live Trip Share', 'Uber Safety'],
     });
@@ -1037,6 +1069,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 1,
       estimatedDurationMins: Math.round(durationMins * 0.65),
       deepLink: makeRapido('bike'),
+      appScheme: makeRapidoScheme('bike'),
+      androidPackage: 'com.rapido.passenger',
       webFallbackLink: 'https://rapido.onelink.me/',
       features: ['Traffic Buster', 'Single Commuter', 'Helmet Provided'],
     });
@@ -1059,6 +1093,8 @@ export function generateClientCabComparison(params: {
       estimatedWaitMins: 2,
       estimatedDurationMins: Math.round(durationMins * 0.65),
       deepLink: makeUber('uber-moto'),
+      appScheme: makeUberScheme('uber-moto'),
+      androidPackage: 'com.ubercab',
       webFallbackLink: makeUber(),
       features: ['In-app Insurance', 'Sanitized Helmet', 'Quick Dispatch'],
     });

@@ -32,17 +32,25 @@ export function getRouteTransportInfo(route?: RouteSearchResult | null): RouteTr
   const shortName = (route.route?.shortName || '').toLowerCase();
   const vType = (route.route?.vehicleType || '').toLowerCase();
 
-  // 1. Train / Rail
-  if (vType === 'train' || rId.includes('train') || rId.includes('rail') || rName.includes('train') || rName.includes('express')) {
+  // 1. Bus (Explicitly prioritize bus vehicles and transit lines - prevent express buses from ever being labeled as trains)
+  const isBusRoute =
+    vType === 'bus' ||
+    rId.includes('bus') ||
+    rName.includes('bus') ||
+    shortName.includes('bus') ||
+    shortName.startsWith('route ') ||
+    rName.startsWith('mo bus');
+
+  if (isBusRoute) {
     return {
-      type: 'train',
+      type: 'bus',
       comparatorCategory: 'all',
-      icon: '🚆',
-      name: 'IRCTC Train',
-      compareBannerTitle: 'Indian Railways Train',
-      compareBannerSubtitle: 'Official IRCTC live timetable & booking',
-      bookButtonLabel: 'Book IRCTC Train',
-      compareButtonLabel: 'View Schedule',
+      icon: '🚌',
+      name: 'Public Bus',
+      compareBannerTitle: 'Public Transit Bus',
+      compareBannerSubtitle: 'Scheduled city & highway bus service',
+      bookButtonLabel: 'Book Bus Ticket',
+      compareButtonLabel: 'View Timetable',
     };
   }
 
@@ -60,17 +68,28 @@ export function getRouteTransportInfo(route?: RouteSearchResult | null): RouteTr
     };
   }
 
-  // 3. Bus
-  if (vType === 'bus' || rId.includes('bus') || rName.includes('bus') || shortName.includes('bus')) {
+  // 3. Train / Indian Railways (Strictly exclude buses)
+  const isTrainRoute =
+    vType === 'train' ||
+    rId.includes('train') ||
+    rId.includes('rail') ||
+    rId.includes('irctc') ||
+    (rName.includes('train') && !rName.includes('bus')) ||
+    rName.includes('vande bharat') ||
+    rName.includes('rajdhani') ||
+    rName.includes('shatabdi') ||
+    rName.includes('indian railways');
+
+  if (isTrainRoute) {
     return {
-      type: 'bus',
+      type: 'train',
       comparatorCategory: 'all',
-      icon: '🚌',
-      name: 'Public Bus',
-      compareBannerTitle: 'Public Transit Bus',
-      compareBannerSubtitle: 'Scheduled city bus line & stops',
-      bookButtonLabel: 'Book Bus Ticket',
-      compareButtonLabel: 'View Timetable',
+      icon: '🚆',
+      name: 'IRCTC Train',
+      compareBannerTitle: 'Indian Railways Train',
+      compareBannerSubtitle: 'Official IRCTC live timetable & booking',
+      bookButtonLabel: 'Book IRCTC Train',
+      compareButtonLabel: 'View Schedule',
     };
   }
 

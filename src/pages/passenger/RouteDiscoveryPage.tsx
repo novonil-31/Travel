@@ -39,6 +39,12 @@ import { LiveCabPriceComparator } from '../../components/LiveCabPriceComparator'
 import { sanitizeAndStitchJourneyGeometry, buildExactTrainBookingUrl, buildExactFlightBookingUrl, buildExactBusBookingUrl } from '../../utils/onlineRouting';
 import { getRouteTransportInfo, type RouteTransportInfo, type TransportType } from '../../utils/transportCategory';
 import { evaluateBestAndCheapestOptions, calculateDynamicCrowding, calculateDynamicTariff } from '../../utils/dynamicCalculationEngine';
+import {
+  launchMobileAppOrWeb,
+  buildTrainAppDeepLink,
+  buildBusAppDeepLink,
+  buildFlightAppDeepLink,
+} from '../../utils/mobileAppLauncher';
 
 // Modern High-Clarity Circular Journey Endpoint Pin (Prevents Overlap with nearby Station Badges)
 const createEndpointPin = (color: string, label: string) =>
@@ -99,8 +105,48 @@ const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
     iconAnchor: [30, 11],
   });
 
+// Force Leaflet to recalculate container dimensions whenever mobile map view is activated or screen resizes
+function MapMobileResizer({ isActive }: { isActive: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (isActive) {
+      // Invalidate sequentially to ensure zero tile-clipping after CSS tab transition
+      map.invalidateSize();
+      const t1 = setTimeout(() => map.invalidateSize(), 50);
+      const t2 = setTimeout(() => map.invalidateSize(), 200);
+      const t3 = setTimeout(() => map.invalidateSize(), 500);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [isActive, map]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [map]);
+
+  return null;
+}
+
 // Auto-fit map viewport to continuous polyline smoothly without jarring resets on background telemetry
-function MapBoundsController({ coordinates }: { coordinates: Array<[number, number]> }) {
+function MapBoundsController({
+  coordinates,
+  forceRecenter,
+}: {
+  coordinates: Array<[number, number]>;
+  forceRecenter?: boolean;
+}) {
   const map = useMap();
   const lastBoundsKeyRef = useRef<string>('');
 
@@ -109,13 +155,13 @@ function MapBoundsController({ coordinates }: { coordinates: Array<[number, numb
       const start = coordinates[0];
       const end = coordinates[coordinates.length - 1];
       const key = `${start[0].toFixed(4)},${start[1].toFixed(4)}_${end[0].toFixed(4)},${end[1].toFixed(4)}_${coordinates.length}`;
-      if (key !== lastBoundsKeyRef.current) {
+      if (key !== lastBoundsKeyRef.current || forceRecenter) {
         lastBoundsKeyRef.current = key;
         try {
           const bounds = L.latLngBounds(coordinates.map((c) => [c[0], c[1]]));
           if (bounds.isValid()) {
             map.fitBounds(bounds, {
-              padding: [50, 50],
+              padding: [40, 40],
               maxZoom: 17,
               animate: true,
               duration: 0.5,
@@ -126,7 +172,7 @@ function MapBoundsController({ coordinates }: { coordinates: Array<[number, numb
         }
       }
     }
-  }, [coordinates, map]);
+  }, [coordinates, map, forceRecenter]);
   return null;
 }
 
@@ -850,8 +896,8 @@ export default function RouteDiscoveryPage() {
   ];
 
   const isFlight = selectedRoute?.route?.vehicleType === 'flight' || selectedRoute?.travelScope === 'international';
-  const isTrain = selectedRoute?.route?.vehicleType === 'train';
-  const isBus = selectedRoute?.route?.vehicleType === 'bus';
+  const isBus = selectedRoute?.route?.vehicleType === 'bus' || selectedRoute?.route?.id?.includes('BUS') || selectedRoute?.route?.name?.toLowerCase().includes('bus');
+  const isTrain = !isBus && (selectedRoute?.route?.vehicleType === 'train' || selectedRoute?.route?.id?.includes('TRAIN') || selectedRoute?.route?.id?.includes('RAIL') || selectedRoute?.route?.id?.includes('IRCTC'));
   const isCabOrTaxi = !isFlight && !isTrain && !isBus;
 
   // Stitched and sanitized geometry ensuring zero disconnects and no overlapping paths
@@ -1115,7 +1161,8 @@ export default function RouteDiscoveryPage() {
       const srcCity = extractCityForBooking(origStr, 'Bhubaneswar');
       const dstCity = extractCityForBooking(destStr, 'Cuttack');
       const url = buildExactBusBookingUrl(origStr, destStr, d);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const busDeepLink = buildBusAppDeepLink({ originCity: srcCity, destCity: dstCity, travelDate: d });
+      launchMobileAppOrWeb(busDeepLink.appScheme, url, busDeepLink.packageName);
       addToast('info', `🚌 Opening Bus Booking (${srcCity} ➔ ${dstCity}) for ${confirmTktDate} - Ready to pay`, 3000);
       return;
     }
@@ -1129,7 +1176,13 @@ export default function RouteDiscoveryPage() {
           ? buildExactTrainBookingUrl(cleanTrainNum, origCode, destCode, d)
           : `https://www.makemytrip.com/railways/listing?srcStn=${origCode}&destStn=${destCode}&date=${confirmTktDate}`;
 
-      window.open(exactTrainUrl, '_blank', 'noopener,noreferrer');
+      const trainDeepLink = buildTrainAppDeepLink({
+        trainNumber: cleanTrainNum,
+        originCode: origCode,
+        destCode,
+        travelDate: d,
+      });
+      launchMobileAppOrWeb(trainDeepLink.appScheme, exactTrainUrl, trainDeepLink.packageName);
       addToast(
         'info',
         cleanTrainNum
@@ -1146,7 +1199,12 @@ export default function RouteDiscoveryPage() {
         ? selectedRoute.transitChainInfo.bookingUrl
         : buildExactFlightBookingUrl(flightNum, origCode, destCode, d);
 
-      window.open(exactFlightUrl, '_blank', 'noopener,noreferrer');
+      const flightDeepLink = buildFlightAppDeepLink({
+        originAirportCode: origCode,
+        destAirportCode: destCode,
+        travelDate: d,
+      });
+      launchMobileAppOrWeb(flightDeepLink.appScheme, exactFlightUrl, flightDeepLink.packageName);
       addToast(
         'info',
         flightNum
@@ -1190,7 +1248,7 @@ export default function RouteDiscoveryPage() {
     }
 
     if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      launchMobileAppOrWeb(url, url);
       addToast('info', `Opening ${label || 'Booking Provider'}...`, 3000);
     }
   };
@@ -1351,25 +1409,36 @@ export default function RouteDiscoveryPage() {
       return <Plane className={`w-5 h-5 ${isSelected ? 'text-sky-300' : 'text-sky-600'}`} />;
     }
 
-    // 8. Metro / Subway / Tram
+    // 8. Bus / Mo Bus / Public Transit (Prioritized to prevent express buses from showing train icon)
+    if (
+      vType === 'bus' ||
+      rId.includes('BUS') ||
+      rName.includes('bus') ||
+      shortName.includes('bus') ||
+      shortName.startsWith('route ') ||
+      rName.startsWith('mo bus')
+    ) {
+      return <Bus className={`w-5 h-5 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />;
+    }
+
+    // 9. Metro / Subway / Tram
     if (rId.includes('METRO') || rName.includes('metro') || rName.includes('subway') || rName.includes('tram')) {
       return <TramFront className={`w-5 h-5 ${isSelected ? 'text-indigo-300' : 'text-indigo-600'}`} />;
     }
 
-    // 9. Train / Indian Railways / Express
+    // 10. Train / Indian Railways (Strictly exclude buses)
     if (
       vType === 'train' ||
       rId.includes('TRAIN') ||
       rId.includes('RAIL') ||
-      rName.includes('train') ||
-      rName.includes('express')
+      rId.includes('IRCTC') ||
+      (rName.includes('train') && !rName.includes('bus')) ||
+      rName.includes('vande bharat') ||
+      rName.includes('rajdhani') ||
+      rName.includes('shatabdi') ||
+      rName.includes('railway')
     ) {
       return <Train className={`w-5 h-5 ${isSelected ? 'text-blue-300' : 'text-blue-600'}`} />;
-    }
-
-    // 10. Bus / Mo Bus / Public Transit
-    if (vType === 'bus' || rId.includes('BUS') || rName.includes('bus') || shortName.includes('bus')) {
-      return <Bus className={`w-5 h-5 ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`} />;
     }
 
     // 11. Cab / Taxi / Private Car
@@ -1500,7 +1569,7 @@ export default function RouteDiscoveryPage() {
             type="button"
             onClick={handleSwapInputs}
             title="Swap Origin and Destination"
-            className="self-center p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-black transition-colors shrink-0"
+            className="self-center p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-black transition-colors shrink-0 rotate-90 md:rotate-0 cursor-pointer"
           >
             <ArrowLeftRight className="w-4 h-4" />
           </button>
@@ -1585,51 +1654,54 @@ export default function RouteDiscoveryPage() {
             )}
           </div>
 
-          {/* Travel Date Selector */}
-          <div className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-2 focus-within:border-black focus-within:bg-white transition-colors shrink-0">
-            <span className="text-xs">📅</span>
-            <input
-              type="date"
-              value={travelDate}
-              min={new Date().toISOString().split('T')[0]}
-              onChange={(e) => {
-                setTravelDate(e.target.value);
-                if (originInput.trim() && destInput.trim()) {
-                  handleExecuteSearch(originInput, destInput);
-                }
-              }}
-              title="Travel Date"
-              className="bg-transparent text-xs font-bold text-neutral-800 focus:outline-none cursor-pointer"
-            />
-          </div>
+          {/* Travel Date & Action Buttons Responsive Group */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0 w-full md:w-auto">
+            {/* Travel Date Selector */}
+            <div className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-2.5 focus-within:border-black focus-within:bg-white transition-colors flex-1 sm:flex-none">
+              <span className="text-xs">📅</span>
+              <input
+                type="date"
+                value={travelDate}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  setTravelDate(e.target.value);
+                  if (originInput.trim() && destInput.trim()) {
+                    handleExecuteSearch(originInput, destInput);
+                  }
+                }}
+                title="Travel Date"
+                className="bg-transparent text-xs font-bold text-neutral-800 focus:outline-none cursor-pointer w-full"
+              />
+            </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="submit"
-              disabled={isSearchingRoute}
-              className="flex-1 md:flex-none text-xs font-black text-white bg-black hover:bg-neutral-800 disabled:bg-neutral-400 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              {isSearchingRoute ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Search className="w-3.5 h-3.5" />
-              )}
-              <span>{isSearchingRoute ? 'Searching...' : 'Find Routes'}</span>
-            </button>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 flex-1 sm:flex-none">
+              <button
+                type="submit"
+                disabled={isSearchingRoute}
+                className="flex-1 sm:flex-none text-xs font-black text-white bg-black hover:bg-neutral-800 disabled:bg-neutral-400 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm min-h-[38px] cursor-pointer"
+              >
+                {isSearchingRoute ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Search className="w-3.5 h-3.5" />
+                )}
+                <span>{isSearchingRoute ? 'Searching...' : 'Find Routes'}</span>
+              </button>
 
-            {/* Carpool Hub Action Button */}
-            <button
-              type="button"
-              onClick={() => setShowCarpoolModal(true)}
-              className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm shrink-0"
-            >
-              <Users className="w-3.5 h-3.5 text-purple-600" />
-              <span className="hidden sm:inline">Carpool Hub</span>
-              <span className="inline-block bg-purple-200/80 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                {matchingCarpools.length}
-              </span>
-            </button>
+              {/* Carpool Hub Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowCarpoolModal(true)}
+                className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 min-h-[38px] cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">Carpool Hub</span>
+                <span className="inline-block bg-purple-200/80 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                  {matchingCarpools.length}
+                </span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -1851,17 +1923,17 @@ export default function RouteDiscoveryPage() {
                                       ? '🛺 Direct Stand Auto / E-Rickshaw'
                                       : route.route?.id?.includes('BIKE') || route.route?.name?.toLowerCase().includes('bike')
                                         ? '🛵 Fast Solo Bike'
-                                        : route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.name?.toLowerCase().includes('express')
-                                          ? '🚆 Indian Railways Service'
+                                        : route.route?.vehicleType === 'bus' || route.route?.id?.includes('BUS') || route.route?.name?.toLowerCase().includes('bus')
+                                          ? (route.route?.id?.includes('BUS_TRANSFER') || (route.transfers && route.transfers > 0)
+                                              ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
+                                              : '🚌 Direct Public Mo Bus')
                                           : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
                                             ? '✈️ Commercial Flight'
-                                            : route.route?.id?.includes('BUS_TRANSFER') || (route.route?.vehicleType === 'bus' && route.transfers && route.transfers > 0)
-                                              ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
-                                              : route.route?.vehicleType === 'bus' || route.route?.name?.toLowerCase().includes('bus')
-                                                ? '🚌 Direct Public Mo Bus'
-                                                : route.route?.name?.toLowerCase().includes('cab') || route.route?.name?.toLowerCase().includes('taxi')
-                                                  ? '🚖 Direct Cab / Taxi'
-                                                  : '🚌 Public Transit'}
+                                            : (route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.id?.includes('IRCTC'))
+                                              ? '🚆 Indian Railways Service'
+                                              : route.route?.name?.toLowerCase().includes('cab') || route.route?.name?.toLowerCase().includes('taxi')
+                                                ? '🚖 Direct Cab / Taxi'
+                                                : '🚌 Public Transit'}
                         </div>
                       </div>
                     </div>
@@ -2479,7 +2551,7 @@ export default function RouteDiscoveryPage() {
 
         {/* Map Column: Clean OpenStreetMap (Visible when mobileTab === 'map' on mobile, and always on desktop) */}
         <div className={`order-1 lg:order-2 lg:col-span-7 sticky top-4 ${mobileTab === 'routes' ? 'hidden lg:block' : 'block'}`}>
-          <div className="bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm h-[calc(100vh-210px)] min-h-[440px] lg:h-[620px] relative">
+          <div className="bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm h-[calc(100dvh-190px)] min-h-[460px] lg:h-[620px] w-full relative">
             {/* 🧭 Google Maps Style Turn-by-Turn Navigation Guidance Card */}
             <div className="absolute top-3 left-3 right-3 sm:right-auto z-[1000] pointer-events-auto sm:max-w-md">
               <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-2xl p-2 sm:p-2.5 transition-all select-none">
@@ -2571,7 +2643,8 @@ export default function RouteDiscoveryPage() {
                 updateWhenIdle={false}
               />
 
-              <MapBoundsController coordinates={continuousRoute} />
+              <MapMobileResizer isActive={mobileTab === 'map'} />
+              <MapBoundsController coordinates={continuousRoute} forceRecenter={mobileTab === 'map'} />
               <MapZoomListener onZoomChange={setCurrentMapZoom} />
               <MapCustomControls
                 coordinates={continuousRoute}
@@ -2912,14 +2985,21 @@ export default function RouteDiscoveryPage() {
                   <button
                     type="button"
                     onClick={() => setMobileTab('routes')}
-                    className="px-2.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition-all cursor-pointer"
+                    className="px-2.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition-all cursor-pointer"
                   >
                     📋 List
                   </button>
                   <button
                     type="button"
+                    onClick={handleBookExternal}
+                    className="px-2.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    ⚡ Book
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleStart}
-                    className="px-3.5 py-1.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
                   >
                     <span>Start</span>
                     <ArrowRight className="w-3.5 h-3.5" />
