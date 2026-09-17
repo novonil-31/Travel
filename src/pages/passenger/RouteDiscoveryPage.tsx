@@ -1247,6 +1247,21 @@ export default function RouteDiscoveryPage() {
       return;
     }
 
+    if (label?.toLowerCase().includes('bike') || label?.toLowerCase().includes('rapido')) {
+      openRideComparator('bike');
+      return;
+    }
+
+    if (label?.toLowerCase().includes('auto')) {
+      openRideComparator('auto');
+      return;
+    }
+
+    if (label?.toLowerCase().includes('cab') || label?.toLowerCase().includes('taxi') || label?.toLowerCase().includes('uber') || label?.toLowerCase().includes('ola')) {
+      openRideComparator('cab');
+      return;
+    }
+
     if (url) {
       launchMobileAppOrWeb(url, url);
       addToast('info', `Opening ${label || 'Booking Provider'}...`, 3000);

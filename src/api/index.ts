@@ -836,9 +836,9 @@ export function generateClientCabComparison(params: {
     `olacabs://app/launch?lat=${pickupLat}&lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&category=${cat}`;
 
   const makeRapido = (svc: string) =>
-    `https://rapido.bike/booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}&service=${svc}`;
+    `intent://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&service=${svc}#Intent;scheme=rapido;package=com.rapido.passenger;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.rapido.passenger;end`;
   const makeRapidoScheme = (svc: string) =>
-    `rapido://booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}&service=${svc}`;
+    `rapido://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&service=${svc}`;
 
   const makeNamma = () =>
     `https://nammayatri.in/open?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}`;
@@ -923,7 +923,7 @@ export function generateClientCabComparison(params: {
       deepLink: makeRapido('cab_economy'),
       appScheme: makeRapidoScheme('cab_economy'),
       androidPackage: 'com.rapido.passenger',
-      webFallbackLink: 'https://rapido.onelink.me/',
+      webFallbackLink: 'https://play.google.com/store/apps/details?id=com.rapido.passenger',
       features: ['Low commission', 'Direct driver payout', 'Affordable AC'],
     });
 
@@ -1021,7 +1021,7 @@ export function generateClientCabComparison(params: {
       deepLink: makeRapido('auto'),
       appScheme: makeRapidoScheme('auto'),
       androidPackage: 'com.rapido.passenger',
-      webFallbackLink: 'https://rapido.onelink.me/',
+      webFallbackLink: 'https://play.google.com/store/apps/details?id=com.rapido.passenger',
       features: ['Doorstep Pickup', 'Verified Drivers', 'No Haggling'],
     });
 
@@ -1071,7 +1071,7 @@ export function generateClientCabComparison(params: {
       deepLink: makeRapido('bike'),
       appScheme: makeRapidoScheme('bike'),
       androidPackage: 'com.rapido.passenger',
-      webFallbackLink: 'https://rapido.onelink.me/',
+      webFallbackLink: 'https://play.google.com/store/apps/details?id=com.rapido.passenger',
       features: ['Traffic Buster', 'Single Commuter', 'Helmet Provided'],
     });
 

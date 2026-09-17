@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { LiveCabComparisonResult, LiveCabOption } from '../api';
 import { faresApi } from '../api';
-import { ExternalLink, RefreshCw, Car } from 'lucide-react';
-import { launchMobileAppOrWeb } from '../utils/mobileAppLauncher';
+import { ExternalLink, RefreshCw, Car, MapPin, CheckCircle2 } from 'lucide-react';
+import { launchMobileAppOrWeb, requestAccurateUserLocation, sanitizeFallbackUrl } from '../utils/mobileAppLauncher';
 
 interface LiveCabPriceComparatorProps {
   pickupLat: number;
@@ -18,8 +18,8 @@ interface LiveCabPriceComparatorProps {
 }
 
 export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
-  pickupLat,
-  pickupLng,
+  pickupLat: initialPickupLat,
+  pickupLng: initialPickupLng,
   pickupName,
   dropLat,
   dropLng,
@@ -34,6 +34,14 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
   const [data, setData] = useState<LiveCabComparisonResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [currentPickupLat, setCurrentPickupLat] = useState<number>(initialPickupLat);
+  const [currentPickupLng, setCurrentPickupLng] = useState<number>(initialPickupLng);
+  const [gpsAcquired, setGpsAcquired] = useState<boolean>(false);
+  const [gpsLoading, setGpsLoading] = useState<boolean>(false);
+
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
+  const [launchNotice, setLaunchNotice] = useState<{ name: string; fallbackUrl: string; packageName?: string } | null>(null);
+
   // Sync category whenever initialCategory prop changes
   useEffect(() => {
     if (initialCategory) {
@@ -41,15 +49,26 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
     }
   }, [initialCategory]);
 
+  const handleAcquireGps = async () => {
+    setGpsLoading(true);
+    const loc = await requestAccurateUserLocation();
+    setGpsLoading(false);
+    if (loc) {
+      setCurrentPickupLat(loc.lat);
+      setCurrentPickupLng(loc.lng);
+      setGpsAcquired(true);
+    }
+  };
+
   const fetchLivePrices = async () => {
     setLoading(true);
     setError(null);
     try {
       const apiCategory = category === 'carpool' ? 'all' : category;
       const result = await faresApi.compareCabs({
-        pickupLat,
-        pickupLng,
-        pickupName,
+        pickupLat: currentPickupLat,
+        pickupLng: currentPickupLng,
+        pickupName: gpsAcquired ? 'My Exact GPS Location' : pickupName,
         dropLat,
         dropLng,
         dropName,
@@ -65,14 +84,27 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
 
   useEffect(() => {
     fetchLivePrices();
-  }, [pickupLat, pickupLng, dropLat, dropLng, category]);
+  }, [currentPickupLat, currentPickupLng, dropLat, dropLng, category]);
 
   const handleBookRedirect = (option: LiveCabOption) => {
+    setLaunchingId(option.id);
+    const fallback = sanitizeFallbackUrl(option.webFallbackLink || option.deepLink, option.androidPackage);
+    
     launchMobileAppOrWeb(
       option.appScheme || option.deepLink,
-      option.webFallbackLink || option.deepLink,
+      fallback,
       option.androidPackage
     );
+
+    setLaunchNotice({
+      name: option.displayName,
+      fallbackUrl: fallback,
+      packageName: option.androidPackage,
+    });
+
+    setTimeout(() => {
+      setLaunchingId(null);
+    }, 2000);
   };
 
   // Sort options: lowest price first, matching active category
@@ -86,12 +118,12 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
   return (
     <div className={`space-y-3 font-sans ${compact ? 'text-xs' : 'text-sm'}`}>
       {/* Route & Distance Summary */}
-      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center justify-between gap-2">
+      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
         <div className="min-w-0 space-y-0.5">
-          <div className="text-xs text-neutral-800 truncate font-semibold">
-            <span>{pickupName || 'Pickup'}</span>
-            <span className="mx-1 text-neutral-400">➔</span>
-            <span>{dropName || 'Destination'}</span>
+          <div className="text-xs text-neutral-800 truncate font-semibold flex items-center gap-1">
+            <span className="truncate">{gpsAcquired ? '📍 Current GPS' : (pickupName || 'Pickup')}</span>
+            <span className="text-neutral-400">➔</span>
+            <span className="truncate">{dropName || 'Destination'}</span>
           </div>
           {data && (
             <div className="text-[11px] text-neutral-500">
@@ -100,16 +132,33 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={fetchLivePrices}
-          disabled={loading}
-          className="px-2.5 py-1 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:text-neutral-900 text-xs font-medium flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
-          title="Refresh prices"
-        >
-          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          <span>{loading ? '...' : 'Refresh'}</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleAcquireGps}
+            disabled={gpsLoading || gpsAcquired}
+            className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors cursor-pointer ${
+              gpsAcquired
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                : 'bg-white text-neutral-600 hover:text-neutral-900 border-neutral-200'
+            }`}
+            title="Use exact GPS coordinates for ride pickup"
+          >
+            {gpsAcquired ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <MapPin className="w-3 h-3 text-amber-500" />}
+            <span>{gpsAcquired ? 'GPS Set' : gpsLoading ? 'Locating...' : 'My GPS'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={fetchLivePrices}
+            disabled={loading}
+            className="px-2.5 py-1 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:text-neutral-900 text-xs font-medium flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
+            title="Refresh prices"
+          >
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? '...' : 'Refresh'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Category Tabs: All / Bike / Auto / Cab / Carpool */}
@@ -250,9 +299,10 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
                   <button
                     type="button"
                     onClick={() => handleBookRedirect(option)}
-                    className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    disabled={launchingId === option.id}
+                    className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-75"
                   >
-                    <span>Book</span>
+                    <span>{launchingId === option.id ? 'Opening...' : 'Book'}</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 </div>
@@ -262,9 +312,27 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         </div>
       )}
 
+      {/* Launch Feedback Banner with Safe Store / Web Fallback */}
+      {launchNotice && (
+        <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between gap-2">
+          <div className="text-blue-900 font-medium truncate">
+            🚀 Launching {launchNotice.name} app...
+          </div>
+          <a
+            href={launchNotice.fallbackUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-[11px] font-bold shrink-0 inline-flex items-center gap-1 shadow-xs"
+          >
+            <span>Store Fallback</span>
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </div>
+      )}
+
       {/* Clean, Simple Footnote */}
       <div className="text-[11px] text-neutral-400 text-center pt-1">
-        Tapping Book opens the app with your pickup & drop already set.
+        Tapping Book opens the official app directly with your pickup & drop already set.
       </div>
     </div>
   );

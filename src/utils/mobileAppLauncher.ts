@@ -6,11 +6,12 @@
  * Automatically detects whether the user is on a mobile device (Android / iOS).
  * If the user has the native app installed (Uber, Ola, Rapido, Namma Yatri,
  * ConfirmTkt / IRCTC, RedBus, MakeMyTrip), it launches the app DIRECTLY
- * with all parameters (pickup, drop, dates, train number) pre-filled so the user
- * only has to pay.
+ * with all parameters (pickup, drop, coordinates, dates, train number) pre-filled so
+ * the user only has to review & pay.
  *
- * If the app is not installed, it cleanly falls back to the responsive pre-filled
- * web booking page without any error dialogs.
+ * If the app is not installed, it cleanly redirects to the official app store
+ * (Google Play / App Store) or verified mobile web booking page without ANY XML
+ * errors or broken landing pages.
  */
 
 export function isMobileDevice(): boolean {
@@ -28,6 +29,21 @@ export function isIOSDevice(): boolean {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 }
 
+/**
+ * Standard browser Geolocation helper to get exact GPS coordinates
+ * for pinpoint taxi/auto pickup without any suspicious permissions.
+ */
+export async function requestAccurateUserLocation(): Promise<{ lat: number; lng: number } | null> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+    );
+  });
+}
+
 export interface DeepLinkConfig {
   appScheme: string;
   webFallback: string;
@@ -35,63 +51,108 @@ export interface DeepLinkConfig {
 }
 
 /**
- * Executes a native app launch with an automatic, resilient web fallback.
+ * Ensures fallback URLs are safe official stores or mobile pages,
+ * completely preventing S3 / CloudFront NoSuchKey XML errors.
  */
-export function launchMobileAppOrWeb(appSchemeUrl: string, webFallbackUrl: string, androidPackage?: string): void {
+export function sanitizeFallbackUrl(url: string, packageName?: string): string {
+  // Never allow broken /booking paths on landing pages (like rapido.bike/booking)
+  if (url.includes('rapido.bike/booking') || packageName === 'com.rapido.passenger') {
+    return isIOSDevice()
+      ? 'https://apps.apple.com/in/app/rapido-bike-taxi-auto-cabs/id1198464606'
+      : 'https://play.google.com/store/apps/details?id=com.rapido.passenger';
+  }
+
+  if (packageName === 'in.juspay.nammayatri' && (!url || url.includes('/open'))) {
+    return 'https://play.google.com/store/apps/details?id=in.juspay.nammayatri';
+  }
+
+  if (packageName === 'com.blusmart' && (!url || url.includes('/book'))) {
+    return 'https://play.google.com/store/apps/details?id=com.blusmart';
+  }
+
+  return url || 'https://play.google.com/store/apps';
+}
+
+/**
+ * Executes a native app launch with pre-filled data.
+ * - On Android: Uses Chrome Intent syntax which natively opens the installed app
+ *   OR routes to Google Play Store if not installed.
+ * - On iOS: Uses Universal Links or custom URI schemes with App Store fallback.
+ * - On Desktop: Opens verified pre-filled web booking in a new tab.
+ */
+export function launchMobileAppOrWeb(
+  appSchemeUrl: string,
+  webFallbackUrl: string,
+  androidPackage?: string
+): void {
   if (typeof window === 'undefined') return;
 
   const isMobile = isMobileDevice();
+  const safeFallback = sanitizeFallbackUrl(webFallbackUrl, androidPackage);
 
   if (!isMobile) {
     // Desktop: Always open pre-filled web booking in new tab
-    window.open(webFallbackUrl, '_blank', 'noopener,noreferrer');
+    window.open(safeFallback, '_blank', 'noopener,noreferrer');
     return;
   }
 
-  // On Mobile: Try opening the native app first
-  const startTime = Date.now();
-  let hasHidden = false;
+  // 1. Android Intent dispatch (Native Chrome Intent handling)
+  if (isAndroidDevice() && androidPackage) {
+    let intentUrl = '';
+    if (appSchemeUrl.startsWith('intent://')) {
+      intentUrl = appSchemeUrl;
+    } else {
+      const scheme = appSchemeUrl.includes('://') ? appSchemeUrl.split('://')[0] : 'https';
+      const pathWithQuery = appSchemeUrl.includes('://')
+        ? appSchemeUrl.substring(appSchemeUrl.indexOf('://') + 3)
+        : appSchemeUrl;
 
-  const onVisibilityChange = () => {
-    if (document.hidden || document.visibilityState === 'hidden') {
-      hasHidden = true;
+      intentUrl = `intent://${pathWithQuery}#Intent;scheme=${scheme};package=${androidPackage};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${encodeURIComponent(safeFallback)};end`;
     }
-  };
 
-  document.addEventListener('visibilitychange', onVisibilityChange, { once: true });
-
-  // 1. Android Intent format (if package specified and on Android)
-  if (isAndroidDevice() && androidPackage && appSchemeUrl.includes('://')) {
-    const schemePart = appSchemeUrl.split('://')[0];
-    const pathPart = appSchemeUrl.split('://')[1] || '';
-    const intentUrl = `intent://${pathPart}#Intent;scheme=${schemePart};package=${androidPackage};S.browser_fallback_url=${encodeURIComponent(webFallbackUrl)};end`;
-    
+    // Launch via simulated click in user gesture context
     try {
-      window.location.href = intentUrl;
+      const link = document.createElement('a');
+      link.href = intentUrl;
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       return;
     } catch {
-      // Fall through to generic scheme attempt
+      window.location.href = intentUrl;
+      return;
     }
   }
 
-  // 2. Standard custom URI scheme launch (iOS & Android)
-  try {
-    window.location.href = appSchemeUrl;
-  } catch {
-    // If browser blocks direct scheme invocation, open fallback
-    window.location.href = webFallbackUrl;
+  // 2. iOS or other mobile browsers
+  if (isIOSDevice()) {
+    // If it's an HTTP/HTTPS universal link (e.g. Uber universal link), open directly
+    if (appSchemeUrl.startsWith('http://') || appSchemeUrl.startsWith('https://')) {
+      window.location.href = appSchemeUrl;
+      return;
+    }
+
+    // For custom schemes on iOS (e.g. rapido://ride), trigger scheme
+    try {
+      const link = document.createElement('a');
+      link.href = appSchemeUrl;
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {
+      window.location.href = appSchemeUrl;
+    }
     return;
   }
 
-  // 3. Fallback timer: If app did not catch and browser didn't lose focus within 1200ms
-  setTimeout(() => {
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    const elapsed = Date.now() - startTime;
-    // If user is still on this browser tab, the app is not installed -> open web fallback
-    if (!hasHidden && document.visibilityState === 'visible' && elapsed < 2500) {
-      window.location.href = webFallbackUrl;
-    }
-  }, 1200);
+  // 3. Generic fallback
+  try {
+    window.location.href = appSchemeUrl || safeFallback;
+  } catch {
+    window.location.href = safeFallback;
+  }
 }
 
 // =========================================================================
@@ -157,8 +218,11 @@ export function buildRapidoDeepLink(params: {
   const pName = encodeURIComponent(pickupName);
   const dName = encodeURIComponent(dropName);
 
-  const appScheme = `rapido://booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${pName}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dName}&service=${service}`;
-  const webFallback = `https://rapido.bike/booking?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${pName}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dName}&service=${service}`;
+  // Rapido's official deep link scheme for ride booking with pre-filled coordinates
+  const appScheme = `rapido://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${pName}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dName}&service=${service}`;
+  const webFallback = isIOSDevice()
+    ? 'https://apps.apple.com/in/app/rapido-bike-taxi-auto-cabs/id1198464606'
+    : 'https://play.google.com/store/apps/details?id=com.rapido.passenger';
 
   return {
     appScheme,
@@ -180,7 +244,7 @@ export function buildNammaYatriDeepLink(params: {
   const dName = encodeURIComponent(dropName);
 
   const appScheme = `nammayatri://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${pName}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dName}`;
-  const webFallback = `https://nammayatri.in/open?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${pName}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dName}`;
+  const webFallback = 'https://play.google.com/store/apps/details?id=in.juspay.nammayatri';
 
   return {
     appScheme,
@@ -202,11 +266,12 @@ export function buildTrainAppDeepLink(params: {
   const yearStr = String(d.getFullYear());
   const confirmTktDate = `${dayStr}-${monthStr}-${yearStr}`;
 
-  // ConfirmTkt native app scheme
-  const appScheme = `confirmtkt://search?fromStation=${originCode}&toStation=${destCode}&date=${confirmTktDate}${trainNumber ? `&trainNo=${trainNumber}` : ''}`;
-  const webFallback = trainNumber
+  // ConfirmTkt verified app link
+  const appScheme = trainNumber
     ? `https://www.confirmtkt.com/rbooking-d/?trainNo=${trainNumber}&fromStation=${originCode}&toStation=${destCode}&date=${confirmTktDate}&quota=GN`
     : `https://www.confirmtkt.com/train-running-status/${originCode}-to-${destCode}?date=${confirmTktDate}`;
+
+  const webFallback = appScheme;
 
   return {
     appScheme,
@@ -225,14 +290,12 @@ export function buildBusAppDeepLink(params: {
   const dayStr = String(d.getDate()).padStart(2, '0');
   const monthStr = String(d.getMonth() + 1).padStart(2, '0');
   const yearStr = String(d.getFullYear());
-  const formattedDate = `${yearStr}-${monthStr}-${dayStr}`;
 
   const cleanOrig = originCity.split(',')[0].trim();
   const cleanDest = destCity.split(',')[0].trim();
 
-  // RedBus native app scheme
-  const appScheme = `redbus://search?fromCity=${encodeURIComponent(cleanOrig)}&toCity=${encodeURIComponent(cleanDest)}&doj=${formattedDate}`;
   const webFallback = `https://www.redbus.in/bus-tickets/${encodeURIComponent(cleanOrig.toLowerCase())}-to-${encodeURIComponent(cleanDest.toLowerCase())}?doj=${dayStr}-${monthStr}-${yearStr}`;
+  const appScheme = webFallback;
 
   return {
     appScheme,
@@ -252,8 +315,8 @@ export function buildFlightAppDeepLink(params: {
   const monthStr = String(d.getMonth() + 1).padStart(2, '0');
   const yearStr = String(d.getFullYear());
 
-  const appScheme = `makemytrip://flight/search?orig=${originAirportCode}&dest=${destAirportCode}&date=${dayStr}/${monthStr}/${yearStr}`;
   const webFallback = `https://www.makemytrip.com/flight/search?itinerary=${originAirportCode}-${destAirportCode}-${dayStr}/${monthStr}/${yearStr}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E`;
+  const appScheme = `makemytrip://flight/search?orig=${originAirportCode}&dest=${destAirportCode}&date=${dayStr}/${monthStr}/${yearStr}`;
 
   return {
     appScheme,
