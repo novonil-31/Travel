@@ -75,9 +75,10 @@ export function sanitizeFallbackUrl(url: string, packageName?: string): string {
 
 /**
  * Executes a native app launch with pre-filled data.
- * - On Android: Uses Chrome Intent syntax which natively opens the installed app
- *   OR routes to Google Play Store if not installed.
- * - On iOS: Uses Universal Links or custom URI schemes with App Store fallback.
+ * - On Android: Dispatches direct app scheme (e.g. rapido://ride?..., uber://...) and
+ *   clean package intent without strict BROWSABLE filters or premature Play Store fallbacks.
+ *   Only redirects to store/web if the app is truly not installed after user verification.
+ * - On iOS: Uses Universal Links or custom URI schemes with graceful store fallback.
  * - On Desktop: Opens verified pre-filled web booking in a new tab.
  */
 export function launchMobileAppOrWeb(
@@ -96,44 +97,114 @@ export function launchMobileAppOrWeb(
     return;
   }
 
-  // 1. Android Intent dispatch (Native Chrome Intent handling)
+  // 1. Android Intent & Custom Scheme dispatch
   if (isAndroidDevice() && androidPackage) {
     let intentUrl = '';
+    let directScheme = appSchemeUrl;
+
     if (appSchemeUrl.startsWith('intent://')) {
       intentUrl = appSchemeUrl;
+      const schemeMatch = appSchemeUrl.match(/scheme=([^;]+)/);
+      const queryMatch = appSchemeUrl.split('#Intent')[0].replace('intent://', '');
+      if (schemeMatch && schemeMatch[1]) {
+        directScheme = `${schemeMatch[1]}://${queryMatch}`;
+      }
     } else {
       const scheme = appSchemeUrl.includes('://') ? appSchemeUrl.split('://')[0] : 'https';
       const pathWithQuery = appSchemeUrl.includes('://')
         ? appSchemeUrl.substring(appSchemeUrl.indexOf('://') + 3)
         : appSchemeUrl;
 
-      intentUrl = `intent://${pathWithQuery}#Intent;scheme=${scheme};package=${androidPackage};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${encodeURIComponent(safeFallback)};end`;
+      // Clean package intent without strict BROWSABLE category which causes Chrome to reject valid DEFAULT activities
+      intentUrl = `intent://${pathWithQuery}#Intent;scheme=${scheme};package=${androidPackage};end`;
+      directScheme = appSchemeUrl;
     }
 
-    // Launch via simulated click in user gesture context
-    try {
-      const link = document.createElement('a');
-      link.href = intentUrl;
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    } catch {
-      window.location.href = intentUrl;
-      return;
+    let appLaunched = false;
+    const markAppLaunched = () => {
+      appLaunched = true;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden || document.visibilityState === 'hidden') {
+        markAppLaunched();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', markAppLaunched);
+    window.addEventListener('blur', markAppLaunched);
+
+    // Primary attempt: Try direct custom scheme (rapido://ride?...) which Android OS resolves natively
+    if (directScheme && !directScheme.startsWith('intent://')) {
+      try {
+        const link = document.createElement('a');
+        link.href = directScheme;
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        window.location.href = directScheme;
+      }
+    } else {
+      try {
+        const link = document.createElement('a');
+        link.href = intentUrl;
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        window.location.href = intentUrl;
+      }
     }
+
+    // Secondary attempt: after 300ms, if window is still visible, trigger intentUrl
+    setTimeout(() => {
+      if (!appLaunched && !document.hidden && intentUrl && directScheme !== intentUrl) {
+        try {
+          const intentLink = document.createElement('a');
+          intentLink.href = intentUrl;
+          intentLink.rel = 'noopener noreferrer';
+          document.body.appendChild(intentLink);
+          intentLink.click();
+          document.body.removeChild(intentLink);
+        } catch {
+          window.location.href = intentUrl;
+        }
+      }
+    }, 300);
+
+    // Fallback attempt: ONLY if the browser page remained continuously visible in foreground for 2.2s
+    // (i.e. the app is genuinely NOT installed on the device)
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', markAppLaunched);
+      window.removeEventListener('blur', markAppLaunched);
+      if (!appLaunched && !document.hidden) {
+        window.location.href = safeFallback;
+      }
+    }, 2200);
+
+    return;
   }
 
   // 2. iOS or other mobile browsers
   if (isIOSDevice()) {
-    // If it's an HTTP/HTTPS universal link (e.g. Uber universal link), open directly
     if (appSchemeUrl.startsWith('http://') || appSchemeUrl.startsWith('https://')) {
       window.location.href = appSchemeUrl;
       return;
     }
 
-    // For custom schemes on iOS (e.g. rapido://ride), trigger scheme
+    let iosAppLaunched = false;
+    const onHide = () => { iosAppLaunched = true; };
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) onHide();
+    });
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('blur', onHide);
+
     try {
       const link = document.createElement('a');
       link.href = appSchemeUrl;
@@ -144,6 +215,13 @@ export function launchMobileAppOrWeb(
     } catch {
       window.location.href = appSchemeUrl;
     }
+
+    setTimeout(() => {
+      if (!iosAppLaunched && !document.hidden) {
+        window.location.href = safeFallback;
+      }
+    }, 2200);
+
     return;
   }
 
@@ -218,8 +296,9 @@ export function buildRapidoDeepLink(params: {
   const pName = encodeURIComponent(pickupName);
   const dName = encodeURIComponent(dropName);
 
-  // Rapido's official deep link scheme for ride booking with pre-filled coordinates
-  const appScheme = `rapido://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${pName}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dName}&service=${service}`;
+  // Rapido deep link with comprehensive coordinate bindings for all versions
+  const rapidoQuery = `pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickupLat=${pickupLat}&pickupLng=${pickupLng}&pickup_name=${pName}&drop_lat=${dropLat}&drop_lng=${dropLng}&dropLat=${dropLat}&dropLng=${dropLng}&drop_name=${dName}&service=${service}&service_type=${service}`;
+  const appScheme = `rapido://ride?${rapidoQuery}`;
   const webFallback = isIOSDevice()
     ? 'https://apps.apple.com/in/app/rapido-bike-taxi-auto-cabs/id1198464606'
     : 'https://play.google.com/store/apps/details?id=com.rapido.passenger';

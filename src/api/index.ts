@@ -840,10 +840,11 @@ export function generateClientCabComparison(params: {
   const makeOlaScheme = (cat: string) =>
     `olacabs://app/launch?lat=${pickupLat}&lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&category=${cat}`;
 
+  const rapidoQuery = `pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickupLat=${pickupLat}&pickupLng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&dropLat=${dropLat}&dropLng=${dropLng}&drop_name=${dNameEnc}`;
   const makeRapido = (svc: string) =>
-    `intent://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&service=${svc}#Intent;scheme=rapido;package=com.rapido.passenger;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.rapido.passenger;end`;
+    `intent://ride?${rapidoQuery}&service=${svc}&service_type=${svc}#Intent;scheme=rapido;package=com.rapido.passenger;end`;
   const makeRapidoScheme = (svc: string) =>
-    `rapido://ride?pickup_lat=${pickupLat}&pickup_lng=${pickupLng}&pickup_name=${oNameEnc}&drop_lat=${dropLat}&drop_lng=${dropLng}&drop_name=${dNameEnc}&service=${svc}`;
+    `rapido://ride?${rapidoQuery}&service=${svc}&service_type=${svc}`;
 
   const makeNamma = () =>
     `https://nammayatri.in/open?src_lat=${pickupLat}&src_lng=${pickupLng}&src_name=${oNameEnc}&dest_lat=${dropLat}&dest_lng=${dropLng}&dest_name=${dNameEnc}`;
@@ -1142,26 +1143,25 @@ export function generateClientCabComparison(params: {
     };
   });
 
-  // Pick cheapest and fastest ONLY from real available options in this city
-  const availableOptions = taggedList.filter((o) => o.isAvailable);
-  const pool = availableOptions.length > 0 ? availableOptions : taggedList;
-  const cheapest = [...pool].sort((a, b) => a.fare - b.fare)[0];
-  let fastest = pool[0];
+  // CRITICAL: Do NOT put vehicles on the list if they do not operate in that area or for this distance!
+  const operatingList = taggedList.filter((o) => o.isAvailable);
+  const cheapest = [...operatingList].sort((a, b) => a.fare - b.fare)[0];
+  let fastest = operatingList[0];
   let minT = Infinity;
-  for (const opt of pool) {
+  for (const opt of operatingList) {
     if (opt.estimatedDurationMins < minT) {
       minT = opt.estimatedDurationMins;
       fastest = opt;
     }
   }
 
-  const uberGo = taggedList.find((o) => o.id === 'uber-go') || taggedList[taggedList.length - 1];
-  const maxFare = Math.max(...taggedList.map((o) => o.fare));
+  const uberGo = operatingList.find((o) => o.id === 'uber-go') || operatingList[0];
+  const maxFare = operatingList.length > 0 ? Math.max(...operatingList.map((o) => o.fare)) : 0;
 
-  const options = taggedList.map((opt) => ({
+  const options = operatingList.map((opt) => ({
     ...opt,
-    isCheapest: opt.isAvailable && opt.id === cheapest?.id,
-    isFastest: opt.isAvailable && opt.id === fastest?.id,
+    isCheapest: opt.id === cheapest?.id,
+    isFastest: opt.id === fastest?.id,
     savingsVsMax: Math.max(0, maxFare - opt.fare),
     savingsVsUber: uberGo ? Math.max(0, uberGo.fare - opt.fare) : 0,
   }));

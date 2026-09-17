@@ -847,7 +847,7 @@ export default function RouteDiscoveryPage() {
 
   // Carpooling States & Modals
   const [showCarpoolModal, setShowCarpoolModal] = useState<boolean>(false);
-  const [showRaisePoolModal, setShowRaisePoolModal] = useState<boolean>(false);
+  const [carpoolModalTab, setCarpoolModalTab] = useState<'browse' | 'request'>('browse');
   const [selectedCarpoolMatch, setSelectedCarpoolMatch] = useState<CarpoolRide | null>(null);
   const [carpoolRegistryVersion, setCarpoolRegistryVersion] = useState<number>(0);
 
@@ -1309,7 +1309,8 @@ export default function RouteDiscoveryPage() {
       notes: poolNotesInput.trim(),
     });
 
-    setShowRaisePoolModal(false);
+    setShowCarpoolModal(false);
+    setCarpoolModalTab('browse');
     setCarpoolRegistryVersion((v) => v + 1);
     addToast(
       'success',
@@ -1704,14 +1705,17 @@ export default function RouteDiscoveryPage() {
                 <span>{isSearchingRoute ? 'Searching...' : 'Find Routes'}</span>
               </button>
 
-              {/* Carpool Hub Action Button */}
+              {/* Carpool Hub Action Button (Desktop Only to keep mobile search uncluttered) */}
               <button
                 type="button"
-                onClick={() => setShowCarpoolModal(true)}
-                className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 min-h-[38px] cursor-pointer"
+                onClick={() => {
+                  setCarpoolModalTab('browse');
+                  setShowCarpoolModal(true);
+                }}
+                className="hidden sm:flex text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2.5 rounded-xl transition-all items-center justify-center gap-1.5 shadow-sm shrink-0 min-h-[38px] cursor-pointer"
               >
                 <Users className="w-3.5 h-3.5 text-purple-600" />
-                <span className="hidden sm:inline">Carpool Hub</span>
+                <span>Carpool Hub</span>
                 <span className="inline-block bg-purple-200/80 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
                   {matchingCarpools.length}
                 </span>
@@ -1916,7 +1920,7 @@ export default function RouteDiscoveryPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-sm leading-tight truncate flex items-center gap-1.5">
-                          <span className="truncate">{route.route?.name || 'Transit Option'}</span>
+                          <span className="truncate">{route.route?.name?.replace(/\s*\(\d+\s*Connecting Buses\)/gi, '') || 'Transit Option'}</span>
                           {route.transitChainInfo?.flightOrTrainNumber && (
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-800'}`}>
                               {route.transitChainInfo.flightOrTrainNumber.split(' ')[0]}
@@ -1940,8 +1944,8 @@ export default function RouteDiscoveryPage() {
                                         ? '🛵 Fast Solo Bike'
                                         : route.route?.vehicleType === 'bus' || route.route?.id?.includes('BUS') || route.route?.name?.toLowerCase().includes('bus')
                                           ? (route.route?.id?.includes('BUS_TRANSFER') || (route.transfers && route.transfers > 0)
-                                              ? '🔄 Multi-Bus Connecting Line (1 Transfer)'
-                                              : '🚌 Direct Public Mo Bus')
+                                              ? `🔄 ${route.transfers || 1} Transfer${(route.transfers || 1) > 1 ? 's' : ''} • Connecting Bus`
+                                              : '🚌 Direct Public Bus')
                                           : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
                                             ? '✈️ Commercial Flight'
                                             : (route.route?.vehicleType === 'train' || route.route?.id?.includes('TRAIN') || route.route?.id?.includes('RAIL') || route.route?.id?.includes('IRCTC'))
@@ -2058,33 +2062,63 @@ export default function RouteDiscoveryPage() {
                     );
                   })()}
 
-                  {/* Multi-modal Legs Sequence Pills */}
+                  {/* Multi-modal Legs Sequence Pills (Clean, Compact for Phone) */}
                   {route.segments && route.segments.length > 0 && (
                     <div className="flex items-center flex-wrap gap-1.5 pt-1.5 border-t border-white/10 border-neutral-100 text-[11px] font-medium">
                       {route.segments
                         .filter((seg) => seg.type === 'walk' || seg.type === 'ride' || seg.type === 'transfer')
-                        .map((seg, sIdx, arr) => (
-                        <React.Fragment key={sIdx}>
-                          <span
-                            className={`px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/15 text-neutral-200' : 'bg-neutral-100 text-neutral-700'
-                              }`}
-                          >
-                            {seg.vehicleType === 'flight' || seg.routeId?.includes('FLIGHT') ? '✈️ Flight' :
-                              seg.vehicleType === 'train' || seg.routeId?.includes('RAIL') ? '🚆 Train' :
-                                seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool') ? `🤝 Carpool` :
-                                  seg.routeId?.includes('CYCLE') || seg.routeName?.toLowerCase().includes('cycle') ? `🚲 Smart Cycle` :
-                                    seg.routeId?.includes('AUTO') || seg.routeName?.toLowerCase().includes('auto') || seg.routeName?.toLowerCase().includes('rickshaw') ? `🛺 Auto` :
-                                      seg.type === 'walk' ? `🚶 ${seg.duration}m` :
-                                        seg.type === 'transfer' ? `🔄 Transfer (${seg.duration}m)` :
-                                          seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus'
-                                            ? (seg.routeId?.includes('EV') ? '⚡ Campus EV' : `🚌 ${seg.routeName?.replace('Mo Bus ', '') || 'Bus'}`)
-                                            : (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport' ? `🛺 Auto` : `🚶 ${seg.duration}m`)}
-                          </span>
-                          {sIdx < arr.length - 1 && (
-                            <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
-                          )}
-                        </React.Fragment>
-                      ))}
+                        .map((seg, sIdx, arr) => {
+                          let label = '';
+                          if (seg.vehicleType === 'flight' || seg.routeId?.includes('FLIGHT')) {
+                            label = '✈️ Flight';
+                          } else if (seg.vehicleType === 'train' || seg.routeId?.includes('RAIL')) {
+                            label = '🚆 Train';
+                          } else if (seg.routeId?.includes('CARPOOL') || seg.routeName?.toLowerCase().includes('carpool')) {
+                            label = '🤝 Carpool';
+                          } else if (seg.routeId?.includes('CYCLE') || seg.routeName?.toLowerCase().includes('cycle')) {
+                            label = '🚲 Cycle';
+                          } else if (seg.routeId?.includes('AUTO') || seg.routeName?.toLowerCase().includes('auto') || seg.routeName?.toLowerCase().includes('rickshaw')) {
+                            label = '🛺 Auto';
+                          } else if (seg.type === 'walk') {
+                            label = `🚶 ${seg.duration}m`;
+                          } else if (seg.type === 'transfer') {
+                            label = `🔄 Transfer (${seg.duration}m)`;
+                          } else if (seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus') {
+                            if (seg.routeId?.includes('EV')) {
+                              label = '⚡ Campus EV';
+                            } else {
+                              const rName = seg.routeName || '';
+                              if (/feeder/i.test(rName)) label = '🚌 Feeder';
+                              else if (/sleeper|multi-axle|volvo/i.test(rName)) label = '🚌 AC Sleeper';
+                              else if (/express|interstate|intercity/i.test(rName)) label = '🚌 Express Bus';
+                              else if (/shuttle|connecting|local/i.test(rName)) label = '🚌 City Bus';
+                              else if (/mo bus/i.test(rName)) label = `🚌 ${rName.replace(/mo bus\s*/i, '').trim() || 'Mo Bus'}`;
+                              else {
+                                const clean = rName.replace(/\(.*\)/g, '').trim();
+                                label = clean.length > 14 ? `🚌 ${clean.slice(0, 14)}...` : `🚌 ${clean || 'Bus'}`;
+                              }
+                            }
+                          } else if (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport') {
+                            label = '🛺 Auto';
+                          } else {
+                            label = `🚶 ${seg.duration}m`;
+                          }
+
+                          return (
+                            <React.Fragment key={sIdx}>
+                              <span
+                                className={`px-2 py-0.5 rounded-md ${
+                                  isSelected ? 'bg-white/15 text-neutral-200' : 'bg-neutral-100 text-neutral-700'
+                                }`}
+                              >
+                                {label}
+                              </span>
+                              {sIdx < arr.length - 1 && (
+                                <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                     </div>
                   )}
                 </button>
@@ -2287,7 +2321,10 @@ export default function RouteDiscoveryPage() {
                             {leg.mode === 'carpool' ? (
                               <button
                                 type="button"
-                                onClick={() => setShowRaisePoolModal(true)}
+                                onClick={() => {
+                                  setCarpoolModalTab('request');
+                                  setShowCarpoolModal(true);
+                                }}
                                 className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm"
                               >
                                 <Users className="w-2.5 h-2.5" />
@@ -2326,73 +2363,8 @@ export default function RouteDiscoveryPage() {
               );
             })()}
 
-            {/* Contextual Carpool Hub Banner OR Specific Transport Price Compare Banner */}
+            {/* Specific Transport Price Compare Banner (when not carpool) */}
             {(() => {
-              const isSelectedRouteCarpool =
-                selectedRoute.route?.id?.includes('CARPOOL') ||
-                selectedRoute.route?.name?.toLowerCase().includes('carpool');
-
-              const isSelectedRouteSharedTaxi =
-                selectedRoute.route?.id?.includes('SHARED') ||
-                selectedRoute.route?.name?.toLowerCase().includes('sharing taxi') ||
-                selectedRoute.route?.name?.toLowerCase().includes('auto stand');
-
-              if (isSelectedRouteCarpool) {
-                return (
-                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">🤝</span>
-                      <div className="min-w-0">
-                        <div className="font-bold text-purple-900 text-xs flex items-center gap-1.5">
-                          <span>Corridor Carpool Hub</span>
-                          <span className="bg-purple-200 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                            {matchingCarpools.length} Available
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-purple-700 truncate">
-                          {matchingCarpools.length > 0
-                            ? `Match with co-riders on this corridor & split ride costs`
-                            : 'Offer or request shared rides with verified commuters'}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowCarpoolModal(true)}
-                      className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer transition-colors shadow-xs"
-                    >
-                      View Co-Riders
-                    </button>
-                  </div>
-                );
-              }
-
-              if (isSelectedRouteSharedTaxi) {
-                return (
-                  <div className="p-3 bg-purple-50/60 border border-purple-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">🚖</span>
-                      <div className="min-w-0">
-                        <div className="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
-                          <span>Stand Shared Taxi & Carpool Option</span>
-                        </div>
-                        <div className="text-[11px] text-neutral-600 truncate">
-                          Walk to stand for ₹{selectedRoute.fare?.min || 10}-₹{selectedRoute.fare?.max || 15} shared auto, or match co-riders
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowCarpoolModal(true)}
-                      className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer transition-colors shadow-xs flex items-center gap-1"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span>Carpool Hub</span>
-                    </button>
-                  </div>
-                );
-              }
-
               const selectedTransportDetails = getRouteTransportInfo(selectedRoute);
               if (
                 selectedTransportDetails.type === 'bike' ||
@@ -2429,7 +2401,7 @@ export default function RouteDiscoveryPage() {
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <button
                 onClick={handleStart}
-                className="flex-1 py-3 sm:py-3.5 px-4 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-sm min-h-[44px]"
+                className="flex-1 py-3 sm:py-3.5 px-4 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-sm min-h-[44px] cursor-pointer"
               >
                 <Navigation className="w-4 h-4" />
                 <span>Start Live Navigation</span>
@@ -2445,51 +2417,20 @@ export default function RouteDiscoveryPage() {
                   selectedRoute.route?.name?.toLowerCase().includes('sharing taxi') ||
                   selectedRoute.route?.name?.toLowerCase().includes('auto stand');
 
-                if (isSelectedRouteCarpool) {
+                if (isSelectedRouteCarpool || isSelectedRouteSharedTaxi) {
                   return (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowCarpoolModal(true)}
-                        className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px] cursor-pointer"
-                      >
-                        <Users className="w-4 h-4" />
-                        <span>🤝 Carpool Hub ({matchingCarpools.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowRaisePoolModal(true)}
-                        className="py-3 sm:py-3.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 font-bold text-xs text-neutral-800 transition-colors flex items-center justify-center gap-1 shrink-0 min-h-[44px] cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Offer / Request</span>
-                      </button>
-                    </>
-                  );
-                }
-
-                if (isSelectedRouteSharedTaxi) {
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowCarpoolModal(true)}
-                        className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px] cursor-pointer"
-                        title="Open Carpool options to match with co-riders on this route"
-                      >
-                        <Users className="w-4 h-4" />
-                        <span>🤝 Carpool Option ({matchingCarpools.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openRideComparator('cab')}
-                        className="py-3 sm:py-3.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 font-bold text-xs text-neutral-800 transition-colors flex items-center justify-center gap-1 shrink-0 min-h-[44px] cursor-pointer"
-                        title="Compare on-demand private cab prices"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Private Cab</span>
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCarpoolModalTab('browse');
+                        setShowCarpoolModal(true);
+                      }}
+                      className="py-3 sm:py-3.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 font-bold text-sm text-white transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm min-h-[44px] cursor-pointer"
+                      title="Open Carpool Hub to match with co-riders on this route"
+                    >
+                      <Users className="w-4 h-4" />
+                      <span>🤝 Carpool Hub ({matchingCarpools.length})</span>
+                    </button>
                   );
                 }
 
@@ -3029,261 +2970,242 @@ export default function RouteDiscoveryPage() {
       {/* =========================================================================
           CARPOOLING & SHARED RIDES HUB MODAL
           ========================================================================= */}
+      {/* =========================================================================
+          UNIFIED CARPOOLING & SHARED RIDES HUB MODAL
+          ========================================================================= */}
       {showCarpoolModal && (
         <Modal
           open={showCarpoolModal}
           onClose={() => setShowCarpoolModal(false)}
-          title="🚗 Carpooling & Shared Rides Hub"
+          title="🤝 Corridor Carpool Hub"
         >
-          <div className="space-y-4 font-sans">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-sm text-neutral-900">Co-Riders on Your Corridor</h3>
-                <p className="text-xs text-neutral-500">
-                  {selectedRoute?.originName} ➔ {selectedRoute?.destinationName}
-                </p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowCarpoolModal(false);
-                  setShowRaisePoolModal(true);
-                }}
-                className="text-xs font-bold text-white bg-black hover:bg-neutral-800 px-3 py-2 rounded-xl transition-all flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Offer / Request</span>
-              </button>
-            </div>
-
-            {matchingCarpools.length > 0 ? (
-              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                {matchingCarpools.map((pool) => (
-                  <div
-                    key={pool.id}
-                    className="p-3.5 rounded-2xl border border-neutral-200 bg-neutral-50 hover:bg-white transition-all space-y-2"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-bold text-xs text-neutral-900 flex items-center gap-1.5">
-                          <span>{pool.hostName}</span>
-                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
-                            {pool.hostVerification}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5">
-                          {pool.vehicleModel} • {pool.role === 'driver' ? 'Offering Seats' : 'Splitting Cab/Auto'}
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-sm font-black text-purple-700">₹{pool.farePerSeat}</div>
-                        <div className="text-[10px] text-neutral-400 line-through">₹{pool.originalSoloFare}</div>
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-neutral-700 bg-white p-2 rounded-xl border border-neutral-100 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-purple-600" />
-                        <span className="font-medium text-[11px]">{pool.optimalMeetingPoint.name}</span>
-                      </div>
-                      <span className="text-[11px] font-bold text-neutral-500">
-                        {pool.scheduledDepartureTime}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => handleAcceptCarpool(pool)}
-                      className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      <span>Request Seat / Match with {pool.hostName.split(' ')[0]}</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-6 text-center bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
-                <Users className="w-8 h-8 text-neutral-400 mx-auto" />
-                <div className="text-xs font-bold text-neutral-800">No Co-Riders Currently on this Corridor</div>
-                <p className="text-[11px] text-neutral-500 max-w-xs mx-auto">
-                  Be the first to post a carpool request for {urlDepartTime || '09:30 AM'} and commuters along your route will match with you!
-                </p>
-                <button
-                  onClick={() => {
-                    setShowCarpoolModal(false);
-                    setShowRaisePoolModal(true);
-                  }}
-                  className="mt-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Post Carpool Request</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {/* =========================================================================
-          RAISE / OFFER CARPOOL REQUEST MODAL
-          ========================================================================= */}
-      {showRaisePoolModal && (
-        <Modal
-          open={showRaisePoolModal}
-          onClose={() => setShowRaisePoolModal(false)}
-          title="📢 Offer or Request a Carpool"
-        >
-          <form onSubmit={handleRaisePoolSubmit} className="space-y-3.5 font-sans">
-            {/* Role Selection */}
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block mb-1.5">
-                Your Role
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPoolRoleInput('passenger_split')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${poolRoleInput === 'passenger_split'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                      : 'bg-neutral-50 border-neutral-200 text-neutral-700'
-                    }`}
-                >
-                  🙋 Passenger (Split Fare)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPoolRoleInput('driver')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${poolRoleInput === 'driver'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                      : 'bg-neutral-50 border-neutral-200 text-neutral-700'
-                    }`}
-                >
-                  🚗 Driver (Offer Seats)
-                </button>
-              </div>
-            </div>
-
-            {/* Name & Phone */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Your Name</label>
-                <input
-                  type="text"
-                  value={poolNameInput}
-                  onChange={(e) => setPoolNameInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  value={poolPhoneInput}
-                  onChange={(e) => setPoolPhoneInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Vehicle details if Driver */}
-            {poolRoleInput === 'driver' && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Model</label>
-                  <input
-                    type="text"
-                    value={poolVehicleModelInput}
-                    onChange={(e) => setPoolVehicleModelInput(e.target.value)}
-                    placeholder="e.g. Tata Nexon EV"
-                    className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Plate</label>
-                  <input
-                    type="text"
-                    value={poolVehiclePlateInput}
-                    onChange={(e) => setPoolVehiclePlateInput(e.target.value)}
-                    placeholder="e.g. OD-02-AZ-8890"
-                    className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Departure Time & Seats */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] font-bold text-neutral-700 block mb-1">Departure Time</label>
-                <input
-                  type="time"
-                  value={poolDepartTimeInput}
-                  onChange={(e) => setPoolDepartTimeInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-neutral-700 block mb-1">
-                  {poolRoleInput === 'driver' ? 'Available Seats' : 'Seats Needed'}
-                </label>
-                <select
-                  value={poolSeatsInput}
-                  onChange={(e) => setPoolSeatsInput(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black cursor-pointer"
-                >
-                  <option value={1}>1 Seat</option>
-                  <option value={2}>2 Seats</option>
-                  <option value={3}>3 Seats</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Accessibility / Boot Space */}
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="stepFreeCheck"
-                checked={poolStepFreeInput}
-                onChange={(e) => setPoolStepFreeInput(e.target.checked)}
-                className="w-4 h-4 rounded text-purple-600 border-neutral-300 focus:ring-purple-500"
-              />
-              <label htmlFor="stepFreeCheck" className="text-xs font-medium text-neutral-700 cursor-pointer">
-                Space for folding wheelchair or large luggage
-              </label>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="text-[11px] font-bold text-neutral-700 block mb-1">Notes (Optional)</label>
-              <input
-                type="text"
-                value={poolNotesInput}
-                onChange={(e) => setPoolNotesInput(e.target.value)}
-                placeholder="e.g. Can meet at Campus Gate or KIIT Square"
-                className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:border-black"
-              />
-            </div>
-
-            <div className="pt-2 flex gap-2">
+          <div className="space-y-3.5 font-sans">
+            {/* Modal Segmented Navigation Tabs */}
+            <div className="flex p-1 bg-neutral-100 rounded-xl gap-1">
               <button
                 type="button"
-                onClick={() => setShowRaisePoolModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-neutral-200 font-bold text-xs text-neutral-600 hover:bg-neutral-50"
+                onClick={() => setCarpoolModalTab('browse')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${
+                  carpoolModalTab === 'browse'
+                    ? 'bg-white text-black shadow-xs'
+                    : 'text-neutral-600 hover:text-black'
+                }`}
               >
-                Cancel
+                <span>Available Co-Riders</span>
+                <span className="ml-1.5 text-[10px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 font-black">
+                  {matchingCarpools.length}
+                </span>
               </button>
               <button
-                type="submit"
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors shadow-sm"
+                type="button"
+                onClick={() => setCarpoolModalTab('request')}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${
+                  carpoolModalTab === 'request'
+                    ? 'bg-white text-black shadow-xs'
+                    : 'text-neutral-600 hover:text-black'
+                }`}
               >
-                Broadcast to Corridor
+                <span>+ Offer / Request Ride</span>
               </button>
             </div>
-          </form>
+
+            {carpoolModalTab === 'browse' ? (
+              /* TAB 1: BROWSE CO-RIDERS */
+              <div className="space-y-3">
+                <div className="text-xs text-neutral-500 font-medium px-1">
+                  Corridor: <strong className="text-neutral-800">{selectedRoute?.originName?.split('(')[0]}</strong> ➔ <strong className="text-neutral-800">{selectedRoute?.destinationName?.split('(')[0]}</strong>
+                </div>
+
+                {matchingCarpools.length > 0 ? (
+                  <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                    {matchingCarpools.map((pool) => (
+                      <div
+                        key={pool.id}
+                        className="p-3.5 rounded-2xl border border-neutral-200 bg-neutral-50 hover:bg-white transition-all space-y-2"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-bold text-xs text-neutral-900 flex items-center gap-1.5">
+                              <span>{pool.hostName}</span>
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
+                                {pool.hostVerification}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5">
+                              {pool.vehicleModel} • {pool.role === 'driver' ? 'Offering Seats' : 'Splitting Cab/Auto'}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-sm font-black text-purple-700">₹{pool.farePerSeat}</div>
+                            <div className="text-[10px] text-neutral-400 line-through">₹{pool.originalSoloFare}</div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-neutral-700 bg-white p-2 rounded-xl border border-neutral-100 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-purple-600" />
+                            <span className="font-medium text-[11px]">{pool.optimalMeetingPoint.name}</span>
+                          </div>
+                          <span className="text-[11px] font-bold text-neutral-500">
+                            {pool.scheduledDepartureTime}
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => handleAcceptCarpool(pool)}
+                          className="w-full py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Request Seat / Match with {pool.hostName.split(' ')[0]}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center bg-neutral-50 border border-neutral-200 rounded-2xl space-y-2">
+                    <Users className="w-8 h-8 text-neutral-400 mx-auto" />
+                    <div className="text-xs font-bold text-neutral-800">No Co-Riders Currently on this Corridor</div>
+                    <p className="text-[11px] text-neutral-500 max-w-xs mx-auto">
+                      Post a quick request and verified commuters along your route will match with you!
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCarpoolModalTab('request')}
+                      className="mt-2 text-xs font-bold text-white bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Post Carpool Request</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* TAB 2: POST / OFFER REQUEST FORM */
+              <form onSubmit={handleRaisePoolSubmit} className="space-y-3 font-sans">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 block mb-1.5">
+                    Your Role
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPoolRoleInput('passenger_split')}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        poolRoleInput === 'passenger_split'
+                          ? 'bg-purple-700 text-white border-purple-700 shadow-sm'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      🙋 Passenger (Split Fare)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPoolRoleInput('driver')}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        poolRoleInput === 'driver'
+                          ? 'bg-purple-700 text-white border-purple-700 shadow-sm'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      🚗 Driver (Offer Seats)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-neutral-700 block mb-1">Your Name</label>
+                    <input
+                      type="text"
+                      value={poolNameInput}
+                      onChange={(e) => setPoolNameInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-neutral-700 block mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      value={poolPhoneInput}
+                      onChange={(e) => setPoolPhoneInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {poolRoleInput === 'driver' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Model</label>
+                      <input
+                        type="text"
+                        value={poolVehicleModelInput}
+                        onChange={(e) => setPoolVehicleModelInput(e.target.value)}
+                        placeholder="e.g. Tata Nexon EV"
+                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-neutral-700 block mb-1">Vehicle Plate</label>
+                      <input
+                        type="text"
+                        value={poolVehiclePlateInput}
+                        onChange={(e) => setPoolVehiclePlateInput(e.target.value)}
+                        placeholder="e.g. OD-02-AZ-8890"
+                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-neutral-700 block mb-1">Departure Time</label>
+                    <input
+                      type="time"
+                      value={poolDepartTimeInput}
+                      onChange={(e) => setPoolDepartTimeInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                      {poolRoleInput === 'driver' ? 'Available Seats' : 'Seats Needed'}
+                    </label>
+                    <select
+                      value={poolSeatsInput}
+                      onChange={(e) => setPoolSeatsInput(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:border-black cursor-pointer"
+                    >
+                      <option value={1}>1 Seat</option>
+                      <option value={2}>2 Seats</option>
+                      <option value={3}>3 Seats</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCarpoolModalTab('browse')}
+                    className="flex-1 py-2.5 rounded-xl border border-neutral-200 font-bold text-xs text-neutral-600 hover:bg-neutral-50 cursor-pointer"
+                  >
+                    Back to Co-Riders
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs transition-colors shadow-sm cursor-pointer"
+                  >
+                    Broadcast to Corridor
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </Modal>
       )}
 

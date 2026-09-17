@@ -951,13 +951,33 @@ export function calculateLiveTaxiTariff(
     durationMin = Math.max(15, Math.round((distKm / 55) * 60));
   }
 
+  // Enforce operating distance limits
+  if (serviceType === 'auto' && distKm > 25) {
+    serviceType = distKm > 45 ? 'outstation' : 'uberGo';
+    serviceName = 'AC Cab Transfer (Auto unavailable > 25 km)';
+    basePrice = distKm > 45 ? 350 : 50;
+    perKmRate = distKm > 45 ? 13.5 : 14.5;
+    durationMin = Math.max(3, Math.round((distKm / (distKm > 45 ? 55 : 24)) * 60));
+  } else if (serviceType === 'bike' && distKm > 18) {
+    serviceType = 'uberGo';
+    serviceName = 'AC Cab Transfer (Bike unavailable > 18 km)';
+    basePrice = 50;
+    perKmRate = 14.5;
+    durationMin = Math.max(3, Math.round((distKm / 24) * 60));
+  }
+
   const { multiplier: dynamicSurge } = getDynamicPeakMultiplier(new Date());
   const rawFare = distKm <= 1.5
     ? basePrice
     : Math.round(basePrice + (distKm - 1.5) * perKmRate);
   const calculatedFare = Math.round(rawFare * dynamicSurge);
 
-  const bookingUrl = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${originLat}&pickup[longitude]=${originLng}&dropoff[latitude]=${destLat}&dropoff[longitude]=${destLng}`;
+  const isOdisha = originLat >= 19.4 && originLat <= 21.0 && originLng >= 85.0 && originLng <= 86.8;
+  let bookingUrl = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${originLat}&pickup[longitude]=${originLng}&dropoff[latitude]=${destLat}&dropoff[longitude]=${destLng}`;
+  if (serviceType === 'auto' && isOdisha) {
+    // Uber does not have auto in Odisha, use Ola Auto or Rapido Auto
+    bookingUrl = `https://book.olacabs.com/?pickup_lat=${originLat}&pickup_lng=${originLng}&drop_lat=${destLat}&drop_lng=${destLng}&category=auto`;
+  }
 
   const result: LiveTaxiFareResult = {
     serviceType,

@@ -26,6 +26,7 @@ import {
   buildExactBusBookingUrl,
 } from '../utils/onlineRouting';
 import { fetchLiveTrainPricing, fetchLiveFlightPricing, fetchLiveBusPricing, calculateLiveTaxiTariff, calculateMultiSourceBusFare, selectBenchmarkTrainClass, buildMakeMyTripBusUrl } from '../utils/liveTransitPriceFetcher';
+import { getTransportAvailabilityReport } from '../utils/transportAvailabilityRegistry';
 
 import { OFFICIAL_STOPS, OFFICIAL_ROUTES, calculateOfficialBusFare, type OfficialBusLine, type TransitStopInfo } from './liveTimetable';
 import {
@@ -1686,7 +1687,11 @@ export async function generateDynamicSearchResults(
       condition: DEMO_CONDITIONS.S1,
     };
 
-    results.push(intercityCarpoolOption, regionalBusOption, outstationCabOption);
+    results.push(intercityCarpoolOption, regionalBusOption);
+    // Taxi apps do not accept single direct outstation cabs beyond 350 km
+    if (directDistanceKm <= 350) {
+      results.push(outstationCabOption);
+    }
     return results;
   }
 
@@ -3029,6 +3034,34 @@ export async function generateDynamicSearchResults(
     condition: DEMO_CONDITIONS.S1,
   };
 
+  // =========================================================================
+  // REAL-WORLD TRANSPORT AVAILABILITY & GEOFENCING EVALUATION
+  // =========================================================================
+  const transportReport = getTransportAvailabilityReport(
+    origin.lat,
+    origin.lng,
+    directDistanceKm,
+    origin.name,
+    destination.name
+  );
+
+  const canOperateAuto =
+    directDistanceKm <= 25 &&
+    transportReport.supportedVehicleIds.some((id) => id.includes('auto'));
+
+  const canOperateBike =
+    !isWheelchair &&
+    directDistanceKm <= 18 &&
+    transportReport.supportedVehicleIds.some((id) => id.includes('bike') || id.includes('moto'));
+
+  const canOperateStand = directDistanceKm <= 25;
+  const canOperateCab = directDistanceKm <= 150;
+
+  const isOdisha = origin.lat >= 19.4 && origin.lat <= 21.0 && origin.lng >= 85.0 && origin.lng <= 86.8;
+  const autoBookingUrl = isOdisha
+    ? `https://book.olacabs.com/?pickup_lat=${origin.lat}&pickup_lng=${origin.lng}&drop_lat=${destination.lat}&drop_lng=${destination.lng}&category=auto`
+    : `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`;
+
   // Option 3: Direct On-Demand Auto / Rickshaw (Doorstep Pickup - 0m Walk)
   const autoDuration = directDrivingDurationMin;
   const option3: RouteSearchResult = {
@@ -3077,7 +3110,7 @@ export async function generateDynamicSearchResults(
       totalPrice: autoFareExact,
       currency: 'INR',
       itemizedLegs: [
-        { mode: 'auto', title: `Direct Auto Rickshaw (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: autoFareExact, bookingLabel: 'Book Auto' },
+        { mode: 'auto', title: `Direct Auto Rickshaw (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`, from: origin.name, to: destination.name, fare: autoFareExact, bookingUrl: autoBookingUrl, bookingLabel: 'Book Auto' },
       ],
     },
     recommendation: {
@@ -3293,7 +3326,115 @@ export async function generateDynamicSearchResults(
     condition: DEMO_CONDITIONS.S1,
   };
 
-  return [...busResults, carpoolOption, option3, option4, option5];
+  // Direct Private Cab Option (for distances where autos do not operate, or up to 150 km)
+  const cabDuration = directDrivingDurationMin;
+  const cabFareExact = Math.round(55 + directDistanceKm * 15.5);
+  const directCabOption: RouteSearchResult = {
+    route: {
+      id: 'CAB_DIRECT',
+      name: 'Direct Private AC Cab',
+      shortName: 'Cab',
+      vehicleType: 'shared-transport',
+      color: '#2563eb',
+      description: 'Doorstep pickup AC Sedan / Hatchback with space for 4 passengers and luggage',
+      active: true,
+      stops: [],
+    },
+    eta: cabDuration,
+    duration: cabDuration,
+    walkingDistance: 0,
+    transfers: 0,
+    stairs: 0,
+    crowding: 'LOW' as CrowdingLevel,
+    vehicleAccessible: true,
+    delay: 0,
+    travelScope: 'local',
+    originCoords: { lat: origin.lat, lng: origin.lng },
+    destinationCoords: { lat: destination.lat, lng: destination.lng },
+    originName: origin.name,
+    destinationName: destination.name,
+    scores: {
+      accessibility: 96,
+      safety: 95,
+      reliability: 96,
+      comfort: 96,
+      overall: 96,
+    },
+    fare: {
+      type: 'exact',
+      exact: cabFareExact,
+      currency: 'INR',
+      confidence: 0.96,
+      source: 'Direct AC Cab Tariff (Base ₹55 + ₹15.50/km)',
+      status: 'estimated',
+      notes: `Door-to-door private cab for ${directDistanceKm.toFixed(1)} km`,
+    },
+    nearbyStands: nearbyStandsList,
+    priceBreakdown: {
+      mainTicketFare: cabFareExact,
+      totalPrice: cabFareExact,
+      currency: 'INR',
+      itemizedLegs: [
+        {
+          mode: 'taxi',
+          title: `Direct AC Cab (${origin.name.split(',')[0]} ➔ ${destination.name.split(',')[0]})`,
+          from: origin.name,
+          to: destination.name,
+          fare: cabFareExact,
+          bookingUrl: `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${origin.lat}&pickup[longitude]=${origin.lng}&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}`,
+          bookingLabel: 'Book Cab',
+        },
+      ],
+    },
+    recommendation: {
+      recommended: false,
+      rank: 3,
+      reasons: [
+        'Doorstep private AC cab with 0m walking',
+        'Operates across municipal borders where autos and bikes cannot go',
+        'Certified accessible vehicle with trunk space for wheelchairs',
+      ],
+      tradeoff: 'Higher fare than shared transit or auto.',
+    },
+    geometry: {
+      originToBoardWalk: [],
+      transitPath: directDrivingPath,
+      alightToDestWalk: [],
+      fullRoute: directDrivingPath,
+    },
+    intermediateStops: [],
+    turnByTurn: [
+      `Board private cab at doorstep (${origin.name})`,
+      `Direct road transit for ${directDistanceKm.toFixed(1)} km (~${cabDuration} mins)`,
+      `Arrive at destination (${destination.name})`,
+    ],
+    segments: [
+      { type: 'ride', from: origin.name, to: destination.name, duration: cabDuration, accessible: true, stairs: 0, routeId: 'CAB_DIRECT', routeName: 'Direct Private Cab', crowding: 'LOW' },
+    ],
+    condition: DEMO_CONDITIONS.S1,
+  };
+
+  // Build final route list strictly containing vehicles that actually operate in this area
+  const finalLocalResults: RouteSearchResult[] = [...busResults, carpoolOption];
+
+  // Auto is only included if it actually operates in this area & distance <= 25km
+  if (canOperateAuto) {
+    finalLocalResults.push(option3);
+  } else if (canOperateCab) {
+    finalLocalResults.push(directCabOption);
+  }
+
+  // Stand Auto is only included if distance <= 25km
+  if (canOperateStand) {
+    finalLocalResults.push(option4);
+  }
+
+  // Bike taxi is only included if it operates in this area, distance <= 18km, and non-wheelchair
+  if (canOperateBike) {
+    finalLocalResults.push(option5);
+  }
+
+  return finalLocalResults;
 }
 
 export function generateDemoSearchResults(originName: string, destName: string): RouteSearchResult[] {
