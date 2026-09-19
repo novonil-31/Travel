@@ -108,15 +108,15 @@ export function PassengerLayout() {
       </header>
 
       {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between gap-2 bg-black text-white px-3 h-14 sticky top-0 z-[1100] shadow-sm">
+      <header className="md:hidden flex items-center justify-between gap-1.5 bg-black text-white px-3 h-14 sticky top-0 z-[1100] shadow-sm w-full max-w-full">
         {/* Brand: Always full and never shrunk or overlapped */}
-        <Link to="/app" className="flex items-center gap-1.5 shrink-0 select-none" aria-label="Maarg Darshan Home">
+        <Link to="/app" className="flex items-center gap-1.5 shrink-0 select-none min-w-0" aria-label="Maarg Darshan Home">
           <img
             src="/logo.png"
             alt="Maarg Darshan Logo"
             className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain shrink-0 shadow-xs"
           />
-          <span className="font-black text-white text-sm sm:text-base tracking-tight whitespace-nowrap">मार्ग Darshan</span>
+          <span className="font-black text-white text-sm tracking-tight whitespace-nowrap">मार्ग Darshan</span>
         </Link>
         <div className="flex items-center gap-1 shrink-0">
           <LocationRegionBanner compact dark className="py-1 px-2" />
@@ -210,30 +210,30 @@ export function PassengerLayout() {
       )}
 
       {/* Main Outlet */}
-      <main className="pb-20 md:pb-8 flex-1">
+      <main className="pb-24 md:pb-8 flex-1 w-full max-w-full overflow-x-hidden">
         <Outlet />
       </main>
 
       {/* Mobile Floating Bottom Bar (Uber/Citymapper style, safe area, high touch-target) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-neutral-200 h-16 px-2 flex items-center justify-around z-40 shadow-lg pb-[env(safe-area-inset-bottom)]" aria-label="Mobile bottom navigation">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-neutral-200 h-[60px] px-1 flex items-center justify-around z-40 shadow-lg pb-[env(safe-area-inset-bottom)] select-none" aria-label="Mobile bottom navigation">
         {navItems.map(item => {
           const active = isActive(item.path);
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+              className={`flex flex-col items-center justify-center min-w-[52px] py-1 px-1 rounded-xl transition-all relative ${
                 active ? 'text-black font-extrabold' : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
               <div className={`p-1 rounded-xl transition-colors ${active ? 'bg-neutral-100 text-black' : ''}`}>
                 <item.icon className="w-5 h-5" />
               </div>
-              <span className={`text-[10px] mt-0.5 tracking-tight ${active ? 'font-black' : 'font-medium'}`}>
+              <span className={`text-[10px] mt-0.5 tracking-tight leading-none ${active ? 'font-black' : 'font-medium'}`}>
                 {item.label}
               </span>
               {item.badge ? (
-                <span className="absolute top-1 right-3 w-2 h-2 bg-red-600 rounded-full" />
+                <span className="absolute top-1 right-2.5 w-2 h-2 bg-red-600 rounded-full" />
               ) : null}
             </Link>
           );

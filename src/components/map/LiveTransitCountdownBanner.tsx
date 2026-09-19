@@ -8,8 +8,7 @@ import {
   ShieldCheck,
   AlertCircle,
   PlusCircle,
-  X,
-  Sparkles
+  X
 } from 'lucide-react';
 import type { AuthenticRadarStatus } from '../../utils/liveTransitRadar';
 import { submitAuthenticCrowdCheckIn, speakTransitAnnouncement } from '../../utils/liveTransitRadar';

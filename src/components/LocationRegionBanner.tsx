@@ -57,8 +57,8 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
             )}
           </span>
           <MapPin className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`} />
-          {/* Responsive label: on mobile screen show short city name with max-w-[70px] to preserve brand header space */}
-          <span className={`truncate text-[11px] sm:text-xs font-semibold max-w-[65px] xs:max-w-[90px] sm:max-w-[170px] ${dark ? 'text-white' : 'text-neutral-900'}`}>
+          {/* Responsive label: on mobile screen show short city name without overflow */}
+          <span className={`truncate text-[11px] sm:text-xs font-semibold max-w-[70px] sm:max-w-[170px] ${dark ? 'text-white' : 'text-neutral-900'}`}>
             <span className="sm:hidden">{shortCityLabel}</span>
             <span className="hidden sm:inline">{fullLabel}</span>
           </span>
@@ -77,37 +77,33 @@ export const LocationRegionBanner: React.FC<LocationRegionBannerProps> = ({
     <div className={`bg-neutral-900 text-white rounded-2xl p-3 sm:p-4 border border-neutral-800 shadow-md ${className}`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Left Info */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white shrink-0">
             <Compass className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider font-extrabold text-neutral-400 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] uppercase tracking-wider font-extrabold text-neutral-400 flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                Live GPS Location (Auto-Detected)
+                Live GPS Location
               </span>
               {successFlash && (
                 <span className="bg-white text-black px-1.5 py-0.2 rounded text-[9px] font-black animate-pulse">
-                  Location Refreshed
+                  Refreshed
                 </span>
               )}
             </div>
-            <div className="text-sm font-black text-white flex items-center gap-2 truncate mt-0.5">
-              <span className="truncate">{userLocation.placeName || userLocation.regionLabel}</span>
+            <div className="text-xs sm:text-sm font-black text-white flex items-center gap-2 flex-wrap sm:flex-nowrap mt-0.5 min-w-0">
+              <span className="truncate min-w-0">{userLocation.placeName || userLocation.regionLabel}</span>
               {userLocation.permissionGranted ? (
                 <span className="inline-flex items-center gap-1 bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0">
-                  <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
-                  Background Tracking Active
+                  <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-400" />
+                  GPS Active
                 </span>
-              ) : (
-                <span className="bg-neutral-800 text-neutral-400 border border-neutral-700 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0">
-                  Detecting in background...
-                </span>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

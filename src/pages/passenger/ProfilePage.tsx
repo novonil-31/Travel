@@ -9,7 +9,7 @@ import {
 import type { AccessibilityProfile, EmergencyContact, SafetyPreference, TravelPreferences } from '../../types';
 import { Link } from 'react-router-dom';
 import { authApi } from '../../api';
-import { Train, Plane, Ticket, Sparkles, Home, Briefcase, Lock, AlertTriangle } from 'lucide-react';
+import { Train, Plane, Ticket, Home, Briefcase, Lock, AlertTriangle } from 'lucide-react';
 import { isGuestAccount, getOrCreateCommuterPass } from '../../utils/authUtils';
 
 export default function ProfilePage() {

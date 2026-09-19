@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
   MapPin, Navigation, ArrowRight, Clock, Bus, Car,
-  ShieldCheck, ChevronRight, Search, Sparkles, Crosshair,
+  ShieldCheck, ChevronRight, Search, Crosshair,
   TrendingUp, Zap, Shield, Globe
 } from 'lucide-react';
 import { DEMO_STOPS, DEMO_TRANSPORT_STANDS } from '../../data/mock';
@@ -152,15 +152,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=bike')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🛵
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Bike Taxi
             </span>
-            <span className="text-[10px] font-extrabold text-amber-700 mt-0.5">
+            <span className="text-[10px] font-extrabold text-amber-700 mt-0.5 truncate w-full px-0.5">
               From ₹25
             </span>
           </button>
@@ -169,15 +169,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=auto')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-yellow-50 text-yellow-700 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-yellow-50 text-yellow-700 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🛺
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Auto
             </span>
-            <span className="text-[10px] font-extrabold text-yellow-800 mt-0.5">
+            <span className="text-[10px] font-extrabold text-yellow-800 mt-0.5 truncate w-full px-0.5">
               From ₹30
             </span>
           </button>
@@ -186,15 +186,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=cab')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-900 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-neutral-100 text-neutral-900 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🚖
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Cab
             </span>
-            <span className="text-[10px] font-extrabold text-neutral-900 mt-0.5">
+            <span className="text-[10px] font-extrabold text-neutral-900 mt-0.5 truncate w-full px-0.5">
               From ₹90
             </span>
           </button>
@@ -203,15 +203,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=metro')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🚇
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Metro
             </span>
-            <span className="text-[10px] font-extrabold text-indigo-700 mt-0.5">
+            <span className="text-[10px] font-extrabold text-indigo-700 mt-0.5 truncate w-full px-0.5">
               From ₹10
             </span>
           </button>
@@ -220,15 +220,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=bus')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🚌
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Bus
             </span>
-            <span className="text-[10px] font-extrabold text-blue-700 mt-0.5">
+            <span className="text-[10px] font-extrabold text-blue-700 mt-0.5 truncate w-full px-0.5">
               From ₹10
             </span>
           </button>
@@ -237,15 +237,15 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => navigate('/plan?mobility=walking')}
-            className="p-2.5 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center"
+            className="p-2 sm:p-3 rounded-2xl bg-white border border-neutral-200 hover:border-black transition-all cursor-pointer group shadow-xs hover:shadow-sm flex flex-col items-center justify-center text-center min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform">
               🛡️
             </div>
-            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black">
+            <span className="font-bold text-xs text-neutral-900 mt-1.5 group-hover:text-black truncate w-full px-0.5">
               Walk
             </span>
-            <span className="text-[10px] font-extrabold text-emerald-700 mt-0.5">
+            <span className="text-[10px] font-extrabold text-emerald-700 mt-0.5 truncate w-full px-0.5">
               ₹0 Walk
             </span>
           </button>

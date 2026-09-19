@@ -50,20 +50,18 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
     <div className={`space-y-2.5 ${className}`}>
       {/* Commuter Pass Balance (Members Only) */}
       {!isGuest && (
-        <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-neutral-50 border border-neutral-200 text-xs">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded-lg bg-emerald-100 text-emerald-800">
-                <Check className="w-3.5 h-3.5" />
-              </span>
-              <span className="font-bold text-neutral-900">
-                Transit Smart Pass: <span className="text-emerald-700 font-extrabold">Active</span>
-              </span>
-            </div>
-            <span className="text-[11px] font-bold text-neutral-500">
-              Pass ID: <span className="font-mono text-neutral-700">{commuterPass.passId}</span>
+        <div className="flex items-center justify-between flex-wrap gap-1 px-3.5 py-2 rounded-2xl bg-neutral-50 border border-neutral-200 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="p-1 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
+              <Check className="w-3.5 h-3.5" />
+            </span>
+            <span className="font-bold text-neutral-900 truncate">
+              Smart Pass: <span className="text-emerald-700 font-extrabold">Active</span>
             </span>
           </div>
+          <span className="text-[11px] font-bold text-neutral-500 shrink-0">
+            ID: <span className="font-mono text-neutral-700">{commuterPass.passId}</span>
+          </span>
         </div>
       )}
 
@@ -75,7 +73,7 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
           onClick={() => handlePlaceClick('home')}
           disabled={isGuest}
           title={isGuest ? 'Sign in to save Home location' : undefined}
-          className={`flex-1 flex items-center justify-between px-3.5 py-2.5 rounded-2xl border text-xs font-semibold transition-all ${
+          className={`flex-1 min-w-0 flex items-center justify-between px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl border text-xs font-semibold transition-all ${
             isGuest
               ? 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed'
               : homePlace
@@ -83,10 +81,10 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
               : 'bg-white text-neutral-800 border-neutral-200 hover:border-neutral-400'
           }`}
         >
-          <div className="flex items-center gap-2 truncate">
+          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
             <Home className={`w-3.5 h-3.5 shrink-0 ${homePlace && !isGuest ? 'text-white' : 'text-neutral-500'}`} />
-            <div className="text-left truncate">
-              <span className="block truncate">
+            <div className="text-left min-w-0">
+              <span className="block truncate max-w-[110px] sm:max-w-none">
                 {homePlace && !isGuest ? homePlace.address : 'Home'}
               </span>
             </div>
@@ -104,7 +102,7 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
           onClick={() => handlePlaceClick('work')}
           disabled={isGuest}
           title={isGuest ? 'Sign in to save Work location' : undefined}
-          className={`flex-1 flex items-center justify-between px-3.5 py-2.5 rounded-2xl border text-xs font-semibold transition-all ${
+          className={`flex-1 min-w-0 flex items-center justify-between px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl border text-xs font-semibold transition-all ${
             isGuest
               ? 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed'
               : workPlace
@@ -112,10 +110,10 @@ export const SavedPlacesBar: React.FC<SavedPlacesBarProps> = ({ onSelectPlace, c
               : 'bg-white text-neutral-800 border-neutral-200 hover:border-neutral-400'
           }`}
         >
-          <div className="flex items-center gap-2 truncate">
+          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
             <Briefcase className={`w-3.5 h-3.5 shrink-0 ${workPlace && !isGuest ? 'text-white' : 'text-neutral-500'}`} />
-            <div className="text-left truncate">
-              <span className="block truncate">
+            <div className="text-left min-w-0">
+              <span className="block truncate max-w-[110px] sm:max-w-none">
                 {workPlace && !isGuest ? workPlace.address : 'Work'}
               </span>
             </div>

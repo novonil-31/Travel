@@ -5,7 +5,7 @@ import { Button } from '../../components/ui';
 import { journeysApi, stopsApi } from '../../api';
 import {
   Navigation, MapPin, ArrowDownUp, Search, Clock,
-  Crosshair, Loader2, Sparkles, AlertCircle, CheckCircle,
+  Crosshair, Loader2, AlertCircle, CheckCircle,
   Bus, Car, Shield, Accessibility, History, ArrowRight, Compass
 } from 'lucide-react';
 import { type GeocodedPlace, getRegionalDefaultRecommendations, clearSearchPlacesCache } from '../../utils/onlineRouting';
@@ -812,15 +812,15 @@ export default function TripPlannerPage() {
                 key={idx}
                 type="button"
                 onClick={() => handleSelectPreset(rec.origin, rec.destination)}
-                className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-black text-left transition-all shadow-sm group flex flex-col justify-between cursor-pointer"
+                className="p-3 sm:p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-black text-left transition-all shadow-xs group flex flex-col justify-between cursor-pointer min-w-0"
               >
-                <div className="flex items-center gap-2 font-bold text-xs text-neutral-900 group-hover:text-black truncate">
+                <div className="flex items-center gap-2 font-bold text-xs text-neutral-900 group-hover:text-black min-w-0 w-full overflow-hidden">
                   <Clock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                  <span className="truncate">{rec.origin.name} → {rec.destination.name}</span>
+                  <span className="truncate flex-1">{rec.origin.name} → {rec.destination.name}</span>
                 </div>
-                <div className="text-[11px] text-neutral-400 mt-1 flex items-center justify-between">
-                  <span>Saved Route</span>
-                  <span className="text-emerald-700 font-bold group-hover:underline">Plan Trip →</span>
+                <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-2 pt-1 border-t border-neutral-100">
+                  <span>Multimodal Route</span>
+                  <span className="text-black font-bold group-hover:translate-x-0.5 transition-transform">Plan ➔</span>
                 </div>
               </button>
             ))}

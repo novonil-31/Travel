@@ -182,8 +182,8 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         </div>
       </div>
 
-      {/* Category Tabs: Clean Segmented Control */}
-      <div className="flex p-1 bg-neutral-100 rounded-xl gap-1">
+      {/* Category Tabs: Clean Segmented Control with smooth scroll */}
+      <div className="flex items-center overflow-x-auto no-scrollbar p-1 bg-neutral-100 rounded-xl gap-1">
         {[
           { id: 'all', label: 'All' },
           { id: 'auto', label: '🛺 Auto' },
@@ -195,7 +195,7 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
             key={tab.id}
             type="button"
             onClick={() => setCategory(tab.id as any)}
-            className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${
+            className={`flex-1 min-w-[64px] py-1.5 px-2.5 rounded-lg text-xs font-bold text-center transition-all cursor-pointer whitespace-nowrap shrink-0 ${
               category === tab.id
                 ? 'bg-white text-black shadow-xs'
                 : 'text-neutral-600 hover:text-black'
@@ -208,21 +208,21 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
 
       {/* Carpool Quick Option (When Carpool Tab is selected) */}
       {category === 'carpool' && (
-        <div className="p-3.5 rounded-2xl border border-purple-200 bg-purple-50 flex items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="text-2xl shrink-0">🤝</span>
+        <div className="p-3 rounded-2xl border border-purple-200 bg-purple-50 flex items-center justify-between gap-2.5 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-xl shrink-0">🤝</span>
             <div className="min-w-0">
               <div className="font-extrabold text-purple-950 text-xs truncate">
                 Corridor Carpool Split
               </div>
               <div className="text-[11px] text-purple-700 font-medium truncate">
-                Share a ride with verified commuters along this route
+                Share ride with verified commuters
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="font-black text-sm text-purple-950">~₹15 - ₹25</span>
+            <span className="font-black text-xs sm:text-sm text-purple-950">~₹15-25</span>
             <button
               type="button"
               onClick={() => {
@@ -238,17 +238,17 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
 
       {/* Loading State */}
       {loading && !data && (
-        <div className="py-10 text-center text-xs text-neutral-500 space-y-2">
-          <div className="w-6 h-6 border-2 border-neutral-300 border-t-black rounded-full animate-spin mx-auto" />
+        <div className="py-8 text-center text-xs text-neutral-500 space-y-2">
+          <div className="w-5 h-5 border-2 border-neutral-300 border-t-black rounded-full animate-spin mx-auto" />
           <div className="font-medium text-neutral-600">Comparing live fares...</div>
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between">
-          <span>{error}</span>
-          <button type="button" onClick={fetchLivePrices} className="font-bold underline cursor-pointer">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between gap-2">
+          <span className="truncate">{error}</span>
+          <button type="button" onClick={fetchLivePrices} className="font-bold underline cursor-pointer shrink-0">
             Retry
           </button>
         </div>
@@ -291,7 +291,7 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
         </div>
       )}
 
-      {/* Clean Available Ride Options */}
+      {/* Clean Minimalist Available Ride Options */}
       {availableOptions.length > 0 && (
         <div className="space-y-2">
           {availableOptions.map((option, idx) => {
@@ -302,70 +302,73 @@ export const LiveCabPriceComparator: React.FC<LiveCabPriceComparatorProps> = ({
             return (
               <div
                 key={option.id}
-                className={`p-3.5 rounded-2xl border transition-all ${
+                className={`p-3 rounded-2xl border transition-all ${
                   isLowest
-                    ? 'bg-emerald-50/50 border-emerald-300 shadow-xs'
+                    ? 'bg-emerald-50/40 border-emerald-300 shadow-xs'
                     : 'bg-white border-neutral-200 hover:border-neutral-300'
                 }`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  {/* Service Details */}
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-xl shrink-0">
+                {/* Main Row: Service Info & Fare + Book Button */}
+                <div className="flex items-center justify-between gap-2.5">
+                  {/* Service Identity */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-lg shrink-0">
                       {option.icon}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-extrabold text-neutral-900 text-sm truncate">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-black text-neutral-900 text-xs sm:text-sm truncate">
                           {displayName}
                         </span>
                         {isLowest && (
-                          <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                          <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shrink-0">
                             Cheapest
                           </span>
                         )}
                         {option.isSurgeActive && (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
-                            {option.surgeMultiplier}x Surge
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0">
+                            {option.surgeMultiplier}x
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-neutral-500 flex items-center gap-2 mt-0.5 font-medium">
-                        <span>~{option.estimatedWaitMins} min pickup</span>
-                        <span>•</span>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedTariffId(isTariffExpanded ? null : option.id)}
-                          className="text-neutral-600 hover:text-black underline cursor-pointer"
-                        >
-                          {isTariffExpanded ? 'Hide fare details' : 'Fare details'}
-                        </button>
+                      <div className="text-[11px] text-neutral-500 flex items-center gap-1.5 mt-0.5 font-medium">
+                        <span>~{option.estimatedWaitMins}m away</span>
+                        {option.savingsVsUber && option.savingsVsUber > 0 ? (
+                          <span className="text-emerald-700 font-bold">• Save ₹{option.savingsVsUber}</span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
 
                   {/* Fare & Book Action */}
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right">
-                      <div className="font-black text-base text-neutral-900">
+                      <div className="font-black text-sm sm:text-base text-neutral-900 leading-tight">
                         ₹{option.fare}
                       </div>
-                      {option.savingsVsUber && option.savingsVsUber > 0 ? (
-                        <div className="text-[10px] font-bold text-emerald-700">
-                          Save ₹{option.savingsVsUber}
-                        </div>
-                      ) : null}
                     </div>
                     <button
                       type="button"
                       onClick={() => handleBookRedirect(option)}
                       disabled={launchingId === option.id}
-                      className="px-4 py-2 bg-black hover:bg-neutral-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs disabled:opacity-75"
+                      className="px-3 py-1.5 bg-black hover:bg-neutral-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs disabled:opacity-75"
                     >
-                      <span>{launchingId === option.id ? 'Opening...' : 'Book'}</span>
+                      <span>{launchingId === option.id ? '...' : 'Book'}</span>
                       <ExternalLink className="w-3 h-3" />
                     </button>
                   </div>
+                </div>
+
+                {/* Sub-bar: Fare details toggle */}
+                <div className="mt-1.5 pt-1.5 border-t border-neutral-100 flex items-center justify-between text-[10px] text-neutral-500">
+                  <span className="truncate">Includes base & taxes</span>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedTariffId(isTariffExpanded ? null : option.id)}
+                    className="text-neutral-600 hover:text-black font-semibold underline cursor-pointer shrink-0 ml-2"
+                  >
+                    {isTariffExpanded ? 'Hide fare breakdown' : 'Fare breakdown'}
+                  </button>
                 </div>
 
                 {/* Collapsible Fare Details */}

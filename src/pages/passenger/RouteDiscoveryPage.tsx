@@ -10,9 +10,9 @@ import {
   Navigation, ArrowRight, MapPin, Clock,
   ChevronRight, ExternalLink, ShieldCheck, CheckCircle2,
   Car, Bus, Train, Plane, RefreshCw, AlertCircle, Users,
-  Plus, Check, X, Phone, UserCheck, Trash2, Sparkles, Share2,
+  Plus, Check, X, Phone, UserCheck, Trash2, Share2,
   CreditCard, Ticket, Crosshair, Layers, Info, Search, ArrowLeftRight,
-  Footprints, Bike, Zap, TramFront
+  Footprints, Bike, Zap, TramFront, ChevronUp, Maximize2
 } from 'lucide-react';
 import type { RouteSearchResult } from '../../types';
 import { journeysApi, stopsApi } from '../../api';
@@ -105,24 +105,24 @@ const createTransferPin = (fromIcon: string, toIcon: string, _label?: string) =>
     iconAnchor: [30, 11],
   });
 
-// Force Leaflet to recalculate container dimensions whenever mobile map view is activated or screen resizes
-function MapMobileResizer({ isActive }: { isActive: boolean }) {
+// Force Leaflet to recalculate container dimensions whenever mobile map mode changes or screen resizes
+function MapMobileResizer({ resizeKey }: { resizeKey?: any }) {
   const map = useMap();
 
   useEffect(() => {
-    if (isActive) {
-      // Invalidate sequentially to ensure zero tile-clipping after CSS tab transition
-      map.invalidateSize();
-      const t1 = setTimeout(() => map.invalidateSize(), 50);
-      const t2 = setTimeout(() => map.invalidateSize(), 200);
-      const t3 = setTimeout(() => map.invalidateSize(), 500);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-      };
-    }
-  }, [isActive, map]);
+    // Invalidate sequentially to ensure zero tile-clipping after CSS transition
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 50);
+    const t2 = setTimeout(() => map.invalidateSize(), 150);
+    const t3 = setTimeout(() => map.invalidateSize(), 300);
+    const t4 = setTimeout(() => map.invalidateSize(), 500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [resizeKey, map]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -510,15 +510,83 @@ export default function RouteDiscoveryPage() {
   const [showRouteOverview, setShowRouteOverview] = useState<boolean>(false);
   const [showRideDispatchModal, setShowRideDispatchModal] = useState<boolean>(false);
   const [dispatchCategory, setDispatchCategory] = useState<'all' | 'cab' | 'auto' | 'bike' | 'carpool'>('all');
+  const [showDetailedFareBreakdown, setShowDetailedFareBreakdown] = useState<boolean>(false);
 
   const openRideComparator = (category: 'all' | 'cab' | 'auto' | 'bike' | 'carpool' = 'all') => {
     setDispatchCategory(category);
     setShowRideDispatchModal(true);
   };
 
-  const selectedRoute: RouteSearchResult = searchResults[selectedIndex] || searchResults[0];
+  const [routeFilter, setRouteFilter] = useState<'all' | 'fastest' | 'cheapest' | 'train' | 'bus' | 'cab'>('all');
 
-  // 🤖 Autonomous Multi-Criteria Vehicle Evaluation (Best / Cheapest / Fastest / Step-free)
+  const filteredResults = useMemo(() => {
+    if (!searchResults || searchResults.length === 0) return [];
+    if (routeFilter === 'all') return searchResults;
+    if (routeFilter === 'fastest') {
+      return [...searchResults].sort((a, b) => a.duration - b.duration);
+    }
+    if (routeFilter === 'cheapest') {
+      return [...searchResults].sort((a, b) => {
+        const fareA = a.priceBreakdown?.totalPrice ?? a.fare?.exact ?? 9999;
+        const fareB = b.priceBreakdown?.totalPrice ?? b.fare?.exact ?? 9999;
+        return fareA - fareB;
+      });
+    }
+    if (routeFilter === 'train') {
+      const list = searchResults.filter((r) =>
+        r.route?.vehicleType === 'train' ||
+        r.route?.id?.includes('TRAIN') ||
+        r.route?.id?.includes('RAIL') ||
+        r.segments?.some((s) => s.vehicleType === 'train' || s.routeId?.includes('RAIL'))
+      );
+      return list.length > 0 ? list : searchResults;
+    }
+    if (routeFilter === 'bus') {
+      const list = searchResults.filter((r) =>
+        r.route?.vehicleType === 'bus' ||
+        r.route?.id?.includes('BUS') ||
+        r.segments?.some((s) => s.vehicleType === 'bus' || s.routeId?.includes('BUS'))
+      );
+      return list.length > 0 ? list : searchResults;
+    }
+    if (routeFilter === 'cab') {
+      const list = searchResults.filter((r) =>
+        r.route?.vehicleType === 'shared-transport' ||
+        r.route?.id?.includes('CAB') ||
+        r.route?.id?.includes('AUTO') ||
+        r.route?.id?.includes('CARPOOL') ||
+        r.segments?.some((s) => s.vehicleType === 'shared-transport' || s.routeId?.includes('AUTO'))
+      );
+      return list.length > 0 ? list : searchResults;
+    }
+    return searchResults;
+  }, [searchResults, routeFilter]);
+
+  const selectedRoute: RouteSearchResult = filteredResults[selectedIndex] || filteredResults[0] || searchResults[0];
+
+  const handleShareRoute = async () => {
+    if (!selectedRoute) return;
+    const fare = selectedRoute.fare?.exact ? `₹${selectedRoute.fare.exact}` : 'Standard Fare';
+    const shareText = `Transit route from ${selectedRoute.originName} to ${selectedRoute.destinationName} via ${selectedRoute.route?.name || 'Transit'} (${selectedRoute.duration} mins, ${fare}). Planned via Maarg Darshan.`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Route: ${selectedRoute.originName} to ${selectedRoute.destinationName}`,
+          text: shareText,
+          url: window.location.href,
+        });
+        return;
+      } catch {
+        // user cancelled or fallback
+      }
+    }
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(shareText);
+      addToast('success', 'Route details copied to clipboard!');
+    }
+  };
+
+  // Real-Time Multi-Criteria Route Evaluation (Best / Cheapest / Fastest / Step-free)
   const vehicleRecommendations = useMemo(() => {
     return evaluateBestAndCheapestOptions(searchResults);
   }, [searchResults]);
@@ -637,7 +705,59 @@ export default function RouteDiscoveryPage() {
   const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
   const [activeDropdown, setActiveDropdown] = useState<'origin' | 'dest' | null>(null);
   const [isSearchingRoute, setIsSearchingRoute] = useState<boolean>(false);
-  const [mobileTab, setMobileTab] = useState<'routes' | 'map'>('routes');
+  const [mobileMapMode, setMobileMapMode] = useState<'split' | 'expanded'>('split');
+  const [isScrolledDown, setIsScrolledDown] = useState<boolean>(false);
+  const [showMapPeekModal, setShowMapPeekModal] = useState<boolean>(false);
+  const [showFloatingRadar, setShowFloatingRadar] = useState<boolean>(true);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  // Precise, bulletproof fare formatting for selected route (handles Free / EV / multi-modal)
+  const selectedFareDisplay = useMemo(() => {
+    if (!selectedRoute) return '₹0';
+    const isZeroFare =
+      selectedRoute.route?.id?.includes('EV') ||
+      selectedRoute.route?.id?.includes('WALK') ||
+      selectedRoute.route?.id?.includes('STEP_FREE') ||
+      selectedRoute.route?.vehicleType === 'campus-vehicle' ||
+      selectedRoute.priceBreakdown?.totalPrice === 0 ||
+      selectedRoute.fare?.exact === 0;
+
+    if (isZeroFare) return 'Free (₹0)';
+    if (selectedRoute.priceBreakdown?.totalPrice !== undefined) {
+      return `₹${selectedRoute.priceBreakdown.totalPrice.toLocaleString()}`;
+    }
+    if (selectedRoute.fare?.exact !== undefined) {
+      return `₹${selectedRoute.fare.exact.toLocaleString()}`;
+    }
+    if (selectedRoute.fare?.min !== undefined && selectedRoute.fare?.max !== undefined) {
+      return `₹${selectedRoute.fare.min} - ₹${selectedRoute.fare.max}`;
+    }
+    return `₹${Math.max(10, Math.round(selectedRoute.duration * 1.2))}`;
+  }, [selectedRoute]);
+
+  // Track window scroll to activate Dynamic Island and Floating Route Radar on mobile
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      setIsScrolledDown(scrollY > 160);
+      if (scrollY < 50) {
+        setShowFloatingRadar(true);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Keyboard shortcut to close peek modal on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showMapPeekModal) {
+        setShowMapPeekModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showMapPeekModal]);
 
   // Synchronize inputs if URL changes
   useEffect(() => {
@@ -926,6 +1046,44 @@ export default function RouteDiscoveryPage() {
   const connectingTransitPath: Array<[number, number]> = stitchedGeometry.connectingTransitPath;
   const egressPath: Array<[number, number]> = stitchedGeometry.alightToDestWalk;
   const continuousRoute: Array<[number, number]> = stitchedGeometry.fullRoute;
+
+  // Generate real-time SVG points and bounding box for the Floating Route Radar
+  const radarSvgData = useMemo(() => {
+    if (!continuousRoute || continuousRoute.length < 2) return null;
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const [lat, lng] of continuousRoute) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+    const latSpan = maxLat - minLat || 0.001;
+    const lngSpan = maxLng - minLng || 0.001;
+    const width = 110;
+    const height = 65;
+    const padding = 8;
+    const innerW = width - padding * 2;
+    const innerH = height - padding * 2;
+
+    const points = continuousRoute.map(([lat, lng]) => {
+      const x = padding + ((lng - minLng) / lngSpan) * innerW;
+      const y = height - padding - ((lat - minLat) / latSpan) * innerH;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    const [firstLat, firstLng] = continuousRoute[0];
+    const [lastLat, lastLng] = continuousRoute[continuousRoute.length - 1];
+    const startPt = {
+      x: padding + ((firstLng - minLng) / lngSpan) * innerW,
+      y: height - padding - ((firstLat - minLat) / latSpan) * innerH,
+    };
+    const endPt = {
+      x: padding + ((lastLng - minLng) / lngSpan) * innerW,
+      y: height - padding - ((lastLat - minLat) / latSpan) * innerH,
+    };
+
+    return { points, startPt, endPt, width, height };
+  }, [continuousRoute]);
 
   // Multi-Modal Transfer Points on Map
   const transferPoints = useMemo(() => {
@@ -1803,51 +1961,63 @@ export default function RouteDiscoveryPage() {
         </div>
       )}
 
-      {/* Mobile Mode Switcher: Routes List vs Full Interactive Map */}
-      <div className="lg:hidden flex items-center justify-center p-1 bg-neutral-200/70 rounded-2xl max-w-xs mx-auto mb-1">
-        <button
-          type="button"
-          onClick={() => setMobileTab('routes')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            mobileTab === 'routes'
-              ? 'bg-white text-black shadow-xs'
-              : 'text-neutral-600 hover:text-black'
-          }`}
-        >
-          <span>📋 Rides & Routes</span>
-          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-            mobileTab === 'routes' ? 'bg-black text-white' : 'bg-neutral-300 text-neutral-800'
-          }`}>
-            {searchResults.length}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab('map')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            mobileTab === 'map'
-              ? 'bg-white text-black shadow-xs'
-              : 'text-neutral-600 hover:text-black'
-          }`}
-        >
-          <span>🗺️ Map View</span>
-        </button>
-      </div>
-
-      {/* Main Grid: Left Column = Route Choices & Details; Right Column = Interactive Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Itinerary Column: Route Choices & Trip Breakdown (5 cols on desktop, responsive tab on mobile) */}
-        <div className={`order-2 lg:order-1 lg:col-span-5 space-y-4 ${mobileTab === 'map' ? 'hidden lg:block' : 'block'}`}>
+      {/* Main Layout: Desktop 12-Column Split (5-col Itinerary, 7-col Sticky Map); Mobile Fluid Natural Scroll with Dynamic Island Header */}
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-4 lg:gap-5 items-start">
+        {/* Itinerary Column: Route Choices & Trip Breakdown (Connected directly below map on mobile, left on desktop) */}
+        <div className="order-2 lg:order-1 lg:col-span-5 space-y-4 w-full">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-black uppercase tracking-wider text-neutral-700">
-              Available Rides & Routes ({searchResults.length})
+              Available Rides & Routes ({filteredResults.length})
             </h2>
             <span className="text-xs text-neutral-400 font-semibold">Tap to select</span>
           </div>
 
+          {/* Quick Mode & Priority Filter Bar (Minimalist, Scrollable Strip on Mobile) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs select-none">
+            {[
+              { id: 'all', label: `All (${searchResults.length})` },
+              { id: 'fastest', label: '⚡ Fastest' },
+              { id: 'cheapest', label: '💰 Best Fare' },
+              { id: 'train', label: '🚆 Rail / Metro' },
+              { id: 'bus', label: '🚌 Bus' },
+              { id: 'cab', label: '🛺 Auto / Cab' },
+            ].map((pill) => {
+              const isActive = routeFilter === pill.id;
+              return (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => {
+                    setRouteFilter(pill.id as any);
+                    setSelectedIndex(0);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap text-xs transition-all cursor-pointer shrink-0 border ${
+                    isActive
+                      ? 'bg-black text-white border-black shadow-xs'
+                      : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50 hover:text-black'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Clean Uber/Rapido-Style Vehicle Cards List */}
-          <div className="space-y-2.5">
-            {searchResults.map((route, idx) => {
+          {filteredResults.length === 0 ? (
+            <div className="p-5 bg-white border border-neutral-200 rounded-2xl text-center space-y-2">
+              <p className="text-xs font-bold text-neutral-600">No transit routes found for this filter.</p>
+              <button
+                type="button"
+                onClick={() => setRouteFilter('all')}
+                className="px-3 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-bold cursor-pointer"
+              >
+                Show All Routes
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {filteredResults.map((route, idx) => {
               const isSelected = selectedIndex === idx;
               const hasBreakdown = !!route.priceBreakdown;
 
@@ -1907,27 +2077,27 @@ export default function RouteDiscoveryPage() {
                   key={idx}
                   type="button"
                   onClick={() => setSelectedIndex(idx)}
-                  className={`w-full text-left p-3.5 rounded-2xl border transition-all select-none active:scale-[0.99] flex flex-col gap-2 ${isSelected
+                  className={`w-full text-left p-3 sm:p-3.5 rounded-2xl border transition-all select-none active:scale-[0.99] flex flex-col gap-1.5 cursor-pointer ${isSelected
                       ? 'bg-neutral-900 text-white border-neutral-900 shadow-md ring-2 ring-black/10'
-                      : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50/50 shadow-sm'
+                      : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50/50 shadow-xs'
                     }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-800'
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-800'
                         }`}>
                         {getModeIcon(route, isSelected)}
                       </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-sm leading-tight truncate flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs sm:text-sm leading-tight truncate flex items-center gap-1.5">
                           <span className="truncate">{route.route?.name?.replace(/\s*\(\d+\s*Connecting Buses\)/gi, '') || 'Transit Option'}</span>
                           {route.transitChainInfo?.flightOrTrainNumber && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-800'}`}>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-800'}`}>
                               {route.transitChainInfo.flightOrTrainNumber.split(' ')[0]}
                             </span>
                           )}
                         </div>
-                        <div className={`text-xs mt-0.5 font-medium ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                        <div className={`text-[11px] mt-0.5 font-medium truncate ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
                           {route.route?.id?.includes('WALK') || route.route?.id?.includes('STEP_FREE') || route.route?.name?.toLowerCase().includes('walk')
                             ? '🚶 Step-Free Paved Walkway'
                             : route.route?.id?.includes('CYCLE') || route.route?.id?.includes('BICYCLE') || route.route?.name?.toLowerCase().includes('cycle')
@@ -1935,16 +2105,16 @@ export default function RouteDiscoveryPage() {
                               : route.route?.id?.includes('EV') || route.route?.name?.toLowerCase().includes('ev')
                                 ? '⚡ KIIT Eco EV Shuttle'
                                 : isRouteCarpool
-                                  ? '🤝 Corridor Carpool & Ride Split'
+                                  ? '🤝 Corridor Carpool Split'
                                   : isRouteSharedTaxi
-                                    ? '🚖 Stand-Based Shared Auto / Taxi'
+                                    ? '🚖 Shared Auto / Taxi'
                                     : route.route?.id?.includes('AUTO') || route.route?.name?.toLowerCase().includes('auto') || route.route?.name?.toLowerCase().includes('rickshaw')
-                                      ? '🛺 Direct Stand Auto / E-Rickshaw'
+                                      ? '🛺 Auto / E-Rickshaw'
                                       : route.route?.id?.includes('BIKE') || route.route?.name?.toLowerCase().includes('bike')
-                                        ? '🛵 Fast Solo Bike'
+                                        ? '🛵 Solo Bike Taxi'
                                         : route.route?.vehicleType === 'bus' || route.route?.id?.includes('BUS') || route.route?.name?.toLowerCase().includes('bus')
                                           ? (route.route?.id?.includes('BUS_TRANSFER') || (route.transfers && route.transfers > 0)
-                                              ? `🔄 ${route.transfers || 1} Transfer${(route.transfers || 1) > 1 ? 's' : ''} • Connecting Bus`
+                                              ? `🔄 ${route.transfers || 1} Transfer • Connecting Bus`
                                               : '🚌 Direct Public Bus')
                                           : route.route?.vehicleType === 'flight' || route.route?.id?.includes('FLIGHT')
                                             ? '✈️ Commercial Flight'
@@ -1959,47 +2129,28 @@ export default function RouteDiscoveryPage() {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
-                        <div className="font-black text-sm">{formatDuration(route.duration)}</div>
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="font-black text-xs sm:text-sm leading-tight">{formatDuration(route.duration)}</div>
+                        <div className="flex items-center justify-end gap-1 mt-0.5">
                           <span className={`text-xs font-black ${isSelected ? 'text-emerald-300' : 'text-emerald-700'}`}>
                             {fareDisplay}
                           </span>
                           {isRouteEstimated && !isZeroFare && (!isRouteCarpool || isRouteCarpoolConfirmed) && (
-                            <span className={`text-[9px] font-bold px-1 py-0.2 rounded leading-tight ${isSelected ? 'bg-white/20 text-neutral-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                            <span className={`text-[8px] font-bold px-1 py-0.2 rounded leading-tight ${isSelected ? 'bg-white/20 text-neutral-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
                               }`}>
                               Est.
                             </span>
                           )}
                         </div>
-                        {Boolean(dynamicCardTicketFare && dynamicCardTicketFare !== displayTotalPrice) && (
-                          <div className={`text-[10px] font-bold leading-none mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'}`}>
-                            {isCardTrain && activeCardCoachObj ? `Coach [${activeCardCoachObj.code}${activeCardQuota === 'tatkal' ? ' TATKAL' : ''}]: ` : 'Ticket: '}₹{dynamicCardTicketFare?.toLocaleString()}{route.fare?.status === 'estimated' ? ' (Est.)' : ''}
-                          </div>
-                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIndex(idx);
-                          setMobileTab('map');
-                        }}
-                        className={`lg:hidden w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-white/20 text-white hover:bg-white/30'
-                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                        }`}
-                        title="View route on map"
-                      >
-                        <span className="text-xs">🗺️</span>
-                      </button>
+
+                      {/* Route Details & Turn-by-Turn Arrangement Info Button */}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setInfoModalRoute(route);
                         }}
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all ${isSelected
+                        className={`flex w-7 h-7 rounded-xl items-center justify-center transition-all cursor-pointer ${isSelected
                             ? 'bg-white/20 text-white hover:bg-white/30'
                             : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-black'
                           }`}
@@ -2007,37 +2158,12 @@ export default function RouteDiscoveryPage() {
                       >
                         <Info className="w-3.5 h-3.5" />
                       </button>
-                      {(() => {
-                        const rInfo = getRouteTransportInfo(route);
-                        if (rInfo.type === 'bike' || rInfo.type === 'auto' || rInfo.type === 'cab') {
-                          return (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedIndex(idx);
-                                openRideComparator(rInfo.comparatorCategory);
-                              }}
-                              className={`h-7 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
-                                isSelected
-                                  ? 'bg-white/20 text-white hover:bg-white/30'
-                                  : 'bg-neutral-100 text-neutral-800 hover:bg-neutral-200 hover:text-black border border-neutral-200/80'
-                              }`}
-                              title={`Compare live ${rInfo.name} fares`}
-                            >
-                              <span>{rInfo.icon}</span>
-                              <span className="hidden sm:inline">Compare</span>
-                            </button>
-                          );
-                        }
-                        return null;
-                      })()}
                     </div>
                   </div>
 
                   {/* Minimal Badges (Clean, Non-congested on Mobile) */}
                   {(() => {
-                    const recomInfo = vehicleRecommendations.rankedOptions.find((r) => r.originalIndex === idx);
+                    const recomInfo = vehicleRecommendations.rankedOptions.find((r) => r.option.route?.id === route.route?.id || r.originalIndex === idx);
                     const topBadge = recomInfo?.badges?.[0];
                     const crowdInfo = calculateDynamicCrowding(route.route?.vehicleType || 'bus', route.walkingDistance ? route.walkingDistance / 1000 : 5);
                     const isHighCrowd = crowdInfo.crowdingLevel === 'HIGH';
@@ -2062,9 +2188,18 @@ export default function RouteDiscoveryPage() {
                     );
                   })()}
 
-                  {/* Multi-modal Legs Sequence Pills (Clean, Compact for Phone) */}
+                  {/* Connected Visual Metro-Corridor Timeline */}
                   {route.segments && route.segments.length > 0 && (
-                    <div className="flex items-center flex-wrap gap-1.5 pt-1.5 border-t border-white/10 border-neutral-100 text-[11px] font-medium">
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2 border-t border-white/10 border-neutral-100 text-[11px] font-medium select-none">
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0 flex items-center gap-1 ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        <span>🚩</span>
+                        <span className="truncate max-w-[65px]">{route.originName?.split(',')[0] || 'Start'}</span>
+                      </span>
+
+                      <span className={isSelected ? 'text-neutral-400 text-[10px]' : 'text-neutral-400 text-[10px]'}>➔</span>
+
                       {route.segments
                         .filter((seg) => seg.type === 'walk' || seg.type === 'ride' || seg.type === 'transfer')
                         .map((seg, sIdx, arr) => {
@@ -2082,20 +2217,20 @@ export default function RouteDiscoveryPage() {
                           } else if (seg.type === 'walk') {
                             label = `🚶 ${seg.duration}m`;
                           } else if (seg.type === 'transfer') {
-                            label = `🔄 Transfer (${seg.duration}m)`;
+                            label = `🔄 ${seg.duration}m`;
                           } else if (seg.vehicleType === 'bus' || seg.routeId?.includes('EV') || seg.routeId?.includes('BUS') || route.route?.vehicleType === 'bus') {
                             if (seg.routeId?.includes('EV')) {
-                              label = '⚡ Campus EV';
+                              label = '⚡ EV';
                             } else {
                               const rName = seg.routeName || '';
                               if (/feeder/i.test(rName)) label = '🚌 Feeder';
-                              else if (/sleeper|multi-axle|volvo/i.test(rName)) label = '🚌 AC Sleeper';
-                              else if (/express|interstate|intercity/i.test(rName)) label = '🚌 Express Bus';
-                              else if (/shuttle|connecting|local/i.test(rName)) label = '🚌 City Bus';
+                              else if (/sleeper|multi-axle|volvo/i.test(rName)) label = '🚌 Sleeper';
+                              else if (/express|interstate|intercity/i.test(rName)) label = '🚌 Express';
+                              else if (/shuttle|connecting|local/i.test(rName)) label = '🚌 Shuttle';
                               else if (/mo bus/i.test(rName)) label = `🚌 ${rName.replace(/mo bus\s*/i, '').trim() || 'Mo Bus'}`;
                               else {
                                 const clean = rName.replace(/\(.*\)/g, '').trim();
-                                label = clean.length > 14 ? `🚌 ${clean.slice(0, 14)}...` : `🚌 ${clean || 'Bus'}`;
+                                label = clean.length > 12 ? `🚌 ${clean.slice(0, 12)}...` : `🚌 ${clean || 'Bus'}`;
                               }
                             }
                           } else if (seg.vehicleType === 'shared-transport' || route.route?.vehicleType === 'shared-transport') {
@@ -2107,24 +2242,34 @@ export default function RouteDiscoveryPage() {
                           return (
                             <React.Fragment key={sIdx}>
                               <span
-                                className={`px-2 py-0.5 rounded-md ${
+                                className={`px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap ${
                                   isSelected ? 'bg-white/15 text-neutral-200' : 'bg-neutral-100 text-neutral-700'
                                 }`}
                               >
                                 {label}
                               </span>
                               {sIdx < arr.length - 1 && (
-                                <span className={isSelected ? 'text-neutral-400' : 'text-neutral-400'}>➔</span>
+                                <span className={isSelected ? 'text-neutral-400 text-[10px]' : 'text-neutral-400 text-[10px]'}>➔</span>
                               )}
                             </React.Fragment>
                           );
                         })}
+
+                      <span className={isSelected ? 'text-neutral-400 text-[10px]' : 'text-neutral-400 text-[10px]'}>➔</span>
+
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0 flex items-center gap-1 ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        <span>🏁</span>
+                        <span className="truncate max-w-[65px]">{route.destinationName?.split(',')[0] || 'End'}</span>
+                      </span>
                     </div>
                   )}
                 </button>
               );
             })}
           </div>
+          )}
 
           {/* Selected Route Action & Step Breakdown (Docked Panel) */}
           <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm space-y-3">
@@ -2198,167 +2343,183 @@ export default function RouteDiscoveryPage() {
                   </div>
 
 
-                  {/* On-The-Spot Train Coach Class Selector & Quota (General vs Tatkal) */}
-                  {isTrain && (
-                    <div className="bg-white border border-neutral-200 rounded-xl p-2.5 space-y-2.5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-neutral-700 flex items-center gap-1">
-                          <span>🚆</span>
-                          <span>IRCTC Coach Class & Official Live Fares:</span>
-                        </span>
-                        <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md text-[10px]">
-                          {activeCoachObj.name} ({activeQuota === 'tatkal' ? 'Tatkal' : 'General'}: ₹{dynamicTrainFare.toLocaleString()})
-                        </span>
-                      </div>
+                  {/* Expandable Coach & Detailed Leg Breakdown Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailedFareBreakdown((prev) => !prev)}
+                    className="w-full py-2 px-3 text-xs font-bold text-neutral-700 hover:text-black flex items-center justify-between bg-white rounded-xl border border-neutral-200 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>🧾</span>
+                      <span>{isTrain ? 'Coach Options & Detailed Breakdown' : 'View Fare Breakdown & Tickets'}</span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-extrabold">{showDetailedFareBreakdown ? 'Hide ▴' : 'Details ▾'}</span>
+                  </button>
 
-                      {/* Quota Switcher: General vs Tatkal */}
-                      <div className="flex items-center justify-between gap-2 p-1.5 bg-neutral-50 rounded-lg border border-neutral-200/80">
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-neutral-600">
-                          <span>🎫 Quota:</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'general' }))}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
-                              activeQuota === 'general'
-                                ? 'bg-neutral-900 text-white shadow-xs'
-                                : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
-                            }`}
-                          >
-                            General (GN)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'tatkal' }))}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                              activeQuota === 'tatkal'
-                                ? 'bg-amber-600 text-white shadow-xs'
-                                : 'bg-white text-amber-800 border border-amber-200 hover:bg-amber-50'
-                            }`}
-                          >
-                            <span>⚡ Tatkal (TQ)</span>
-                            <span className="text-[9px] font-black uppercase opacity-90">Live</span>
-                          </button>
-                        </div>
-                      </div>
+                  {showDetailedFareBreakdown && (
+                    <div className="space-y-2.5 pt-1">
+                      {/* On-The-Spot Train Coach Class Selector & Quota (General vs Tatkal) */}
+                      {isTrain && (
+                        <div className="bg-white border border-neutral-200 rounded-xl p-2.5 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-bold text-neutral-700 flex items-center gap-1">
+                              <span>🚆</span>
+                              <span>IRCTC Coach Class & Live Fares:</span>
+                            </span>
+                            <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md text-[10px]">
+                              {activeCoachObj.name} ({activeQuota === 'tatkal' ? 'Tatkal' : 'General'}: ₹{dynamicTrainFare.toLocaleString()})
+                            </span>
+                          </div>
 
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {availableTrainClasses.map((cls) => {
-                          const isSel = cls.code === activeCoachCode;
-                          const effectiveFare = activeQuota === 'tatkal' && cls.tatkalFare ? cls.tatkalFare : cls.fare;
-                          return (
-                            <button
-                              key={cls.code}
-                              type="button"
-                              onClick={() => setSelectedCoachClassOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: cls.code }))}
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex flex-col items-start gap-0.5 ${isSel
-                                  ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
-                                  : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                          {/* Quota Switcher: General vs Tatkal */}
+                          <div className="flex items-center justify-between gap-2 p-1.5 bg-neutral-50 rounded-lg border border-neutral-200/80">
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-neutral-600">
+                              <span>🎫 Quota:</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'general' }))}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                  activeQuota === 'general'
+                                    ? 'bg-neutral-900 text-white shadow-xs'
+                                    : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
                                 }`}
-                            >
-                              <div className="flex items-center gap-1">
-                                <span>{cls.code}</span>
-                                {activeQuota === 'tatkal' && (
-                                  <span className={`text-[8px] font-black px-1 rounded uppercase tracking-wider ${
-                                    isSel ? 'bg-amber-500 text-black' : 'bg-amber-100 text-amber-800'
-                                  }`}>
-                                    Tatkal
-                                  </span>
-                                )}
-                                <span className={`text-[10px] ml-0.5 font-bold ${isSel ? 'text-emerald-300' : 'text-emerald-700'}`}>
-                                  ₹{effectiveFare.toLocaleString()}
+                              >
+                                General (GN)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedQuotaOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: 'tatkal' }))}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                  activeQuota === 'tatkal'
+                                    ? 'bg-amber-600 text-white shadow-xs'
+                                    : 'bg-white text-amber-800 border border-amber-200 hover:bg-amber-50'
+                                }`}
+                              >
+                                <span>⚡ Tatkal (TQ)</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {availableTrainClasses.map((cls) => {
+                              const isSel = cls.code === activeCoachCode;
+                              const effectiveFare = activeQuota === 'tatkal' && cls.tatkalFare ? cls.tatkalFare : cls.fare;
+                              return (
+                                <button
+                                  key={cls.code}
+                                  type="button"
+                                  onClick={() => setSelectedCoachClassOverrides((prev) => ({ ...prev, [selectedRoute.route.id]: cls.code }))}
+                                  className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex flex-col items-start gap-0.5 ${isSel
+                                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
+                                      : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                                    }`}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span>{cls.code}</span>
+                                    {activeQuota === 'tatkal' && (
+                                      <span className={`text-[8px] font-black px-1 rounded uppercase tracking-wider ${
+                                        isSel ? 'bg-amber-500 text-black' : 'bg-amber-100 text-amber-800'
+                                      }`}>
+                                        Tatkal
+                                      </span>
+                                    )}
+                                    <span className={`text-[10px] ml-0.5 font-bold ${isSel ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                                      ₹{effectiveFare.toLocaleString()}
+                                    </span>
+                                  </div>
+                                  {cls.availability && (
+                                    <span className={`text-[9px] font-semibold leading-none ${isSel ? 'text-emerald-300/90' : 'text-emerald-600'}`}>
+                                      {cls.availability}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Itemized Fares Breakdown (Flight/Train + All Taxi Routes) */}
+                      <div className="space-y-1.5 pt-1.5 border-t border-neutral-200/80 text-xs">
+                        {selectedRoute.priceBreakdown.itemizedLegs.map((leg, lIdx) => {
+                          const legFare = leg.mode === 'train' ? dynamicTrainFare : leg.fare;
+                          const legTitle = leg.mode === 'train'
+                            ? `${leg.title} [Coach: ${activeCoachCode} ${activeQuota === 'tatkal' ? 'TATKAL' : 'GN'}]`
+                            : leg.title;
+                          const isLegEstimated = isAmountEstimated(selectedRoute, leg);
+
+                          return (
+                            <div key={lIdx} className="flex items-center justify-between py-1 bg-white px-2.5 rounded-xl border border-neutral-100 gap-2">
+                              <div className="flex items-center gap-2 overflow-hidden min-w-0 flex-1">
+                                <span className="shrink-0 text-sm">
+                                  {leg.mode === 'flight' ? '✈️' : leg.mode === 'train' ? '🚆' : leg.mode === 'carpool' ? '🚗' : leg.mode === 'bus' ? '🚌' : '🚖'}
                                 </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-[11px] text-neutral-900 truncate">{legTitle}</div>
+                                  <div className="text-[10px] text-neutral-500 truncate">
+                                    {((leg.from || selectedRoute?.originName || 'Origin').split('(')[0] || 'Origin').trim()} ➔ {((leg.to || selectedRoute?.destinationName || 'Destination').split('(')[0] || 'Destination').trim()}
+                                  </div>
+                                </div>
                               </div>
-                              {cls.availability && (
-                                <span className={`text-[9px] font-semibold leading-none ${isSel ? 'text-emerald-300/90' : 'text-emerald-600'}`}>
-                                  {cls.availability}
-                                </span>
-                              )}
-                            </button>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-xs text-neutral-800">
+                                    {leg.mode === 'carpool' && !isSelectedCarpoolConfirmed
+                                      ? 'Split'
+                                      : `₹${legFare.toLocaleString()}`}
+                                  </span>
+                                  {isLegEstimated && legFare > 0 && (
+                                    <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                      Est.
+                                    </span>
+                                  )}
+                                </div>
+                                {leg.mode === 'carpool' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCarpoolModalTab('request');
+                                      setShowCarpoolModal(true);
+                                    }}
+                                    className="px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <Users className="w-2.5 h-2.5" />
+                                    <span>Match</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (leg.mode === 'train' || isTrain) handleDirectBooking('train', leg.from, leg.to);
+                                      else if (leg.mode === 'flight' || isFlight) handleDirectBooking('flight', leg.from, leg.to);
+                                      else if (leg.mode === 'bus' || isBus) handleDirectBooking('bus', leg.from, leg.to);
+                                      else if (leg.mode === 'bike') openRideComparator('bike');
+                                      else if (leg.mode === 'auto') openRideComparator('auto');
+                                      else openRideComparator('cab');
+                                    }}
+                                    className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                                  >
+                                    <span>Book</span>
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           );
                         })}
+
+                        {isSelectedCarpoolConfirmed && selectedRoute.priceBreakdown.carpoolSplitSavings && (
+                          <div className="flex items-center justify-between text-[11px] text-purple-700 font-bold px-1 pt-1">
+                            <span>✨ Carpool Sharing Savings Applied:</span>
+                            <span>-₹${selectedRoute.priceBreakdown.carpoolSplitSavings}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
-
-                  {/* Itemized Fares Breakdown (Flight/Train + All Taxi Routes) */}
-                  <div className="space-y-1.5 pt-2 border-t border-neutral-200/80 text-xs">
-                    {selectedRoute.priceBreakdown.itemizedLegs.map((leg, lIdx) => {
-                      const legFare = leg.mode === 'train' ? dynamicTrainFare : leg.fare;
-                      const legTitle = leg.mode === 'train'
-                        ? `${leg.title} [Coach: ${activeCoachCode} ${activeQuota === 'tatkal' ? 'TATKAL' : 'GN'}]`
-                        : leg.title;
-                      const isLegEstimated = isAmountEstimated(selectedRoute, leg);
-
-                      return (
-                        <div key={lIdx} className="flex items-center justify-between py-1 bg-white px-2.5 rounded-xl border border-neutral-100">
-                          <div className="flex items-center gap-2 overflow-hidden mr-2">
-                            <span className="shrink-0 text-sm">
-                              {leg.mode === 'flight' ? '✈️' : leg.mode === 'train' ? '🚆' : leg.mode === 'carpool' ? '🚗' : leg.mode === 'bus' ? '🚌' : '🚖'}
-                            </span>
-                            <div className="truncate">
-                              <div className="font-bold text-[11px] text-neutral-900 truncate">{legTitle}</div>
-                              <div className="text-[10px] text-neutral-500 truncate">
-                                {((leg.from || selectedRoute?.originName || 'Origin').split('(')[0] || 'Origin').trim()} ➔ {((leg.to || selectedRoute?.destinationName || 'Destination').split('(')[0] || 'Destination').trim()}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <div className="flex items-center gap-1">
-                              <span className="font-bold text-xs text-neutral-800">
-                                {leg.mode === 'carpool' && !isSelectedCarpoolConfirmed
-                                  ? 'Split on Match'
-                                  : `₹${legFare.toLocaleString()}`}
-                              </span>
-                              {isLegEstimated && legFare > 0 && (
-                                <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                  Est.
-                                </span>
-                              )}
-                            </div>
-                            {leg.mode === 'carpool' ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCarpoolModalTab('request');
-                                  setShowCarpoolModal(true);
-                                }}
-                                className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shadow-sm"
-                              >
-                                <Users className="w-2.5 h-2.5" />
-                                <span>Raise Request</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (leg.mode === 'train' || isTrain) handleDirectBooking('train', leg.from, leg.to);
-                                  else if (leg.mode === 'flight' || isFlight) handleDirectBooking('flight', leg.from, leg.to);
-                                  else if (leg.mode === 'bus' || isBus) handleDirectBooking('bus', leg.from, leg.to);
-                                  else if (leg.mode === 'bike') openRideComparator('bike');
-                                  else if (leg.mode === 'auto') openRideComparator('auto');
-                                  else openRideComparator('cab');
-                                }}
-                                className="px-2.5 py-1 bg-neutral-900 hover:bg-neutral-800 text-white rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow-xs"
-                              >
-                                <span>{leg.mode === 'bike' ? 'Book Bike' : leg.mode === 'auto' ? 'Book Auto' : leg.mode === 'cab' || leg.mode === 'taxi' ? 'Book Cab' : 'Book'}</span>
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {isSelectedCarpoolConfirmed && selectedRoute.priceBreakdown.carpoolSplitSavings && (
-                      <div className="flex items-center justify-between text-[11px] text-purple-700 font-bold px-1 pt-1">
-                        <span>✨ Carpool Sharing Savings Applied:</span>
-                        <span>-₹${selectedRoute.priceBreakdown.carpoolSplitSavings}</span>
-                      </div>
-                    )}
-                  </div>
                 </div>
               );
             })()}
@@ -2405,6 +2566,16 @@ export default function RouteDiscoveryPage() {
               >
                 <Navigation className="w-4 h-4" />
                 <span>Start Live Navigation</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShareRoute}
+                className="py-3 sm:py-3.5 px-3.5 rounded-xl border border-neutral-200 hover:bg-neutral-100 text-neutral-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] cursor-pointer text-xs font-bold"
+                title="Share Route Details"
+              >
+                <Share2 className="w-4 h-4" />
+                <span className="sm:hidden">Share</span>
               </button>
 
               {(() => {
@@ -2505,39 +2676,61 @@ export default function RouteDiscoveryPage() {
           </div>
         </div>
 
-        {/* Map Column: Clean OpenStreetMap (Visible when mobileTab === 'map' on mobile, and always on desktop) */}
-        <div className={`order-1 lg:order-2 lg:col-span-7 sticky top-4 ${mobileTab === 'routes' ? 'hidden lg:block' : 'block'}`}>
-          <div className="bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm h-[calc(100dvh-190px)] min-h-[460px] lg:h-[620px] w-full relative">
+        {/* Map Column: Map on Mobile & Desktop (Spacious Split Mode on top, fully reactive to route selections) */}
+        <div
+          ref={mapContainerRef}
+          className="order-1 lg:order-2 lg:col-span-7 w-full lg:sticky lg:top-4 z-20 transition-all duration-300"
+        >
+          <div
+            className={`bg-white border border-neutral-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-md w-full relative transition-[height] duration-300 ease-in-out ${
+              mobileMapMode === 'expanded'
+                ? 'h-[65vh] min-h-[380px]'
+                : 'h-[32vh] min-h-[220px]'
+            } lg:h-[620px] lg:min-h-[620px]`}
+          >
             {/* 🧭 Google Maps Style Turn-by-Turn Navigation Guidance Card */}
-            <div className="absolute top-3 left-3 right-3 sm:right-auto z-[1000] pointer-events-auto sm:max-w-md">
-              <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-2xl p-2 sm:p-2.5 transition-all select-none">
-                <div className="flex items-center gap-2">
-                  {/* High-Contrast Mode Icon */}
-                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-base shadow-xs border ${nextActionInfo.iconBg}`}>
-                    {nextActionInfo.icon}
+            <div className="absolute top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-auto z-[1000] pointer-events-auto sm:max-w-md">
+              <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-md rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 transition-all select-none">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {/* High-Contrast Mode Icon */}
+                    <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 font-bold text-sm sm:text-base shadow-xs border ${nextActionInfo.iconBg}`}>
+                      {nextActionInfo.icon}
+                    </div>
+
+                    {/* Clean Action Instruction */}
+                    <div className="flex-1 min-w-0 pr-1">
+                      <div className="flex items-center gap-1.5 leading-tight">
+                        <span className="font-extrabold text-neutral-900 text-xs sm:text-[13px] truncate block">
+                          {selectedRoute.route?.shortName || selectedRoute.route?.name}
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                          Active Map
+                        </span>
+                      </div>
+                      <div className="text-[10px] sm:text-[11px] text-neutral-500 truncate mt-0.5 flex items-center gap-1 font-medium">
+                        <span>{selectedRoute.duration}m • {selectedFareDisplay}</span>
+                        <span className="hidden sm:inline">• {nextActionInfo.detail}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Clean Action Instruction */}
-                  <div className="flex-1 min-w-0 pr-1">
-                    <div className="flex items-center gap-1.5 leading-tight">
-                      <span className="font-extrabold text-neutral-900 text-xs sm:text-[13px] truncate block">
-                        {nextActionInfo.action}
-                      </span>
-                    </div>
-                    <div className="text-[10px] sm:text-[11px] text-neutral-500 truncate mt-0.5 flex items-center gap-1 font-medium">
-                      <span>{nextActionInfo.detail}</span>
-                    </div>
-                  </div>
+                  {/* Summary & Steps Toggle + Map Size Toggle on Mobile */}
+                  <div className="shrink-0 flex items-center gap-1">
+                    {/* Mobile 1-Tap Map Size Controller */}
+                    <button
+                      type="button"
+                      onClick={() => setMobileMapMode((prev) => (prev === 'expanded' ? 'split' : 'expanded'))}
+                      className="text-[10px] font-black px-2 py-1 rounded-lg bg-neutral-900 text-white hover:bg-black transition-colors cursor-pointer shadow-xs flex items-center gap-0.5"
+                      title={mobileMapMode === 'expanded' ? 'Collapse map' : 'Expand map full screen'}
+                    >
+                      <span>{mobileMapMode === 'expanded' ? '↕ Shrink' : '↕ Expand'}</span>
+                    </button>
 
-                  {/* Summary & Steps Toggle */}
-                  <div className="shrink-0 flex flex-col items-end gap-0.5 pl-1.5 border-l border-neutral-100">
-                    <span className="text-[11px] sm:text-xs font-black text-neutral-900 leading-tight">
-                      {selectedRoute.duration} min
-                    </span>
                     <button
                       type="button"
                       onClick={() => setShowRouteOverview((prev) => !prev)}
-                      className="text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer flex items-center gap-0.5"
+                      className="text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer flex items-center gap-0.5 pl-1 border-l border-neutral-200"
                     >
                       <span>{showRouteOverview ? 'Hide ▴' : 'Steps ▾'}</span>
                     </button>
@@ -2599,8 +2792,8 @@ export default function RouteDiscoveryPage() {
                 updateWhenIdle={false}
               />
 
-              <MapMobileResizer isActive={mobileTab === 'map'} />
-              <MapBoundsController coordinates={continuousRoute} forceRecenter={mobileTab === 'map'} />
+              <MapMobileResizer resizeKey={`${isScrolledDown}_${mobileMapMode}`} />
+              <MapBoundsController coordinates={continuousRoute} forceRecenter={true} />
               <MapZoomListener onZoomChange={setCurrentMapZoom} />
               <MapCustomControls
                 coordinates={continuousRoute}
@@ -2920,56 +3113,408 @@ export default function RouteDiscoveryPage() {
               </Marker>
             </MapContainer>
 
-            {/* Floating Mobile Selected Route Bar in Map View */}
-            <div className="lg:hidden absolute bottom-3 left-3 right-3 z-[1000] pointer-events-auto">
-              <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-xl rounded-2xl p-3 flex items-center justify-between gap-2.5">
-                <div className="min-w-0 flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-lg shrink-0">
-                    {getModeIcon(selectedRoute, false)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-extrabold text-xs text-neutral-900 truncate">
-                      {selectedRoute.route.shortName || selectedRoute.route.name}
-                    </div>
-                    <div className="text-[11px] text-neutral-500 font-bold">
-                      {selectedRoute.duration} mins • ₹{selectedRoute.fare?.exact || 30}
-                    </div>
-                  </div>
-                </div>
+            {/* Floating Mobile Selected Route Bar in Map View (Appears in Expanded Map Mode) */}
+            {mobileMapMode === 'expanded' && (
+              <div className="lg:hidden absolute bottom-3 left-3 right-3 z-[1000] pointer-events-auto">
+                <div className="bg-white/95 backdrop-blur-md border border-neutral-200 shadow-xl rounded-2xl p-2.5 flex items-center justify-between gap-1.5">
+                  {/* Previous Route Switcher */}
+                  {filteredResults.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label="Previous route"
+                      onClick={() => setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filteredResults.length - 1))}
+                      className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold shrink-0 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      ◀
+                    </button>
+                  )}
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setMobileTab('routes')}
-                    className="px-2.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    📋 List
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleBookExternal}
-                    className="px-2.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
-                  >
-                    ⚡ Book
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStart}
-                    className="px-3.5 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Start</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="min-w-0 flex items-center gap-2 flex-1">
+                    <div className="w-8 h-8 rounded-xl bg-neutral-100 flex items-center justify-center text-base shrink-0">
+                      {getModeIcon(selectedRoute, false)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-extrabold text-xs text-neutral-900 truncate">
+                        {selectedRoute.route.shortName || selectedRoute.route.name}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-bold truncate">
+                        {selectedRoute.duration}m • ₹{selectedRoute.fare?.exact || 30} {filteredResults.length > 1 && `(${selectedIndex + 1}/${filteredResults.length})`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Next Route Switcher */}
+                  {filteredResults.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label="Next route"
+                      onClick={() => setSelectedIndex((prev) => (prev < filteredResults.length - 1 ? prev + 1 : 0))}
+                      className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold shrink-0 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      ▶
+                    </button>
+                  )}
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMobileMapMode('split')}
+                      className="px-2 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Split
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStart}
+                      className="px-3 py-1.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Start</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* =========================================================================
-          CARPOOLING & SHARED RIDES HUB MODAL
+          📱 MOBILE DYNAMIC ISLAND TRANSIT CAPSULE (Fixed Top Header when Scrolled)
+          Always visible when browsing travel plans so the map never gets lost above!
+          Positioned at top-[62px] (z-[1050]) to sit gracefully below the 56px app header.
           ========================================================================= */}
+      {isScrolledDown && (
+        <div className="lg:hidden fixed top-[62px] left-2.5 right-2.5 z-[1050] animate-in fade-in slide-in-from-top duration-200">
+          <div
+            key={selectedIndex}
+            className="bg-white/95 backdrop-blur-md border border-neutral-200/90 shadow-xl rounded-2xl p-2 sm:p-2.5 flex items-center justify-between gap-2 select-none transition-all"
+          >
+            <div
+              className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+              onClick={() => setShowMapPeekModal(true)}
+              title="Tap to peek interactive map"
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm shadow-xs border ${nextActionInfo.iconBg}`}>
+                {nextActionInfo.icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 leading-tight">
+                  <span className="font-extrabold text-neutral-900 text-xs truncate block">
+                    {selectedRoute.route?.shortName || selectedRoute.route?.name}
+                  </span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                    Active Map
+                  </span>
+                </div>
+                <div className="text-[10px] text-neutral-500 font-semibold truncate mt-0.5 flex items-center gap-1">
+                  <span>{selectedRoute.duration}m • {selectedFareDisplay}</span>
+                  <span className="text-neutral-400">•</span>
+                  <span className="truncate">{(selectedRoute.originName || originInput || 'Origin').split('(')[0]} ➔ {(selectedRoute.destinationName || destInput || 'Destination').split('(')[0]}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowMapPeekModal(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border border-blue-200 shadow-2xs active:scale-95"
+                title="Peek Interactive Map"
+              >
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                <span>Peek Map</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStart}
+                className="px-3 py-1.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+              >
+                <span>Start</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="w-8 h-8 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-black transition-all flex items-center justify-center cursor-pointer text-xs active:scale-95"
+                title="Jump to Top Search"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          🛰️ MOBILE FLOATING ROUTE RADAR (Picture-in-Picture Mini-Map Capsule)
+          Renders real-time vector geometry of the active route in the corner!
+          Positioned at bottom-[74px] (z-[1050]) to sit cleanly above the 60px bottom nav.
+          ========================================================================= */}
+      {isScrolledDown && showFloatingRadar && radarSvgData && (
+        <div className="lg:hidden fixed bottom-[74px] right-3 z-[1050] select-none animate-in fade-in slide-in-from-bottom duration-200">
+          <div className="relative bg-neutral-900/95 text-white backdrop-blur-md border border-neutral-700/80 shadow-2xl rounded-2xl p-2 w-[130px] flex flex-col gap-1">
+            {/* Radar Header */}
+            <div className="flex items-center justify-between text-[10px] text-neutral-300 font-bold px-0.5">
+              <span className="truncate flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span className="truncate max-w-[70px]">{selectedRoute.route?.shortName || 'Route'}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowFloatingRadar(false)}
+                className="text-neutral-400 hover:text-white p-0.5 cursor-pointer text-xs"
+                title="Dismiss mini radar"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Mini Vector Radar Canvas */}
+            <div
+              onClick={() => setShowMapPeekModal(true)}
+              className="w-full h-[65px] bg-neutral-950 rounded-xl overflow-hidden relative cursor-pointer group border border-neutral-800"
+              title="Tap to expand interactive map"
+            >
+              {/* Subtle background radar grid */}
+              <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:8px_8px]" />
+
+              <svg viewBox={`0 0 ${radarSvgData.width} ${radarSvgData.height}`} className="w-full h-full relative z-10">
+                <polyline
+                  points={radarSvgData.points}
+                  fill="none"
+                  stroke={isCabOrTaxi ? '#f59e0b' : isTrain ? '#3b82f6' : '#10b981'}
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {/* Origin dot */}
+                <circle cx={radarSvgData.startPt.x} cy={radarSvgData.startPt.y} r="3.5" fill="#3b82f6" />
+                {/* Destination dot */}
+                <circle cx={radarSvgData.endPt.x} cy={radarSvgData.endPt.y} r="3.5" fill="#ef4444" />
+              </svg>
+
+              <div className="absolute bottom-1 right-1 bg-black/80 backdrop-blur-xs text-[8px] font-black px-1.5 py-0.2 rounded text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5">
+                <Maximize2 className="w-2.5 h-2.5" />
+                <span>Map</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          🗺️ INSTANT INTERACTIVE MAP PEEK MODAL (Full Interactive Sheet)
+          Layered at z-[1300] to sit cleanly over the top navigation bar and bottom bar.
+          Features full Leaflet interactive map with stops, satellite, and route switcher!
+          ========================================================================= */}
+      {showMapPeekModal && (
+        <div className="fixed inset-0 z-[1300] bg-black/80 backdrop-blur-sm flex flex-col p-2 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col w-full h-full max-w-4xl mx-auto border border-neutral-300">
+            {/* Modal Top Bar */}
+            <div className="p-3 sm:p-4 bg-white border-b border-neutral-200 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-base shadow-xs border ${nextActionInfo.iconBg}`}>
+                  {nextActionInfo.icon}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-black text-sm text-neutral-900 truncate flex items-center gap-2">
+                    <span>{selectedRoute.route?.shortName || selectedRoute.route?.name}</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      {selectedRoute.duration} min • {selectedFareDisplay}
+                    </span>
+                  </div>
+                  <div className="text-xs text-neutral-500 font-medium truncate mt-0.5">
+                    {selectedRoute.originName} ➔ {selectedRoute.destinationName}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowMapPeekModal(false)}
+                className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-black transition-colors cursor-pointer shrink-0 font-bold text-xs flex items-center gap-1"
+                title="Close map (Esc)"
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Close</span>
+              </button>
+            </div>
+
+            {/* Modal Interactive Map Container */}
+            <div className="flex-1 w-full relative min-h-0">
+              <MapContainer
+                key={`modal_map_${selectedIndex}_${mapType}`}
+                center={originCoords}
+                zoom={13}
+                className="w-full h-full"
+                zoomControl={false}
+                scrollWheelZoom={true}
+                attributionControl={false}
+              >
+                <TileLayer
+                  key={`modal_tile_${mapType}`}
+                  url={
+                    mapType === 'satellite'
+                      ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                      : mapType === 'terrain'
+                      ? 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
+                      : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+                  }
+                  subdomains={['0', '1', '2', '3']}
+                  maxZoom={20}
+                />
+                <MapMobileResizer resizeKey={`${showMapPeekModal}_${selectedIndex}`} />
+                <MapBoundsController coordinates={continuousRoute} forceRecenter={true} />
+                <MapCustomControls
+                  coordinates={continuousRoute}
+                  mapType={mapType}
+                  setMapType={setMapType}
+                />
+
+                {/* Ingress Walking Path */}
+                {ingressPath.length > 0 && (
+                  <Polyline
+                    positions={ingressPath}
+                    pathOptions={{ color: '#2563eb', weight: 4, dashArray: '6, 8', opacity: 0.95 }}
+                  />
+                )}
+
+                {/* Main Transit Corridor */}
+                {continuousRoute.length > 0 && (
+                  <Polyline
+                    positions={continuousRoute}
+                    pathOptions={{
+                      color: isCabOrTaxi ? '#f59e0b' : isTrain ? '#2563eb' : '#059669',
+                      weight: 6,
+                      opacity: 0.9,
+                    }}
+                  />
+                )}
+
+                {/* Egress Walking Path */}
+                {egressPath.length > 0 && (
+                  <Polyline
+                    positions={egressPath}
+                    pathOptions={{ color: '#2563eb', weight: 4, dashArray: '6, 8', opacity: 0.95 }}
+                  />
+                )}
+
+                {/* Origin Marker */}
+                <Marker position={originCoords} icon={originPin}>
+                  <Popup><div className="text-xs font-bold p-1">🚩 Origin: {selectedRoute.originName}</div></Popup>
+                </Marker>
+
+                {/* Destination Marker */}
+                <Marker position={destCoords} icon={destPin}>
+                  <Popup><div className="text-xs font-bold p-1">🏁 Destination: {selectedRoute.destinationName}</div></Popup>
+                </Marker>
+
+                {/* Transfer Points on Modal Map */}
+                {transferPoints.map((tp) => (
+                  <Marker
+                    key={`modal-transfer-${tp.id}`}
+                    position={[tp.latitude, tp.longitude]}
+                    icon={createTransferPin(tp.fromIcon, tp.toIcon, tp.badgeLabel)}
+                  >
+                    <Popup>
+                      <div className="text-xs space-y-1 p-1">
+                        <div className="font-bold text-amber-700">🔄 Transfer Hub</div>
+                        <div className="font-bold">{tp.locationName}</div>
+                        <div className="text-[11px] text-neutral-600">{tp.description}</div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+
+                {/* Intermediate Stops on Modal Map */}
+                {selectedRoute.intermediateStops && selectedRoute.intermediateStops.map((stop, sIdx) => {
+                  const isFirst = sIdx === 0;
+                  const isLast = sIdx === selectedRoute.intermediateStops!.length - 1;
+                  const isTransfer = stop.stopRole === 'transfer';
+                  const isTrainStop = isTrain || selectedRoute.route?.vehicleType === 'train';
+                  const isFlightStop = isFlight || selectedRoute.route?.vehicleType === 'flight';
+                  const stopEmoji = isTransfer ? '🔄' : isTrainStop ? '🚆' : isFlightStop ? '✈️' : '🚏';
+                  const stopColor = isTransfer ? '#d97706' : isFirst ? '#059669' : isLast ? '#0284c7' : '#475569';
+
+                  const dotIcon = L.divIcon({
+                    html: `<div style="width:10px;height:10px;background:#ffffff;border:2.5px solid ${stopColor};border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.4);cursor:pointer;" title="${stop.name}"></div>`,
+                    className: 'custom-modal-milestone-pin',
+                    iconSize: [10, 10],
+                    iconAnchor: [5, 5],
+                  });
+
+                  return (
+                    <Marker
+                      key={`modal-stop-${stop.id}-${sIdx}`}
+                      position={[stop.latitude, stop.longitude]}
+                      icon={dotIcon}
+                    >
+                      <Popup>
+                        <div className="text-xs p-1 font-bold">
+                          <span style={{ color: stopColor }}>{stopEmoji} {stop.name}</span>
+                          <div className="text-[10px] text-neutral-500 font-normal">Stop #{stop.sequence || sIdx + 1}</div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+
+            {/* Modal Bottom Bar with Route Switcher & Navigation */}
+            <div className="p-3 bg-white border-t border-neutral-200 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
+                {filteredResults.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filteredResults.length - 1))}
+                      className="px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 active:scale-95 text-neutral-800 text-xs font-bold cursor-pointer transition-all"
+                    >
+                      ◀ Prev
+                    </button>
+                    <div className="text-xs font-bold text-neutral-700 px-1 text-center truncate max-w-[200px]">
+                      <span className="text-neutral-900 font-black">{selectedRoute.route?.shortName || selectedRoute.route?.name}</span>
+                      <span className="text-neutral-500 font-medium ml-1">({selectedIndex + 1}/{filteredResults.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIndex((prev) => (prev < filteredResults.length - 1 ? prev + 1 : 0))}
+                      className="px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 active:scale-95 text-neutral-800 text-xs font-bold cursor-pointer transition-all"
+                    >
+                      Next ▶
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowMapPeekModal(false)}
+                  className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl border border-neutral-200 hover:bg-neutral-100 text-neutral-800 text-xs font-bold cursor-pointer transition-all text-center"
+                >
+                  Back to Plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMapPeekModal(false);
+                    handleStart();
+                  }}
+                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-black shadow-sm flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <span>Start Live Navigation</span>
+                  <Navigation className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* =========================================================================
           UNIFIED CARPOOLING & SHARED RIDES HUB MODAL
           ========================================================================= */}

@@ -3,9 +3,18 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
   body {
     @apply bg-white text-neutral-900 font-sans antialiased;
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
   }
 
   ::selection {
@@ -20,11 +29,11 @@
 
   /* Clean Scrollbars */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
-    background: #f6f6f6;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: #d4d4d4;
@@ -119,6 +128,31 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Safe Area Bottom Padding for Modern Mobile Devices */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Truncation and Break Guards */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .text-clamp-1 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+  }
+
+  .text-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
   }
 }
 

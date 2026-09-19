@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Navigation, Clock, Shield, Accessibility, Users, ArrowRight, CheckCircle2, ChevronDown, Sparkles } from 'lucide-react';
+import { MapPin, Navigation, Clock, Shield, Accessibility, Users, ArrowRight, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { DEMO_STOPS, DEMO_TRANSPORT_STANDS } from '../../data/mock';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
