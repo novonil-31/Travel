@@ -759,6 +759,17 @@ export default function RouteDiscoveryPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showMapPeekModal]);
 
+  // Subtle tactile haptic pulse on mobile actions
+  const triggerHaptic = useCallback(() => {
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(12);
+      } catch {
+        // ignore vibrate failure
+      }
+    }
+  }, []);
+
   // Synchronize inputs if URL changes
   useEffect(() => {
     if (urlOrigin) setOriginInput(urlOrigin);
@@ -2076,7 +2087,10 @@ export default function RouteDiscoveryPage() {
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => setSelectedIndex(idx)}
+                  onClick={() => {
+                    setSelectedIndex(idx);
+                    triggerHaptic();
+                  }}
                   className={`w-full text-left p-3 sm:p-3.5 rounded-2xl border transition-all select-none active:scale-[0.99] flex flex-col gap-1.5 cursor-pointer ${isSelected
                       ? 'bg-neutral-900 text-white border-neutral-900 shadow-md ring-2 ring-black/10'
                       : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50/50 shadow-xs'
@@ -3192,7 +3206,10 @@ export default function RouteDiscoveryPage() {
           >
             <div
               className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
-              onClick={() => setShowMapPeekModal(true)}
+              onClick={() => {
+                triggerHaptic();
+                setShowMapPeekModal(true);
+              }}
               title="Tap to peek interactive map"
             >
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm shadow-xs border ${nextActionInfo.iconBg}`}>
@@ -3218,7 +3235,10 @@ export default function RouteDiscoveryPage() {
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowMapPeekModal(true)}
+                onClick={() => {
+                  triggerHaptic();
+                  setShowMapPeekModal(true);
+                }}
                 className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border border-blue-200 shadow-2xs active:scale-95"
                 title="Peek Interactive Map"
               >
@@ -3237,7 +3257,10 @@ export default function RouteDiscoveryPage() {
 
               <button
                 type="button"
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                onClick={() => {
+                  triggerHaptic();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className="w-8 h-8 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-black transition-all flex items-center justify-center cursor-pointer text-xs active:scale-95"
                 title="Jump to Top Search"
               >
@@ -3245,6 +3268,29 @@ export default function RouteDiscoveryPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          🗺️ MOBILE FLOATING "MAP VIEW" QUICK TOGGLE PILL (Airbnb / Citymapper Style)
+          Bottom-center frosted pill giving 1-tap toggle between List and Map sheet!
+          ========================================================================= */}
+      {isScrolledDown && (
+        <div className="lg:hidden fixed bottom-[74px] left-1/2 -translate-x-1/2 z-[1040] select-none animate-in fade-in zoom-in-95 duration-200">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic();
+              setShowMapPeekModal(true);
+            }}
+            className="bg-neutral-900/90 hover:bg-black text-white px-4 py-2 rounded-full font-bold text-xs shadow-xl backdrop-blur-md flex items-center gap-2 border border-white/20 active:scale-95 transition-all cursor-pointer"
+          >
+            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Map View</span>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full font-black">
+              {filteredResults.length}
+            </span>
+          </button>
         </div>
       )}
 
@@ -3274,7 +3320,10 @@ export default function RouteDiscoveryPage() {
 
             {/* Mini Vector Radar Canvas */}
             <div
-              onClick={() => setShowMapPeekModal(true)}
+              onClick={() => {
+                triggerHaptic();
+                setShowMapPeekModal(true);
+              }}
               className="w-full h-[65px] bg-neutral-950 rounded-xl overflow-hidden relative cursor-pointer group border border-neutral-800"
               title="Tap to expand interactive map"
             >
