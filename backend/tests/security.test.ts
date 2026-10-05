@@ -69,4 +69,126 @@ describe('Security Hardening & Boundary Defense Verification', () => {
     // Ensure fast2SmsResult (wallet balance / API errors) is NOT leaked to clients
     expect(res.body.data.fast2SmsResult).toBeUndefined();
   });
+
+  it('validates coordinate boundaries on /vehicles/nearby', async () => {
+    const res = await request(app).get('/api/vehicles/nearby?lat=999&lng=85');
+    expect(res.status).toBe(422);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('prevents BOLA / IDOR on safety sessions: unauthorized user cannot complete other users sessions', async () => {
+    const { issueToken } = await import('../src/middleware/auth.middleware.js');
+    const { prisma } = await import('../src/db.js');
+
+    const userA = await prisma.user.upsert({
+      where: { email: 'sec_usera@test.com' },
+      update: {},
+      create: {
+        name: 'User A',
+        email: 'sec_usera@test.com',
+        role: 'PASSENGER',
+      },
+    });
+
+    const userB = await prisma.user.upsert({
+      where: { email: 'sec_userb@test.com' },
+      update: {},
+      create: {
+        name: 'User B',
+        email: 'sec_userb@test.com',
+        role: 'PASSENGER',
+      },
+    });
+
+    const tokenA = issueToken({ userId: userA.id, role: 'PASSENGER' });
+    const tokenB = issueToken({ userId: userB.id, role: 'PASSENGER' });
+
+    const journey = await prisma.journey.create({
+      data: {
+        userId: userA.id,
+        originLat: 20.35,
+        originLng: 85.81,
+        destinationLat: 20.36,
+        destinationLng: 85.82,
+        originName: 'Station A',
+        destinationName: 'Station B',
+        durationMinutes: 25,
+      },
+    });
+
+    const session = await prisma.safetySession.create({
+      data: {
+        userId: userA.id,
+        journeyId: journey.id,
+        expectedArrivalAt: new Date(Date.now() + 25 * 60 * 1000),
+      },
+    });
+
+    // User B attempts to complete User A's session -> must be 403 Forbidden
+    const resBComplete = await request(app)
+      .post('/api/safety/complete')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ sessionId: session.id });
+
+    expect(resBComplete.status).toBe(403);
+    expect(resBComplete.body.success).toBe(false);
+
+    // User B attempts to trigger emergency on User A's session -> must be 403 Forbidden
+    const resBEmergency = await request(app)
+      .post('/api/safety/emergency')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ sessionId: session.id });
+
+    expect(resBEmergency.status).toBe(403);
+    expect(resBEmergency.body.success).toBe(false);
+
+    // User A completes their own session -> succeeds
+    const resAComplete = await request(app)
+      .post('/api/safety/complete')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ sessionId: session.id });
+
+    expect(resAComplete.status).toBe(200);
+    expect(resAComplete.body.success).toBe(true);
+
+    // Clean up
+    await prisma.safetySession.delete({ where: { id: session.id } }).catch(() => {});
+    await prisma.journey.delete({ where: { id: journey.id } }).catch(() => {});
+  });
+
+  it('sanitizes HTML tags from user comments in reports to prevent stored XSS', async () => {
+    const { issueToken } = await import('../src/middleware/auth.middleware.js');
+    const { prisma } = await import('../src/db.js');
+
+    const testUser = await prisma.user.findFirst();
+    const token = issueToken({ userId: testUser!.id, role: 'PASSENGER' });
+    const existingRoute = await prisma.route.findFirst();
+    const routeId = existingRoute ? existingRoute.id : 'ROUTE_11_DN';
+
+    const res = await request(app)
+      .post('/api/reports/crowding')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        routeId,
+        level: 'HIGH',
+        comment: '<script>alert("xss")</script>Bus was packed',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+
+    const reportId = res.body.data.reportId;
+    const reportInDb = await prisma.report.findUnique({ where: { id: reportId } });
+    expect(reportInDb?.comment).toBe('alert("xss")Bus was packed');
+    expect(reportInDb?.comment).not.toContain('<script>');
+  });
+
+  it('rejects tampered or forged JWT tokens with 401 Unauthorized', async () => {
+    const res = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VySWQiOiIxMjMifQ.');
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
 });

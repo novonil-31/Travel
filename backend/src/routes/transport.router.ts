@@ -34,7 +34,16 @@ router.get('/stands/nearby', async (req, res, next) => {
   try {
     const { lat, lng, radius } = NearbySchema.parse(req.query);
 
-    const stands = await prisma.transportStand.findMany();
+    // Calculate spatial bounding box to prevent full-table in-memory heap dump
+    const latDelta = radius / 111000;
+    const lngDelta = radius / (111000 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+
+    const stands = await prisma.transportStand.findMany({
+      where: {
+        latitude: { gte: lat - latDelta, lte: lat + latDelta },
+        longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
+      },
+    });
 
     const nearby = stands
       .map((s) => ({

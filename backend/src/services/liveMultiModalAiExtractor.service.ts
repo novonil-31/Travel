@@ -209,6 +209,15 @@ export function calculateIrctcFares(distKm: number, trainType = 'Superfast'): Ar
   ];
 }
 
+function sanitizePromptInput(str: string, maxLength = 60): string {
+  if (!str) return '';
+  return str
+    .replace(/[\r\n"\\`{}]/g, ' ')
+    .replace(/\b(system|instruction|override|ignore)\b/gi, '')
+    .slice(0, maxLength)
+    .trim();
+}
+
 export async function searchLiveInternetTrain(
   origCode: string,
   destCode: string,
@@ -217,13 +226,19 @@ export async function searchLiveInternetTrain(
   travelDateStr = new Date().toISOString().split('T')[0],
   distanceKm = 400,
 ): Promise<LiveTrainResult> {
-  const d = new Date(travelDateStr);
+  const safeOrigCity = sanitizePromptInput(origCity, 50);
+  const safeDestCity = sanitizePromptInput(destCity, 50);
+  const safeOrigCode = sanitizePromptInput(origCode, 10).toUpperCase();
+  const safeDestCode = sanitizePromptInput(destCode, 10).toUpperCase();
+  const safeDate = sanitizePromptInput(travelDateStr, 15);
+
+  const d = new Date(safeDate || travelDateStr);
   const dayIndex = isNaN(d.getTime()) ? new Date().getDay() : d.getDay();
   const searchDayName = DAY_NAMES[dayIndex];
 
   // 1. Try Gemini AI Model with Realistic Real-World IRCTC Fares
   const prompt = `You are a real-time Indian Railways (IRCTC) live timetable and passenger fare search engine.
-Search and extract the REAL, CURRENT, ACCURATE operating train information and exact IRCTC passenger ticket prices (in Indian Rupees INR) for trains running from ${origCity} (${origCode}) to ${destCity} (${destCode}) on ${searchDayName} (${travelDateStr}).
+Search and extract the REAL, CURRENT, ACCURATE operating train information and exact IRCTC passenger ticket prices (in Indian Rupees INR) for trains running from [ORIGIN: ${safeOrigCity} (${safeOrigCode})] to [DESTINATION: ${safeDestCity} (${safeDestCode})] on ${searchDayName} (${safeDate}).
 
 CRITICAL REQUIREMENTS FOR REAL PRICING & ROUTE ACCURACY:
 1. Provide the exact 5-digit train number and full official train name (e.g. "12822", "Dhauli Express" or "12802", "Purushottam Express" or "20836", "Vande Bharat Express").
@@ -354,12 +369,18 @@ export async function searchLiveInternetFlight(
   travelDateStr = new Date().toISOString().split('T')[0],
   distanceKm = 1200,
 ): Promise<LiveFlightResult> {
+  const safeOrigCity = sanitizePromptInput(origCity, 50);
+  const safeDestCity = sanitizePromptInput(destCity, 50);
+  const safeOrigCode = sanitizePromptInput(origCode, 10).toUpperCase();
+  const safeDestCode = sanitizePromptInput(destCode, 10).toUpperCase();
+  const safeDate = sanitizePromptInput(travelDateStr, 15);
+
   const flightDurationMin = Math.round(Math.max(65, (distanceKm / 750) * 60));
-  const mmtUrl = `https://www.makemytrip.com/flight/search?itinerary=${origCode}-${destCode}-${travelDateStr}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E`;
+  const mmtUrl = `https://www.makemytrip.com/flight/search?itinerary=${encodeURIComponent(safeOrigCode)}-${encodeURIComponent(safeDestCode)}-${encodeURIComponent(safeDate)}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E`;
 
   // 1. Try Gemini AI Model connected to real airline spot market fares
   const prompt = `You are a real-time Indian domestic airline pricing and flight discovery engine.
-Provide realistic, live flight options and accurate spot airfares from ${origCity} (${origCode}) to ${destCity} (${destCode}) for travel date ${travelDateStr}.
+Provide realistic, live flight options and accurate spot airfares from ${safeOrigCity} (${safeOrigCode}) to ${safeDestCity} (${safeDestCode}) for travel date ${safeDate}.
 
 CRITICAL REQUIREMENTS:
 1. Provide a real flight number (e.g. 6E-2054, AI-478, QP-1352, UK-780) and airline (IndiGo, Air India, Akasa Air, Vistara).
@@ -433,12 +454,16 @@ export async function searchLiveInternetBus(
   travelDateStr = new Date().toISOString().split('T')[0],
   distanceKm = 350,
 ): Promise<LiveBusResult> {
-  const mmtBusUrl = `https://www.makemytrip.com/bus/search/${encodeURIComponent(origCity)}/${encodeURIComponent(destCity)}/${travelDateStr}`;
+  const safeOrigCity = sanitizePromptInput(origCity, 50);
+  const safeDestCity = sanitizePromptInput(destCity, 50);
+  const safeDate = sanitizePromptInput(travelDateStr, 15);
+
+  const mmtBusUrl = `https://www.makemytrip.com/bus/search/${encodeURIComponent(safeOrigCity)}/${encodeURIComponent(safeDestCity)}/${encodeURIComponent(safeDate)}`;
   const durHours = Math.round((distanceKm / 48) * 10) / 10;
 
   // 1. Try Gemini AI Model connected to real bus aggregator fares
   const prompt = `You are a real-time Indian interstate highway bus booking engine (like MakeMyTrip Bus / RedBus).
-Find real active intercity bus services running from ${origCity} to ${destCity} on ${travelDateStr}.
+Find real active intercity bus services running from ${safeOrigCity} to ${safeDestCity} on ${safeDate}.
 Include state transport (like OSRTC, KSRTC, MSRTC, UPSRTC) or top private luxury coaches (Zingbus, IntrCity, Greenline, VRL, Royal Cruiser, Dolphin).
 
 CRITICAL REQUIREMENTS:

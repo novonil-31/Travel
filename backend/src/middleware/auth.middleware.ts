@@ -39,7 +39,7 @@ export async function requireAuth(
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+    const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] }) as AuthPayload;
     req.user = payload;
     next();
   } catch {
@@ -62,5 +62,5 @@ export function requireRole(...roles: string[]) {
 }
 
 export function issueToken(payload: AuthPayload): string {
-  return jwt.sign(payload, config.jwtSecret, { expiresIn: config.jwtExpiresIn } as jwt.SignOptions);
+  return jwt.sign(payload, config.jwtSecret, { expiresIn: config.jwtExpiresIn, algorithm: 'HS256' } as jwt.SignOptions);
 }

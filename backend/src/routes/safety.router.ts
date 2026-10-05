@@ -66,12 +66,18 @@ router.post('/heartbeat', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
-    const result = await recordHeartbeat(sessionId);
-    if (!result) {
+    const session = await prisma.safetySession.findUnique({ where: { id: sessionId } });
+    if (!session) {
       sendError(res, Errors.NOT_FOUND, 'Safety session not found', 404);
       return;
     }
 
+    if (session.userId !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      sendError(res, Errors.FORBIDDEN, 'Access denied: You do not own this safety session', 403);
+      return;
+    }
+
+    const result = await recordHeartbeat(sessionId);
     sendSuccess(res, result);
   } catch (e) {
     next(e);
@@ -89,12 +95,18 @@ router.post('/complete', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
-    const result = await completeSafetySession(sessionId);
-    if (!result) {
+    const session = await prisma.safetySession.findUnique({ where: { id: sessionId } });
+    if (!session) {
       sendError(res, Errors.NOT_FOUND, 'Safety session not found', 404);
       return;
     }
 
+    if (session.userId !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      sendError(res, Errors.FORBIDDEN, 'Access denied: You do not own this safety session', 403);
+      return;
+    }
+
+    const result = await completeSafetySession(sessionId);
     sendSuccess(res, result);
   } catch (e) {
     next(e);
@@ -112,12 +124,18 @@ router.post('/emergency', requireAuth, async (req, res, next) => {
   try {
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(req.body);
 
-    const result = await triggerEmergency(sessionId);
-    if (!result) {
+    const session = await prisma.safetySession.findUnique({ where: { id: sessionId } });
+    if (!session) {
       sendError(res, Errors.NOT_FOUND, 'Safety session not found', 404);
       return;
     }
 
+    if (session.userId !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      sendError(res, Errors.FORBIDDEN, 'Access denied: You do not own this safety session', 403);
+      return;
+    }
+
+    const result = await triggerEmergency(sessionId);
     sendSuccess(res, result);
   } catch (e) {
     next(e);

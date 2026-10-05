@@ -25,6 +25,15 @@ export interface RouteGeometryResult {
   instructions?: string[];
 }
 
+function sanitizePromptInput(str: string, maxLength = 80): string {
+  if (!str) return '';
+  return str
+    .replace(/[\r\n"\\`{}]/g, ' ')
+    .replace(/\b(system|instruction|override|ignore)\b/gi, '')
+    .slice(0, maxLength)
+    .trim();
+}
+
 /**
  * Search places online using OpenStreetMap Nominatim (India Prioritized), Photon & Gemini AI.
  */
@@ -105,8 +114,9 @@ export async function searchPlacesOnline(query: string, userLat?: number, userLn
   if (results.length === 0 && process.env.GEMINI_API_KEY) {
     try {
       const key = process.env.GEMINI_API_KEY;
+      const safeQuery = sanitizePromptInput(query, 80);
       const prompt = `You are a real-time India GIS location and monument geocoding engine.
-Resolve the location in India for: "${query}".
+Resolve the location in India for: "${safeQuery}".
 Return JSON:
 {
   "name": "Proper Place / City / Monument Name",

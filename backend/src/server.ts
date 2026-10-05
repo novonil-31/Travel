@@ -210,6 +210,15 @@ registerRoutes('/api');
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+// Process crash safeguards (Prevent silent crash and unhandled promise aborts)
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, '[Process] Unhandled promise rejection intercepted');
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, '[Process] Uncaught exception intercepted');
+});
+
 // Start server if not running in serverless / test mode
 if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(config.port, () => {

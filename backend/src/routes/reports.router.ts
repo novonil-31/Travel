@@ -39,11 +39,16 @@ async function isDuplicate(
   return !!existing;
 }
 
+function sanitizeText(str?: string): string | undefined {
+  if (!str) return undefined;
+  return str.replace(/<[^>]*>?/gm, '').trim();
+}
+
 const BaseReportSchema = z.object({
   routeId: z.string(),
   vehicleId: z.string().optional(),
   stopId: z.string().optional(),
-  comment: z.string().max(500).optional(),
+  comment: z.string().max(500).optional().transform((val) => sanitizeText(val)),
 });
 
 /**
@@ -138,7 +143,7 @@ router.post('/accessibility', requireAuth, async (req, res, next) => {
   try {
     const body = BaseReportSchema.extend({
       type: z.enum(['INACCESSIBLE_VEHICLE', 'BROKEN_RAMP', 'INACCESSIBLE_STOP']),
-      issue: z.string().max(200).optional(),
+      issue: z.string().max(200).optional().transform((val) => sanitizeText(val)),
     }).parse(req.body);
 
     const isDup = await isDuplicate(req.user!.userId, body.routeId, body.type, body.vehicleId);

@@ -27,15 +27,23 @@ const router = Router();
 router.get('/nearby', async (req, res, next) => {
   try {
     const schema = z.object({
-      lat: z.coerce.number(),
-      lng: z.coerce.number(),
-      radius: z.coerce.number().default(1000),
+      lat: z.coerce.number().min(-90).max(90),
+      lng: z.coerce.number().min(-180).max(180),
+      radius: z.coerce.number().min(50).max(50000).default(1000),
     });
 
     const { lat, lng, radius } = schema.parse(req.query);
 
-    // Get latest position for each vehicle from authentic database records
+    // Calculate spatial bounding box to prevent full-table in-memory heap dump
+    const latDelta = radius / 111000;
+    const lngDelta = radius / (111000 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+
+    // Get latest position for each vehicle from authentic database records within bounding box
     const positions = await prisma.vehiclePosition.findMany({
+      where: {
+        latitude: { gte: lat - latDelta, lte: lat + latDelta },
+        longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
+      },
       include: {
         vehicle: {
           select: {

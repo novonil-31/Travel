@@ -185,7 +185,15 @@ router.get('/nearby', async (req, res, next) => {
   try {
     const { lat, lng, radius, limit } = NearbySchema.parse(req.query);
 
+    // Calculate spatial bounding box to prevent full-table in-memory heap dump
+    const latDelta = radius / 111000;
+    const lngDelta = radius / (111000 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+
     const stops = await prisma.stop.findMany({
+      where: {
+        latitude: { gte: lat - latDelta, lte: lat + latDelta },
+        longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
+      },
       include: {
         routeStops: {
           include: {
