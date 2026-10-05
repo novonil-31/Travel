@@ -229,6 +229,19 @@ export const authApi = {
     }
     return clientAuthDb.updateEmergencyContact(data);
   },
+  googleLogin: async (credential: string) => {
+    if (BASE_URL) {
+      try {
+        return await request<{
+          user: { id: string; name: string; email?: string; role: string; avatar?: string; emergencyContact?: { name: string; phone: string; relationship?: string } };
+          token: string;
+        }>('/auth/google', { method: 'POST', body: { credential } });
+      } catch (err: any) {
+        console.warn('Backend Google auth failed, falling back to local user:', err);
+      }
+    }
+    return null;
+  },
   getMe: () => {
     const raw = localStorage.getItem('access_user');
     return raw ? JSON.parse(raw) : null;

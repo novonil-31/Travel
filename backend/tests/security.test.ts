@@ -52,9 +52,24 @@ describe('Security Hardening & Boundary Defense Verification', () => {
     expect(res.body.success).toBe(false);
   });
 
-  it('handles emergency-sms gracefully without leaking internal secrets', async () => {
+  it('requires authentication on emergency-sms and leaks no secrets', async () => {
+    const { issueToken } = await import('../src/middleware/auth.middleware.js');
+    const token = issueToken({ userId: 'sms-tester-1', role: 'PASSENGER' });
+
+    // 1. Unauthenticated request is blocked
+    const unauthRes = await request(app)
+      .post('/api/safety/emergency-sms')
+      .send({
+        recipientPhone: '9861200000',
+        senderName: 'Attacker',
+        locationName: 'Campus Gate',
+      });
+    expect(unauthRes.status).toBe(401);
+
+    // 2. Authenticated request succeeds safely
     const res = await request(app)
       .post('/api/safety/emergency-sms')
+      .set('Authorization', `Bearer ${token}`)
       .send({
         recipientPhone: '9861200000',
         senderName: 'Test Commuter',
@@ -190,5 +205,103 @@ describe('Security Hardening & Boundary Defense Verification', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
+  });
+
+  it('enforces strict authentication, ownership, and privacy masking on carpools', async () => {
+    const { issueToken } = await import('../src/middleware/auth.middleware.js');
+    const tokenA = issueToken({ userId: 'carpool-user-a', email: 'owner@access.org', role: 'PASSENGER' });
+    const tokenB = issueToken({ userId: 'carpool-user-b', email: 'rider@access.org', role: 'PASSENGER' });
+
+    // 1. Unauthenticated creation is blocked
+    const unauthCreate = await request(app).post('/api/carpools').send({
+      originName: 'KIIT Campus 6',
+      originCoords: [20.35, 85.81],
+      destinationName: 'Bhubaneswar Station',
+      destinationCoords: [20.26, 85.84],
+    });
+    expect(unauthCreate.status).toBe(401);
+
+    // 2. Authenticated user A creates a carpool
+    const createRes = await request(app)
+      .post('/api/carpools')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        hostName: 'Alice Commuter',
+        hostPhone: '+91 98612 12345',
+        originName: 'KIIT Campus 6',
+        originCoords: [20.35, 85.81],
+        destinationName: 'Bhubaneswar Station',
+        destinationCoords: [20.26, 85.84],
+      });
+    expect(createRes.status).toBe(201);
+    const rideId = createRes.body.data.id;
+    expect(rideId).toBeDefined();
+
+    // 3. Public GET /api/carpools masks phone and hides email
+    const publicList = await request(app).get('/api/carpools');
+    expect(publicList.status).toBe(200);
+    const listedRide = publicList.body.data.find((r: any) => r.id === rideId);
+    expect(listedRide).toBeDefined();
+    expect(listedRide.userEmail).toBeUndefined();
+    expect(listedRide.hostPhone).toContain('******');
+
+    // 4. User B cannot delete User A's carpool
+    const unauthorizedDelete = await request(app)
+      .delete(`/api/carpools/${rideId}`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(unauthorizedDelete.status).toBe(403);
+
+    // 5. User A cannot match their own carpool
+    const selfMatch = await request(app)
+      .post(`/api/carpools/${rideId}/accept`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ partnerName: 'Alice' });
+    expect(selfMatch.status).toBe(400);
+
+    // 6. User B accepts User A's carpool
+    const matchRes = await request(app)
+      .post(`/api/carpools/${rideId}/accept`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ partnerName: 'Bob Co-Rider', partnerPhone: '+91 94370 11223' });
+    expect(matchRes.status).toBe(200);
+    expect(matchRes.body.data.status).toBe('matched');
+
+    // 7. User A deletes their own carpool
+    const ownerDelete = await request(app)
+      .delete(`/api/carpools/${rideId}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(ownerDelete.status).toBe(200);
+    expect(ownerDelete.body.data.cancelled).toBe(true);
+  });
+
+  it('exchanges Google ID token for valid ACCESS backend session JWT via /auth/google', async () => {
+    // Generate dummy valid 3-part base64 JWT with mock Google claims
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64');
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: '10987654321',
+        email: 'google_commuter@example.com',
+        name: 'Google Commuter',
+        picture: 'https://example.com/avatar.jpg',
+      })
+    ).toString('base64');
+    const dummyGoogleToken = `${header}.${payload}.mockSignature`;
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ credential: dummyGoogleToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('token');
+    expect(res.body.data.user.email).toBe('google_commuter@example.com');
+
+    // Verify the returned token is a genuine ACCESS backend token
+    const meRes = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${res.body.data.token}`);
+
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.data.email).toBe('google_commuter@example.com');
   });
 });

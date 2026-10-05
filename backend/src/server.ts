@@ -35,13 +35,16 @@ import carpoolsRouter from './routes/carpools.router.js';
 
 export const app = express();
 
+// Trust reverse proxy (Vercel, Nginx, AWS ELB) so express-rate-limit identifies client IP correctly
+app.set('trust proxy', 1);
+
 // 1. Security Headers via Helmet
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Required for Swagger UI
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Removed unsafe-eval
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: ["'self'", 'https:'],
@@ -132,6 +135,22 @@ export const sosLimiter = rateLimit({
   },
 });
 
+export const planLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isTestEnv,
+  message: {
+    success: false,
+    data: null,
+    error: {
+      code: 'PLAN_RATE_LIMIT_EXCEEDED',
+      message: 'Too many journey planning requests. Please wait a few minutes.',
+    },
+  },
+});
+
 app.use(globalLimiter);
 
 // Swagger Docs Configuration
@@ -166,15 +185,14 @@ const swaggerSpec = swaggerJsdoc({
 // Swagger UI Route
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Health check endpoint
+// Health check endpoint (does not leak environment details in production)
 app.get(['/health', '/api/health'], (_req, res) => {
   sendSuccess(res, {
     status: 'healthy',
     service: 'ACCESS Transport Backend',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    env: config.env,
-    demoMode: config.isDemoMode,
+    ...(config.isProduction ? {} : { env: config.env, demoMode: config.isDemoMode }),
   });
 });
 
@@ -183,6 +201,7 @@ const registerRoutes = (prefix: string) => {
   app.use(`${prefix}/auth/login`, authLimiter);
   app.use(`${prefix}/auth/register`, authLimiter);
   app.use(`${prefix}/safety/emergency-sms`, sosLimiter);
+  app.use(`${prefix}/journeys/plan`, planLimiter);
 
   app.use(`${prefix}/auth`, authRouter);
   app.use(`${prefix}/profile`, profileRouter);

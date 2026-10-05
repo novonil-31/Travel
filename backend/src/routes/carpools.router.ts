@@ -8,7 +8,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { sendSuccess, sendError, Errors } from '../middleware/response.js';
-import type { AuthPayload } from '../middleware/auth.middleware.js';
+import { requireAuth, type AuthPayload } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -20,7 +20,7 @@ export interface ServerCarpoolRide {
   role: 'driver' | 'passenger_split';
   status: 'pending' | 'matched' | 'completed' | 'cancelled';
   hostName: string;
-  hostPhone: string;
+  hostPhone?: string;
   hostRating: number;
   hostRidesCount: number;
   hostVerification: string;
@@ -48,9 +48,10 @@ export interface ServerCarpoolRide {
   originalSoloFare: number;
   savingsPercent: number;
   hasRampOrBootSpace: boolean;
-  notes: string;
+  notes?: string;
   createdAt: string;
   expiresAt: string;
+  matchedUserId?: string;
   matchedWith?: string;
   matchedPhone?: string;
   matchedVehicle?: string;
@@ -78,23 +79,19 @@ function pruneExpired() {
   }
 }
 
-// Extract optional user identity from token
+// Extract optional user identity from token with strict algorithm pinning
 function getAuthenticatedUser(req: any): AuthPayload | null {
   const authHeader = req.headers?.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
   try {
     const token = authHeader.slice(7);
-    return jwt.verify(token, config.jwtSecret) as AuthPayload;
+    return jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] }) as AuthPayload;
   } catch {
     return null;
   }
 }
 
 const CarpoolCreateSchema = z.object({
-  id: z.string().max(100).optional(),
-  userId: z.string().max(100).optional(),
-  userEmail: z.string().email().optional().or(z.literal('')),
-  userName: z.string().max(100).optional(),
   role: z.enum(['driver', 'passenger_split']).default('passenger_split'),
   hostName: z.string().max(100).optional(),
   hostPhone: z.string().max(25).optional(),
@@ -129,39 +126,60 @@ const CarpoolCreateSchema = z.object({
 
 /**
  * GET /carpools
- * Retrieve active carpool requests
+ * Retrieve active carpool requests with privacy masking
  */
-router.get('/', (_req, res) => {
+router.get('/', (req, res) => {
   pruneExpired();
-  sendSuccess(res, activeCarpools);
+  const user = getAuthenticatedUser(req);
+
+  // Mask private contact details unless user is creator or matched participant
+  const sanitized = activeCarpools.map((r) => {
+    const isOwner = !!(user && (user.userId === r.userId || user.role === 'ADMIN'));
+    const isMatched = !!(user && user.userId === r.matchedUserId);
+
+    if (isOwner || isMatched) {
+      return r;
+    }
+
+    return {
+      ...r,
+      hostPhone: r.hostPhone
+        ? r.hostPhone.replace(/(\+?\d{1,4}\s?)(\d{2})\d+(\d{2})/, '$1$2******$3')
+        : undefined,
+      matchedPhone: undefined,
+      userEmail: undefined,
+    };
+  });
+
+  sendSuccess(res, sanitized);
 });
 
 /**
  * POST /carpools
- * Register a new carpool broadcast
+ * Register a new carpool broadcast (Requires Authentication)
  */
-router.post('/', (req, res, next) => {
+router.post('/', requireAuth, (req, res, next) => {
   try {
     pruneExpired();
-    const user = getAuthenticatedUser(req);
     const body = CarpoolCreateSchema.parse(req.body);
 
-    const newId = body.id || `pool-req-${Date.now()}`;
+    // Enforce server-generated unguessable ID to prevent ID spoofing / overwriting
+    const newId = `pool-req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const expiresAt = body.expiresAt || new Date(Date.now() + 45 * 60 * 1000).toISOString();
-    const creatorId = user?.userId || body.userId || `user-${Date.now()}`;
+    const creatorId = req.user!.userId;
 
     const newRide: ServerCarpoolRide = {
       id: newId,
       userId: creatorId,
-      userEmail: user?.email || (body.userEmail || undefined),
-      userName: body.userName || body.hostName || 'Commuter',
+      userEmail: req.user!.email,
+      userName: body.hostName || 'Commuter',
       role: body.role,
       status: 'pending',
-      hostName: body.hostName || body.userName || 'Commuter',
+      hostName: body.hostName || 'Commuter',
       hostPhone: body.hostPhone || '+91 98612 00000',
       hostRating: 5.0,
       hostRidesCount: 1,
-      hostVerification: 'Govt ID Verified',
+      hostVerification: 'Registered Commuter',
       vehicleType: body.vehicleType || (body.role === 'driver' ? 'Car (Sedan/Hatchback)' : 'Shared Auto / Cab Split'),
       vehicleModel: body.vehicleModel,
       vehiclePlate: body.vehiclePlate,
@@ -191,8 +209,7 @@ router.post('/', (req, res, next) => {
       expiresAt,
     };
 
-    // Replace if exists, or prepend
-    activeCarpools = [newRide, ...activeCarpools.filter((r) => r.id !== newId)].slice(0, MAX_ACTIVE_CARPOOLS);
+    activeCarpools = [newRide, ...activeCarpools].slice(0, MAX_ACTIVE_CARPOOLS);
     sendSuccess(res, newRide, 201);
   } catch (e) {
     next(e);
@@ -207,9 +224,9 @@ const CarpoolAcceptSchema = z.object({
 
 /**
  * POST /carpools/:id/accept
- * Accept / match a carpool request
+ * Accept / match a carpool request (Requires Authentication)
  */
-router.post('/:id/accept', (req, res, next) => {
+router.post('/:id/accept', requireAuth, (req, res, next) => {
   try {
     pruneExpired();
     const { id } = req.params;
@@ -221,14 +238,19 @@ router.post('/:id/accept', (req, res, next) => {
       return;
     }
 
-    const user = getAuthenticatedUser(req);
-    if (user && ride.userId === user.userId) {
+    if (ride.userId === req.user!.userId) {
       sendError(res, Errors.CONFLICT, 'You cannot match with your own carpool request', 400);
       return;
     }
 
+    if (ride.status === 'matched') {
+      sendError(res, Errors.CONFLICT, 'Carpool ride has already been matched', 409);
+      return;
+    }
+
     ride.status = 'matched';
-    ride.matchedWith = body.partnerName || 'Verified Co-Rider';
+    ride.matchedUserId = req.user!.userId;
+    ride.matchedWith = body.partnerName || req.user!.email || 'Verified Co-Rider';
     ride.matchedPhone = body.partnerPhone || '+91 98612 00000';
     ride.matchedVehicle = body.partnerVehicle;
     ride.matchedAt = new Date().toISOString();
@@ -241,14 +263,18 @@ router.post('/:id/accept', (req, res, next) => {
 
 /**
  * DELETE /carpools/:id
- * Cancel a carpool request (verifies ownership if user is logged in)
+ * Cancel a carpool request (Requires Authentication & Ownership)
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAuth, (req, res) => {
   const { id } = req.params;
-  const user = getAuthenticatedUser(req);
-
   const ride = activeCarpools.find((r) => r.id === id);
-  if (ride && user && user.role !== 'ADMIN' && ride.userId !== user.userId) {
+
+  if (!ride) {
+    sendError(res, Errors.NOT_FOUND, 'Carpool ride not found or already cancelled', 404);
+    return;
+  }
+
+  if (req.user!.role !== 'ADMIN' && ride.userId !== req.user!.userId) {
     sendError(res, Errors.FORBIDDEN, 'You do not have permission to cancel this carpool request', 403);
     return;
   }

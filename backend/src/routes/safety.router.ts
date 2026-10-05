@@ -21,10 +21,6 @@ import { sendSuccess, sendError, Errors } from '../middleware/response.js';
 
 const router = Router();
 
-// Selective auth - emergency-sms is public to guarantee immediate lifesaving dispatch
-const authenticatedRouter = Router();
-authenticatedRouter.use(requireAuth);
-
 const StartSchema = z.object({
   journeyId: z.string().uuid(),
   expectedArrivalAt: z.string().datetime(),
@@ -158,7 +154,7 @@ const EmergencySmsSchema = z.object({
  *     summary: Dispatch real-time emergency SOS SMS telemetry via Fast2SMS
  *     tags: [Safety]
  */
-router.post('/emergency-sms', async (req, res, next) => {
+router.post('/emergency-sms', requireAuth, async (req, res, next) => {
   try {
     const body = EmergencySmsSchema.parse(req.body);
     const { recipientPhone, recipientName, senderName, latitude, longitude, locationName } = body;

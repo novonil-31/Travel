@@ -105,8 +105,24 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           throw new Error('Could not read Google account info. Please try again.');
         }
 
+        let sessionToken = response.credential;
+        let finalUserId = `google-${userData.sub}`;
+
+        // Exchange Google ID token for real ACCESS backend session JWT
+        try {
+          const backendRes = await authApi.googleLogin(response.credential);
+          if (backendRes?.token) {
+            sessionToken = backendRes.token;
+            if (backendRes.user?.id) {
+              finalUserId = backendRes.user.id;
+            }
+          }
+        } catch {
+          // offline demo fallback
+        }
+
         const googleUser = {
-          id: `google-${userData.sub}`,
+          id: finalUserId,
           name: userData.name,
           email: userData.email,
           photoUrl: userData.picture,
@@ -122,8 +138,8 @@ export default function AuthPage({ initialMode = 'login' }: { initialMode?: 'log
           },
         };
 
-        // Store token (credential is the JWT itself)
-        localStorage.setItem('access_token', response.credential);
+        // Store authentic backend token
+        localStorage.setItem('access_token', sessionToken);
         localStorage.setItem('google_user_photo', userData.picture || '');
 
         setUser(googleUser);

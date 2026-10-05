@@ -1105,7 +1105,12 @@ export function saveCarpoolRegistry(rides: CarpoolRide[]): void {
  */
 export async function syncCarpoolRegistryWithBackend(): Promise<CarpoolRide[]> {
   try {
-    const res = await fetch('http://localhost:3000/api/carpools', { signal: AbortSignal.timeout(2000) });
+    const baseApi = (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const res = await fetch(`${baseApi}/carpools`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(2000),
+    });
     if (res.ok) {
       const json = await res.json();
       const serverList = (json?.data || json) as CarpoolRide[];
@@ -1364,9 +1369,14 @@ export function registerCarpoolRequest(input: CarpoolRequestInput): CarpoolRide 
   saveCarpoolRegistry(updatedRegistry);
 
   // Sync to backend asynchronously
-  fetch('http://localhost:3000/api/carpools', {
+  const baseApi = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api';
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+  fetch(`${baseApi}/carpools`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(newRide),
   }).catch(() => {});
 
@@ -1387,9 +1397,14 @@ export function acceptCarpoolRequest(requestId: string, partnerName: string, par
     saveCarpoolRegistry(currentRegistry);
 
     // Sync accept to backend
-    fetch(`http://localhost:3000/api/carpools/${requestId}/accept`, {
+    const baseApi = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api';
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+    fetch(`${baseApi}/carpools/${requestId}/accept`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ partnerName, partnerPhone }),
     }).catch(() => {});
 
@@ -1419,8 +1434,11 @@ export function cancelCarpoolRequest(requestId: string): void {
   const updatedRegistry = currentRegistry.filter((r) => r.id !== requestId);
   saveCarpoolRegistry(updatedRegistry);
 
-  fetch(`http://localhost:3000/api/carpools/${requestId}`, {
+  const baseApi = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api';
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+  fetch(`${baseApi}/carpools/${requestId}`, {
     method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   }).catch(() => {});
 }
 
