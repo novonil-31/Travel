@@ -35,8 +35,10 @@ const NearbySchema = z.object({
 router.get('/places/search', async (req, res, next) => {
   try {
     const q = String(req.query.q ?? req.query.query ?? '').trim();
-    const userLat = req.query.lat ? parseFloat(String(req.query.lat)) : undefined;
-    const userLng = req.query.lng ? parseFloat(String(req.query.lng)) : undefined;
+    const rawLat = req.query.lat ? parseFloat(String(req.query.lat)) : undefined;
+    const rawLng = req.query.lng ? parseFloat(String(req.query.lng)) : undefined;
+    const userLat = rawLat !== undefined && !isNaN(rawLat) && rawLat >= -90 && rawLat <= 90 ? rawLat : undefined;
+    const userLng = rawLng !== undefined && !isNaN(rawLng) && rawLng >= -180 && rawLng <= 180 ? rawLng : undefined;
 
     if (!q) {
       const topDefaults = searchIndiaGazetteerBackend('', 8);
@@ -160,8 +162,8 @@ router.get('/places/reverse', async (req, res, next) => {
     const lat = parseFloat(String(req.query.lat));
     const lng = parseFloat(String(req.query.lng));
 
-    if (isNaN(lat) || isNaN(lng)) {
-      sendError(res, Errors.VALIDATION_ERROR, 'Valid lat and lng required', 400);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      sendError(res, Errors.VALIDATION_ERROR, 'Valid lat (-90 to 90) and lng (-180 to 180) required', 400);
       return;
     }
 
@@ -315,7 +317,8 @@ router.get('/:id', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const q = String(req.query.q ?? '').trim();
-    const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 50);
+    const rawLimit = parseInt(String(req.query.limit ?? '20'), 10);
+    const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 50);
 
     const stops = await prisma.stop.findMany({
       where: q ? { name: { contains: q } } : {},

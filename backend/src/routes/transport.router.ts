@@ -148,10 +148,10 @@ router.get('/shared/estimate', async (req, res, next) => {
 });
 
 const RouteGeometryQuerySchema = z.object({
-  start_lat: z.coerce.number(),
-  start_lng: z.coerce.number(),
-  end_lat: z.coerce.number(),
-  end_lng: z.coerce.number(),
+  start_lat: z.coerce.number().min(-90).max(90),
+  start_lng: z.coerce.number().min(-180).max(180),
+  end_lat: z.coerce.number().min(-90).max(90),
+  end_lng: z.coerce.number().min(-180).max(180),
   mode: z.enum(['driving', 'walking']).default('driving'),
 });
 

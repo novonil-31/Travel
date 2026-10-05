@@ -28,14 +28,25 @@ function optionalBool(key: string, defaultValue: boolean): boolean {
   return val.toLowerCase() === 'true';
 }
 
+const nodeEnv = optional('NODE_ENV', 'development');
+const isProd = nodeEnv === 'production';
+const defaultDevSecret = 'access-hackathon-secret-change-in-production';
+const resolvedJwtSecret = optional('JWT_SECRET', defaultDevSecret);
+
+if (isProd && (resolvedJwtSecret === defaultDevSecret || resolvedJwtSecret.length < 32)) {
+  throw new Error(
+    'CRITICAL SECURITY ERROR: In production, JWT_SECRET must be configured in environment variables with at least 32 characters. Default or weak keys are forbidden.'
+  );
+}
+
 export const config = {
-  env: optional('NODE_ENV', 'development'),
+  env: nodeEnv,
   port: optionalNum('PORT', 3000),
-  isProduction: optional('NODE_ENV', 'development') === 'production',
+  isProduction: isProd,
   isDemoMode: optionalBool('DEMO_MODE', false),
 
   // JWT
-  jwtSecret: optional('JWT_SECRET', 'access-hackathon-secret-change-in-production'),
+  jwtSecret: resolvedJwtSecret,
   jwtExpiresIn: optional('JWT_EXPIRES_IN', '7d'),
 
   // Database

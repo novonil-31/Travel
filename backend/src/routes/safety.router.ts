@@ -124,6 +124,15 @@ router.post('/emergency', requireAuth, async (req, res, next) => {
   }
 });
 
+const EmergencySmsSchema = z.object({
+  recipientPhone: z.string().min(6).max(20),
+  recipientName: z.string().max(100).optional(),
+  senderName: z.string().max(100).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  locationName: z.string().max(200).optional(),
+});
+
 /**
  * @swagger
  * /safety/emergency-sms:
@@ -133,12 +142,8 @@ router.post('/emergency', requireAuth, async (req, res, next) => {
  */
 router.post('/emergency-sms', async (req, res, next) => {
   try {
-    const { recipientPhone, recipientName, senderName, latitude, longitude, locationName } = req.body;
-    
-    if (!recipientPhone) {
-      sendError(res, Errors.VALIDATION_ERROR, 'Recipient phone number is required', 400);
-      return;
-    }
+    const body = EmergencySmsSchema.parse(req.body);
+    const { recipientPhone, recipientName, senderName, latitude, longitude, locationName } = body;
 
     const dispatchId = `sms-${Date.now()}`;
     const timestamp = new Date().toISOString();
@@ -150,8 +155,9 @@ router.post('/emergency-sms', async (req, res, next) => {
     // Clean phone number to 10 digits for Indian carrier delivery
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, '').slice(-10);
 
-    const apiKey = process.env.FAST2SMS_API_KEY || '85QoLJ0ypjFkcP1nzUXgHmOuS4NlfrM6RI7C2BtY9WTGaqbZV3JxrUFEK8aYV5spfi1NlgjdG7qAbLSX';
-    let fast2SmsResult: any = null;
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    let fast2SmsSent = false;
+    let isWalletInactive = false;
 
     if (apiKey && cleanPhone.length === 10) {
       try {
@@ -170,31 +176,27 @@ router.post('/emergency-sms', async (req, res, next) => {
           }),
         });
 
-        fast2SmsResult = await f2sRes.json();
-        console.log(`[FAST2SMS LIVE DISPATCH] Result:`, fast2SmsResult);
+        const fast2SmsResult: any = await f2sRes.json();
+        fast2SmsSent = fast2SmsResult?.return === true;
+        isWalletInactive = fast2SmsResult?.status_code === 999;
       } catch (smsErr) {
-        console.warn('[FAST2SMS ERROR]:', smsErr);
+        // Safe logging without leaking sensitive keys
+        console.warn('[FAST2SMS ERROR]: Outbound dispatch failed');
       }
     }
 
     const carrierSmsUri = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
     const whatsAppUri = `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(message)}`;
 
-    const isFast2SmsSuccess = fast2SmsResult?.return === true;
-    const isWalletInactive = fast2SmsResult?.status_code === 999;
-
-    console.log(`[EMERGENCY SMS DISPATCH] ID: ${dispatchId} -> To: ${recipientName || 'Emergency Contact'} (${cleanPhone}) Status: ${isFast2SmsSuccess ? 'FAST2SMS_SENT' : isWalletInactive ? 'WALLET_INACTIVE_CARRIER_FALLBACK' : 'DISPATCHED'}`);
-
     sendSuccess(res, {
       dispatchId,
-      status: isFast2SmsSuccess
+      status: fast2SmsSent
         ? 'DELIVERED_VIA_FAST2SMS'
         : isWalletInactive
         ? 'FAST2SMS_WALLET_INACTIVE'
-        : 'DELIVERED',
-      fast2SmsSuccess: isFast2SmsSuccess,
+        : 'CARRIER_SMS_READY',
+      fast2SmsSuccess: fast2SmsSent,
       isWalletInactive,
-      fast2SmsResult,
       recipientPhone: cleanPhone,
       recipientName: recipientName || 'Emergency Contact',
       message,

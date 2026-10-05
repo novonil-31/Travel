@@ -18,16 +18,16 @@ const router = Router();
 const RegisterSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   email: z.string().email('Valid email address required').optional().or(z.literal('')),
-  phoneNumber: z.string().optional(),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  phoneNumber: z.string().max(20).optional(),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(128, 'Password cannot exceed 128 characters'),
 }).refine((d) => (d.email && d.email.length > 0) || (d.phoneNumber && d.phoneNumber.length > 0), {
   message: 'Either a valid email or phone number is required',
 });
 
 const LoginSchema = z.object({
   email: z.string().optional(),
-  phoneNumber: z.string().optional(),
-  password: z.string().min(1, 'Password is required'),
+  phoneNumber: z.string().max(20).optional(),
+  password: z.string().min(1, 'Password is required').max(128, 'Password too long'),
 }).refine((d) => (d.email && d.email.length > 0) || (d.phoneNumber && d.phoneNumber.length > 0), {
   message: 'Either email or phone number is required to sign in',
 });
@@ -131,13 +131,13 @@ router.post('/login', async (req, res, next) => {
     });
 
     if (!user || !user.passwordHash) {
-      sendError(res, Errors.UNAUTHORIZED, 'Invalid credentials. User not found.', 401);
+      sendError(res, Errors.UNAUTHORIZED, 'Invalid credentials. Please check your email/phone and password.', 401);
       return;
     }
 
     const valid = await bcrypt.compare(body.password, user.passwordHash);
     if (!valid) {
-      sendError(res, Errors.UNAUTHORIZED, 'Incorrect password. Please try again.', 401);
+      sendError(res, Errors.UNAUTHORIZED, 'Invalid credentials. Please check your email/phone and password.', 401);
       return;
     }
 

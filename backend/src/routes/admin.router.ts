@@ -91,7 +91,8 @@ router.post('/sources/:id/sync', async (req, res, next) => {
  */
 router.get('/ingestion-runs', async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
+    const parsedLimit = parseInt(String(req.query.limit ?? '50'), 10);
+    const limit = isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 200);
 
     const runs = await prisma.ingestionRun.findMany({
       include: { source: { select: { name: true, type: true } } },

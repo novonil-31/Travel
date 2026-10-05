@@ -51,10 +51,44 @@ export interface DeepLinkConfig {
 }
 
 /**
+ * Strict validator to prevent javascript:, data:, vbscript: or arbitrary URI injections
+ */
+export function isSafeLaunchUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim().toLowerCase();
+  // Strictly block dangerous pseudo-protocols
+  if (
+    trimmed.startsWith('javascript:') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('vbscript:') ||
+    trimmed.includes('\x00')
+  ) {
+    return false;
+  }
+  // Allow safe web and app protocols
+  return (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('intent://') ||
+    trimmed.startsWith('sms:') ||
+    trimmed.startsWith('tel:') ||
+    trimmed.startsWith('uber:') ||
+    trimmed.startsWith('olacabs:') ||
+    trimmed.startsWith('rapido:') ||
+    trimmed.startsWith('nammayatri:')
+  );
+}
+
+/**
  * Ensures fallback URLs are safe official stores or mobile pages,
  * completely preventing S3 / CloudFront NoSuchKey XML errors.
  */
 export function sanitizeFallbackUrl(url: string, packageName?: string): string {
+  // Validate against dangerous pseudo-protocols
+  if (!isSafeLaunchUrl(url)) {
+    return 'https://play.google.com/store/apps';
+  }
+
   // Never allow broken /booking paths on landing pages (like rapido.bike/booking)
   if (url.includes('rapido.bike/booking') || packageName === 'com.rapido.passenger') {
     return isIOSDevice()
@@ -90,6 +124,9 @@ export function launchMobileAppOrWeb(
 
   const isMobile = isMobileDevice();
   const safeFallback = sanitizeFallbackUrl(webFallbackUrl, androidPackage);
+
+  // Validate scheme URL to prevent malicious pseudo-protocol injection
+  const safeAppScheme = isSafeLaunchUrl(appSchemeUrl) ? appSchemeUrl : '';
 
   if (!isMobile) {
     // Desktop: Always open pre-filled web booking in new tab
@@ -192,8 +229,8 @@ export function launchMobileAppOrWeb(
 
   // 2. iOS or other mobile browsers
   if (isIOSDevice()) {
-    if (appSchemeUrl.startsWith('http://') || appSchemeUrl.startsWith('https://')) {
-      window.location.href = appSchemeUrl;
+    if (safeAppScheme.startsWith('http://') || safeAppScheme.startsWith('https://')) {
+      window.location.href = safeAppScheme;
       return;
     }
 
@@ -206,14 +243,18 @@ export function launchMobileAppOrWeb(
     window.addEventListener('blur', onHide);
 
     try {
-      const link = document.createElement('a');
-      link.href = appSchemeUrl;
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      if (safeAppScheme) {
+        const link = document.createElement('a');
+        link.href = safeAppScheme;
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        window.location.href = safeFallback;
+      }
     } catch {
-      window.location.href = appSchemeUrl;
+      window.location.href = safeAppScheme || safeFallback;
     }
 
     setTimeout(() => {
@@ -227,7 +268,7 @@ export function launchMobileAppOrWeb(
 
   // 3. Generic fallback
   try {
-    window.location.href = appSchemeUrl || safeFallback;
+    window.location.href = safeAppScheme || safeFallback;
   } catch {
     window.location.href = safeFallback;
   }

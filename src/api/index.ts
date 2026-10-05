@@ -638,46 +638,26 @@ export const safetyApi = {
         coordinates: [number, number];
         timestamp: string;
       }>('/safety/emergency-sms', { method: 'POST', body: data });
-    } catch (error) {
-      // Direct Fast2SMS dispatch fallback with real API Key
+    } catch {
+      // Secure client fallback: generate standard carrier SMS and WhatsApp links without exposing provider secrets
       const cleanPhone = (data.recipientPhone || '').replace(/[^0-9]/g, '').slice(-10);
       const latStr = typeof data.latitude === 'number' ? data.latitude.toFixed(5) : '20.35550';
       const lngStr = typeof data.longitude === 'number' ? data.longitude.toFixed(5) : '85.81450';
       const mapLink = `https://maps.google.com/?q=${latStr},${lngStr}`;
       const message = `🚨 EMERGENCY ALERT: ${data.senderName || 'Passenger'} triggered SOS near ${data.locationName || 'Transit Corridor'}. Live GPS: ${mapLink}`;
 
-      let fast2smsRes: any = null;
-      if (cleanPhone.length === 10) {
-        try {
-          const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-            method: 'POST',
-            headers: {
-              'authorization': '85QoLJ0ypjFkcP1nzUXgHmOuS4NlfrM6RI7C2BtY9WTGaqbZV3JxrUFEK8aYV5spfi1NlgjdG7qAbLSX',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              route: 'q',
-              message,
-              language: 'english',
-              flash: 0,
-              numbers: cleanPhone,
-            }),
-          });
-          fast2smsRes = await res.json();
-          console.log('[CLIENT FAST2SMS DISPATCH RESULT]:', fast2smsRes);
-        } catch (fErr) {
-          console.warn('[CLIENT FAST2SMS ERROR]:', fErr);
-        }
-      }
+      const carrierSmsUri = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
+      const whatsAppUri = `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(message)}`;
 
       return {
         dispatchId: `sms-${Date.now()}`,
-        status: fast2smsRes?.return ? 'DELIVERED_VIA_FAST2SMS' : 'DELIVERED',
-        fast2sms: fast2smsRes,
+        status: 'OFFLINE_CARRIER_DISPATCH',
         recipientPhone: cleanPhone,
         recipientName: data.recipientName || 'Emergency Contact',
         message,
         mapLink,
+        carrierSmsUri,
+        whatsAppUri,
         coordinates: [parseFloat(latStr), parseFloat(lngStr)] as [number, number],
         timestamp: new Date().toISOString(),
       };
